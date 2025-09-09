@@ -50,7 +50,7 @@ func TestFS(t *testing.T) {
 
 	actual := make([]then, 0, 10)
 	for entry, err := range walk.FS(t.Context(), root) {
-		actual = append(actual, handleEntry(t, entry, err))
+		actual = append(actual, testEntry(t, entry, err))
 	}
 
 	require.Len(t, actual, 2)
@@ -140,7 +140,7 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 	actual := make([]then, 0, 10)
 	for entry, err := range walk.Image(t.Context(), ociImage) {
 		if strings.HasPrefix(entry.Path(), "/a") {
-			actual = append(actual, handleEntry(t, entry, err))
+			actual = append(actual, testEntry(t, entry, err))
 		}
 	}
 
@@ -161,7 +161,7 @@ type then struct {
 	err  error
 }
 
-func handleEntry(t *testing.T, entry walk.Entry, err error) then {
+func testEntry(t *testing.T, entry walk.Entry, err error) then {
 	t.Helper()
 	if err != nil {
 		return then{
@@ -178,5 +178,10 @@ func handleEntry(t *testing.T, entry walk.Entry, err error) then {
 	})
 	b, err = io.ReadAll(f)
 	require.NoError(t, err)
+
+	info, err := entry.Stat()
+	require.NoError(t, err)
+	require.Equal(t, int64(len(b)), info.Size())
+
 	return then{path: entry.Path(), size: int64(len(b))}
 }
