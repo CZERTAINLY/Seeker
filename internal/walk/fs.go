@@ -70,9 +70,6 @@ func (e fsEntry) Open() (io.ReadCloser, error) {
 	if e.infoErr != nil {
 		return nil, e.infoErr
 	}
-	if !e.info.Mode().IsRegular() {
-		return nil, nil
-	}
 	return e.root.Open(e.path)
 }
 
