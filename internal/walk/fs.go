@@ -17,8 +17,9 @@ func FS(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
 	if root == nil {
 		panic("root is nil")
 	}
+
 	return func(yield func(Entry, error) bool) {
-		_ = fs.WalkDir(root.FS(), ".", func(path string, d fs.DirEntry, err error) error {
+		fn := func(path string, d fs.DirEntry, err error) error {
 			if ctx.Err() != nil {
 				return fs.SkipAll
 			}
@@ -46,9 +47,9 @@ func FS(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
 			if !yield(entry, yieldErr) {
 				return fs.SkipAll
 			}
-
 			return nil
-		})
+		}
+		_ = fs.WalkDir(root.FS(), ".", fn)
 	}
 }
 
