@@ -102,7 +102,7 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 		err = f.Close()
 		require.NoError(t, err)
 	})
-	_, err = f.Write([]byte(dockerfile))
+	_, err = f.Write(dockerfile)
 	require.NoError(t, err)
 	err = f.Sync()
 	require.NoError(t, err)
