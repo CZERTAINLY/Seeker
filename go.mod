@@ -4,7 +4,7 @@ go 1.24.6
 
 require (
 	github.com/anchore/stereoscope v0.1.9
-	github.com/docker/docker v28.3.3+incompatible
+	github.com/docker/docker v28.4.0+incompatible
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 )
