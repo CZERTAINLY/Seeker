@@ -9,11 +9,16 @@ import (
 	"path/filepath"
 )
 
-// FS returns an iterator over a filesystem - it returns an iterator for every
-// regular file or an error it visits.
-// It DOES NOT follow symlink. It DOES NOT open a file. Visits are done if all
-// files are visited or when the context is canceled.
-func FS(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
+// Root is a convenience wrapper around FS for os.Root. See FS for details.
+func Root(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
+	return FS(ctx, root.FS(), root.Name())
+}
+
+// FS recursively walks the filesystem rooted at root and return a handle for every regular file found.
+// Or an error if the stat(3) on a file fails.
+// Each Entry's Path() is prefixed with name of a filesystem. In most cases it'll be an absolute
+// path to the file. It does not follow symlinks.
+func FS(ctx context.Context, root fs.FS, name string) iter.Seq2[Entry, error] {
 	if root == nil {
 		panic("root is nil")
 	}
@@ -24,8 +29,9 @@ func FS(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
 				return fs.SkipAll
 			}
 			var entry = fsEntry{
-				root: root,
-				path: path,
+				root:    root,
+				abspath: filepath.Join(name, path),
+				path:    path,
 			}
 			var yieldErr error
 			if err != nil {
@@ -49,14 +55,15 @@ func FS(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
 			}
 			return nil
 		}
-		_ = fs.WalkDir(root.FS(), ".", fn)
+		_ = fs.WalkDir(root, ".", fn)
 	}
 }
 
 // fsEntry implements Entry for a filesystem
 // it uses root.Open to open the file
 type fsEntry struct {
-	root    *os.Root
+	root    fs.FS
+	abspath string
 	path    string
 	info    fs.FileInfo
 	infoErr error
@@ -64,7 +71,7 @@ type fsEntry struct {
 
 // returns the absolute path to the file
 func (e fsEntry) Path() string {
-	return filepath.Join(e.root.Name(), e.path)
+	return e.abspath
 }
 
 func (e fsEntry) Open() (io.ReadCloser, error) {
