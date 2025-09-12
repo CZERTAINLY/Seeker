@@ -15,7 +15,7 @@ func Root(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
 }
 
 // FS recursively walks the filesystem rooted at root and return a handle for every regular file found.
-// Or an error if the stat(3) on a file fails.
+// Or an error if file information retrieval fails.
 // Each Entry's Path() is prefixed with name of a filesystem. In most cases it'll be an absolute
 // path to the file. It does not follow symlinks.
 func FS(ctx context.Context, root fs.FS, name string) iter.Seq2[Entry, error] {
