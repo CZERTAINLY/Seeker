@@ -19,7 +19,7 @@ func run(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	for entry, err := range walk.FS(ctx, root) {
+	for entry, err := range walk.Root(ctx, root) {
 		if err != nil {
 			log.Printf("E: err=%+v", err)
 		} else {
