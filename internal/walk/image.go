@@ -12,6 +12,8 @@ import (
 	"github.com/anchore/stereoscope/pkg/image"
 )
 
+// FS recursively walks the squashed layers of an OCI image.
+// Each Entry's Path() is a real path of file inside.
 func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 	if image == nil {
 		panic("image is nil")
@@ -39,11 +41,11 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 					return false
 				}
 			},
-			ShouldVisit: func(_ file.Path, _ filenode.FileNode) bool {
-				return true
+			ShouldVisit: func(_ file.Path, node filenode.FileNode) bool {
+				return !node.IsLink()
 			},
-			ShouldContinueBranch: func(_ file.Path, _ filenode.FileNode) bool {
-				return true
+			ShouldContinueBranch: func(_ file.Path, node filenode.FileNode) bool {
+				return !node.IsLink()
 			},
 			LinkOptions: nil,
 		}

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/fstest"
+	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
@@ -20,6 +22,41 @@ import (
 )
 
 func TestFS(t *testing.T) {
+	t.Parallel()
+	root := fstest.MapFS{
+		"a": &fstest.MapFile{
+			Data:    []byte("aaa"),
+			Mode:    0644,
+			ModTime: time.Now(),
+		},
+		"b": &fstest.MapFile{
+			Mode:    0755 | fs.ModeDir,
+			ModTime: time.Now(),
+		},
+		"b/b.txt": &fstest.MapFile{
+			Data:    []byte("bbbbbb"),
+			Mode:    0644,
+			ModTime: time.Now(),
+		},
+	}
+
+	actual := make([]then, 0, 10)
+	for entry, err := range walk.FS(t.Context(), root, "fstest://") {
+		actual = append(actual, testEntry(t, entry, err))
+	}
+
+	require.Len(t, actual, 2)
+	require.ElementsMatch(t,
+		[]then{
+			{path: filepath.Join("fstest://", "a"), size: 3},
+			{path: filepath.Join("fstest://", "b/b.txt"), size: 6},
+		},
+		actual,
+	)
+
+}
+
+func TestRoot(t *testing.T) {
 	tempdir := t.TempDir()
 	root, err := os.OpenRoot(tempdir)
 	require.NoError(t, err)
@@ -49,7 +86,7 @@ func TestFS(t *testing.T) {
 		})
 
 	actual := make([]then, 0, 10)
-	for entry, err := range walk.FS(t.Context(), root) {
+	for entry, err := range walk.Root(t.Context(), root) {
 		actual = append(actual, testEntry(t, entry, err))
 	}
 
