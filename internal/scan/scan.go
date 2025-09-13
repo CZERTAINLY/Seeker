@@ -2,6 +2,7 @@ package scan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -64,14 +65,24 @@ func (s Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, er
 		return nil, fmt.Errorf("scan ReadAll: %w", err)
 	}
 
+	var detectionErrors []error
 	res := make([]model.Detection, 0, 10)
 	for _, detector := range s.detectors {
-		d, _ := detector.Detect(b, entry.Path())
-		res = append(res, d...)
+		d, err := detector.Detect(b, entry.Path())
+		switch {
+		case err == nil:
+			res = append(res, d...)
+		case errors.Is(err, model.ErrNoMatch):
+			// ignore ErrNoMatch
+		default:
+			detectionErrors = append(detectionErrors, err)
+		}
 	}
 
 	if len(res) == 0 {
 		return nil, model.ErrNoMatch
+	} else if len(detectionErrors) > 0 {
+		return nil, errors.Join(detectionErrors...)
 	}
 	return res, nil
 }
