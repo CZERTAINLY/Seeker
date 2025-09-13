@@ -18,8 +18,6 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3
 
 ```sh
 go run -race cmd/seeker/main.go alpha scan
-DETECTED: [{Path:.git/hooks/update.sample Typ:script}]
-DETECTED: [{Path:.git/hooks/prepare-commit-msg.sample Typ:script}]
 DETECTED: [{Path:cert.pem Typ:X509}]
 ```
 
@@ -29,6 +27,5 @@ DETECTED: [{Path:cert.pem Typ:X509}]
 
 ```sh
 go run -race cmd/seeker/main.go a scan --docker gcr.io/distroless/base-debian12
-DETECTED: [{Path:/etc/update-motd.d/10-uname Typ:script}]
 DETECTED: [{Path:/etc/ssl/certs/ca-certificates.crt Typ:X509}]
 ```

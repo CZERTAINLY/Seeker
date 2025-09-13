@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
@@ -49,7 +48,6 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 	var detectors = []scan.Detector{
 		x509.Detector{},
-		isScript{},
 	}
 	scanner := scan.New(4, detectors)
 	for detection, err := range scanner.Do(ctx, source) {
@@ -59,17 +57,6 @@ func doScan(cmd *cobra.Command, args []string) error {
 		fmt.Printf("DETECTED: %+v\n", detection)
 	}
 	return nil
-}
-
-// TODO: this is a fake detector - drop it later once Seeker will gain a second one
-// right now it showcases it can detect more than a single thing
-type isScript struct{}
-
-func (d isScript) Detect(b []byte, path string) ([]model.Detection, error) {
-	if len(b) > 2 && b[0] == '#' && b[1] == '!' {
-		return []model.Detection{{Typ: "script", Path: path}}, nil
-	}
-	return nil, model.ErrNoMatch
 }
 
 var rootCmd = &cobra.Command{
