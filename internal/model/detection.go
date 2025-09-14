@@ -1,6 +1,10 @@
 package model
 
+import (
+	cdx "github.com/CycloneDX/cyclonedx-go"
+)
+
 type Detection struct {
-	Path string
-	Typ  string
+	Path       string
+	Components []cdx.Component
 }
