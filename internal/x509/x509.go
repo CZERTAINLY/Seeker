@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/pavlo-v-chernykh/keystore-go/v4"
 	stepcms "github.com/smallstep/pkcs7"
@@ -349,22 +350,10 @@ func toComponent(cert *x509.Certificate, path string, source string) (cdx.Compon
 
 	absPath, _ := filepath.Abs(path)
 
-	props := []cdx.Property{
-		{
-			Name:  "czertainly:component:certificate:source_format",
-			Value: source,
-		},
-		{
-			Name:  "czertainly:component:certificate:base64_content",
-			Value: base64.StdEncoding.EncodeToString(cert.Raw),
-		},
-	}
-
 	c := cdx.Component{
-		Type:       cdx.ComponentTypeCryptographicAsset,
-		Name:       cert.Subject.String(),
-		Version:    cert.SerialNumber.String(),
-		Properties: &props, // include identified type + Base64 DER
+		Type:    cdx.ComponentTypeCryptographicAsset,
+		Name:    cert.Subject.String(),
+		Version: cert.SerialNumber.String(),
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType: cdx.CryptoAssetTypeCertificate,
 			CertificateProperties: &cdx.CertificateProperties{
@@ -378,14 +367,12 @@ func toComponent(cert *x509.Certificate, path string, source string) (cdx.Compon
 				CertificateExtension:  filepath.Ext(path),
 			},
 		},
-		Evidence: &cdx.Evidence{
-			Occurrences: &[]cdx.EvidenceOccurrence{
-				{
-					Location: absPath,
-				},
-			},
-		},
 	}
+
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, source)
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateBase64Content, base64.StdEncoding.EncodeToString(cert.Raw))
+	cdxprops.AddEvidenceLocation(&c, absPath)
+
 	return c, nil
 }
 
