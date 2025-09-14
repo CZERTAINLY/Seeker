@@ -55,7 +55,7 @@ func (b *Builder) BOM() cdx.BOM {
 		SerialNumber: "urn:uuid:" + uuid.New().String(),
 		Version:      1,
 		Metadata: &cdx.Metadata{
-			Timestamp: time.Now().Format(time.RFC3339),
+			Timestamp: time.Now().UTC().Format(time.RFC3339),
 			Lifecycles: &[]cdx.Lifecycle{
 				{
 					Name:        "",
