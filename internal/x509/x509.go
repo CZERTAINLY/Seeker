@@ -1,77 +1,358 @@
 package x509
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/dsa" //nolint:staticcheck // seeker is going to recognize even obsoleted crypto
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/pem"
-	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/pavlo-v-chernykh/keystore-go/v4"
+	stepcms "github.com/smallstep/pkcs7"
+	"software.sslmate.com/src/go-pkcs12"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// Detector tries to parse the X509 certificate and return a proper detection object
-type Detector struct {
+// ---- internal type to carry source/format label ----
+
+type certHit struct {
+	Cert   *x509.Certificate
+	Source string // e.g., "PEM", "DER", "PKCS7-PEM", "PKCS7-DER", "PKCS12", "JKS", "JCEKS", "ZIP/<subsource>"
 }
 
+// Detector tries to parse the X509 certificate(s) and return a proper detection object
+type Detector struct{}
+
 func (d Detector) Detect(b []byte, path string) ([]model.Detection, error) {
-	cert, _ := isx509(b)
-	if cert != nil {
-		component, err := toComponent(cert, path)
+	hits := findAllCerts(b)
+	if len(hits) == 0 {
+		return nil, model.ErrNoMatch
+	}
+
+	components := make([]cdx.Component, 0, len(hits))
+	for _, h := range hits {
+		component, err := toComponent(h.Cert, path, h.Source)
 		if err != nil {
 			return nil, err
 		}
-		return []model.Detection{{
-			Path:       path,
-			Components: []cdx.Component{component},
-		}}, nil
+		components = append(components, component)
 	}
-	return nil, model.ErrNoMatch
+
+	return []model.Detection{{
+		Path:       path,
+		Components: components,
+	}}, nil
 }
 
-func isx509(b []byte) (*x509.Certificate, error) {
-	// 1. Try PEM decoding first
-	if p, _ := pem.Decode(b); p != nil {
-		if p.Type != "CERTIFICATE" {
-			return nil, fmt.Errorf("PEM block is not a certificate")
+// -------- Certificate extraction (multi-source) --------
+
+func findAllCerts(b []byte) []certHit {
+	seen := make(map[[32]byte]struct{})
+	add := func(cs []*x509.Certificate, source string, out *[]certHit) {
+		for _, c := range cs {
+			if c == nil {
+				continue
+			}
+			fp := sha256.Sum256(c.Raw)
+			if _, dup := seen[fp]; dup {
+				continue
+			}
+			seen[fp] = struct{}{}
+			*out = append(*out, certHit{Cert: c, Source: source})
 		}
-		cert, err := x509.ParseCertificate(p.Bytes)
+	}
+
+	out := make([]certHit, 0, 4)
+
+	// 1) Parse ALL PEM blocks anywhere in the blob (handles leading text)
+	rest := b
+	for {
+		p, r := pem.Decode(rest)
+		if p == nil {
+			break
+		}
+		switch p.Type {
+		case "CERTIFICATE", "TRUSTED CERTIFICATE":
+			if cs, err := x509.ParseCertificates(p.Bytes); err == nil {
+				add(cs, "PEM", &out)
+			}
+		case "PKCS7", "CMS":
+			if cs := parsePKCS7(p.Bytes); len(cs) > 0 {
+				add(cs, "PKCS7-PEM", &out)
+			}
+		case "PKCS12":
+			// Only parse PKCS#12 if it actually sniffs as PFX (avoid mis-parsing JKS/BKS as PFX)
+			if sniffPKCS12(p.Bytes) {
+				add(pkcs12All(p.Bytes), "PKCS12", &out)
+			}
+		default:
+			// ignore keys, CSRs, CRLs, etc.
+		}
+		rest = r
+	}
+
+	// 2) JKS / JCEKS (Java keystores) — check magic+version before loading
+	if certs, kind := jksAll(b); len(certs) > 0 && kind != "" {
+		add(certs, kind, &out)
+	}
+
+	// 3) PKCS#12 (PFX) — try only if it sniffs as PFX
+	if sniffPKCS12(b) {
+		add(pkcs12All(b), "PKCS12", &out)
+	}
+
+	// 4) Raw DER: single/concatenated certs, or DER-encoded PKCS#7
+	if cs, err := x509.ParseCertificates(b); err == nil {
+		add(cs, "DER", &out)
+	} else {
+		// DER PKCS#7?
+		if cs := parsePKCS7(b); len(cs) > 0 {
+			add(cs, "PKCS7-DER", &out)
+		}
+	}
+
+	// 5) ZIP/JAR/APK META-INF (common in signed Java/Android artifacts)
+	if bytes.HasPrefix(b, []byte("PK\x03\x04")) {
+		for _, h := range scanZIPForCerts(b) {
+			add([]*x509.Certificate{h.Cert}, "ZIP/"+h.Source, &out)
+		}
+	}
+
+	return out
+}
+
+func parsePKCS7(b []byte) []*x509.Certificate {
+	p7, err := stepcms.Parse(b) // accepts DER or PEM
+	if err != nil || len(p7.Certificates) == 0 {
+		return nil
+	}
+	return p7.Certificates
+}
+
+// --- Strict PKCS#12 sniff ---
+// Validates top-level PFX structure: SEQUENCE { version INTEGER, authSafe ContentInfo (...id-data or id-signedData...) , ... }
+func sniffPKCS12(b []byte) bool {
+	var top asn1.RawValue
+	if _, err := asn1.Unmarshal(b, &top); err != nil {
+		return false
+	}
+	if top.Class != asn1.ClassUniversal || top.Tag != asn1.TagSequence || !top.IsCompound {
+		return false
+	}
+	payload := top.Bytes
+	// version INTEGER
+	var ver int
+	rest, err := asn1.Unmarshal(payload, &ver)
+	if err != nil || ver < 0 || ver > 10 { // typical PFX version is 3
+		return false
+	}
+	// ContentInfo: SEQUENCE { contentType OID, [0] EXPLICIT ... OPTIONAL }
+	type contentInfo struct {
+		ContentType asn1.ObjectIdentifier
+		Content     asn1.RawValue `asn1:"tag:0,explicit,optional"`
+	}
+	var ci contentInfo
+	if _, err := asn1.Unmarshal(rest, &ci); err != nil {
+		return false
+	}
+	// contentType must be id-data (1.2.840.113549.1.7.1) or id-signedData (1.2.840.113549.1.7.2)
+	idData := asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 1}
+	idSignedData := asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 7, 2}
+	return ci.ContentType.Equal(idData) || ci.ContentType.Equal(idSignedData)
+}
+
+var pkcs12Passwords = []string{"changeit", "", "password"} // tweak as needed
+
+// Robust PKCS#12: trust store first, then key+chain, then PEM fallback.
+func pkcs12All(b []byte) []*x509.Certificate {
+	var out []*x509.Certificate
+	for _, pw := range pkcs12Passwords {
+		// 1) Trust-store (certs only; e.g., Java truststore exports)
+		if certs, err := pkcs12.DecodeTrustStore(b, pw); err == nil && len(certs) > 0 {
+			out = append(out, certs...)
+			return out
+		}
+		// 2) Full chain (leaf + intermediates) if present
+		if _, leaf, cas, err := pkcs12.DecodeChain(b, pw); err == nil {
+			if leaf != nil {
+				out = append(out, leaf)
+			}
+			if len(cas) > 0 {
+				out = append(out, cas...)
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+	}
+	return out
+}
+
+// --- JKS/JCEKS support ---
+
+const (
+	jksMagic   uint32 = 0xFEEDFEED
+	jceksMagic uint32 = 0xCECECECE
+)
+
+// sniffJKS returns (true, "JKS"|"JCEKS") if bytes look like a JKS/JCEKS keystore.
+// It also validates the version (1 or 2) to reduce false positives.
+func sniffJKS(b []byte) (bool, string) {
+	if len(b) < 8 {
+		return false, ""
+	}
+	magic := binary.BigEndian.Uint32(b[0:4])
+	if magic != jksMagic && magic != jceksMagic {
+		return false, ""
+	}
+	version := binary.BigEndian.Uint32(b[4:8])
+	if version != 1 && version != 2 {
+		return false, ""
+	}
+	if magic == jksMagic {
+		return true, "JKS"
+	}
+	return true, "JCEKS"
+}
+
+var jksPasswords = []string{"changeit", ""} // typical defaults; adjust as needed
+
+func jksAll(b []byte) ([]*x509.Certificate, string) {
+	ok, kind := sniffJKS(b)
+	if !ok {
+		return nil, ""
+	}
+
+	var out []*x509.Certificate
+	for _, pw := range jksPasswords {
+		ks := keystore.New()
+		if err := ks.Load(bytes.NewReader(b), []byte(pw)); err != nil {
+			continue
+		}
+
+		aliases := ks.Aliases()
+		for _, alias := range aliases {
+			// 1) TrustedCertificateEntry
+			if tce, err := ks.GetTrustedCertificateEntry(alias); err == nil {
+				if c, err := x509.ParseCertificate(tce.Certificate.Content); err == nil {
+					out = append(out, c)
+				}
+			}
+			// 2) PrivateKeyEntry -> includes certificate chain
+			if pke, err := ks.GetPrivateKeyEntry(alias, []byte(pw)); err == nil {
+				for _, kc := range pke.CertificateChain {
+					if c, err := x509.ParseCertificate(kc.Content); err == nil {
+						out = append(out, c)
+					}
+				}
+			}
+		}
+
+		if len(out) > 0 {
+			break
+		}
+	}
+	return out, kind
+}
+
+func scanZIPForCerts(b []byte) []certHit {
+	var out []certHit
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		return nil
+	}
+	for _, f := range zr.File {
+		name := strings.ToUpper(f.Name)
+		if !strings.HasPrefix(name, "META-INF/") {
+			continue
+		}
+		// Typical: CERT.RSA, *.RSA, *.DSA, *.EC, *.PK7
+		//nolint:staticcheck // seeker is going to recognize even obsoleted crypto
+		if !(strings.HasSuffix(name, ".RSA") || strings.HasSuffix(name, ".DSA") ||
+			strings.HasSuffix(name, ".EC") || strings.HasSuffix(name, ".PK7") ||
+			name == "META-INF/CERT.RSA") {
+			continue
+		}
+		rc, err := f.Open()
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse PEM cert: %w", err)
+			continue
 		}
-		return cert, nil
-	}
+		data, _ := io.ReadAll(rc)
+		_ = rc.Close()
 
-	// 2. If not PEM, try raw DER
-	cert, err := x509.ParseCertificate(b)
-	if err == nil {
-		return cert, nil
+		// Recursively analyze entry contents (they're usually PKCS#7)
+		sub := findAllCerts(data)
+		for _, h := range sub {
+			out = append(out, certHit{Cert: h.Cert, Source: "ZIP/" + h.Source})
+		}
 	}
-
-	// 3. Could also be a chain (PKCS#7/PKCS#12 are not in stdlib)
-	certs, err2 := x509.ParseCertificates(b)
-	if err2 == nil && len(certs) > 0 {
-		return certs[0], nil // return the first one
-	}
-
-	return nil, errors.New("not an X.509 certificate")
+	return out
 }
 
-func toComponent(cert *x509.Certificate, path string) (cdx.Component, error) {
+// -------- Optional sanity (kept for reference, not used by default) --------
+
+//func saneCert(cert *x509.Certificate) (bool, error) { // optional policy filter
+//	if cert.SerialNumber == nil || cert.SerialNumber.Sign() == 0 {
+//		return false, errors.New("bad serial")
+//	}
+//	if !cert.NotBefore.Before(cert.NotAfter) {
+//		return false, errors.New("bad validity window")
+//	}
+//	span := cert.NotAfter.Sub(cert.NotBefore)
+//	if span > 24*time.Hour*365*30 { // >30y validity is suspicious
+//		return false, errors.New("implausible validity")
+//	}
+//	switch pk := cert.PublicKey.(type) {
+//	case *rsa.PublicKey:
+//		if pk.N.BitLen() < 1024 {
+//			return false, errors.New("RSA too small")
+//		}
+//	case *ecdsa.PublicKey:
+//		switch pk.Params().BitSize {
+//		case 256, 384, 521:
+//		default:
+//			return false, fmt.Errorf("unsupported EC size %d", pk.Params().BitSize)
+//		}
+//	case ed25519.PublicKey:
+//		// ok
+//	case *dsa.PublicKey:
+//		if pk.P.BitLen() < 1024 {
+//			return false, errors.New("DSA too small")
+//		}
+//	default:
+//		return false, fmt.Errorf("unsupported public key type: %T", cert.PublicKey)
+//	}
+//	return true, nil
+//}
+
+// -------- Component building --------
+
+func toComponent(cert *x509.Certificate, path string, source string) (cdx.Component, error) {
 	subjectPublicKeyRef, err := readSubjectPublicKeyRef(cert)
 	if err != nil {
 		return cdx.Component{}, err
 	}
+
+	absPath, _ := filepath.Abs(path)
+
 	c := cdx.Component{
 		Type:    cdx.ComponentTypeCryptographicAsset,
-		Name:    cert.Subject.CommonName,
+		Name:    cert.Subject.String(),
 		Version: cert.SerialNumber.String(),
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType: cdx.CryptoAssetTypeCertificate,
@@ -87,6 +368,11 @@ func toComponent(cert *x509.Certificate, path string) (cdx.Component, error) {
 			},
 		},
 	}
+
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, source)
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateBase64Content, base64.StdEncoding.EncodeToString(cert.Raw))
+	cdxprops.AddEvidenceLocation(&c, absPath)
+
 	return c, nil
 }
 
