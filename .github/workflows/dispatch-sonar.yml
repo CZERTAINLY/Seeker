@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download PR context artifact from upstream run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: pr-context
           path: pr_context
@@ -34,7 +34,7 @@ jobs:
           echo "run_id=$(jq -r '.run_id' pr_context/pr-context.json)" >> $GITHUB_OUTPUT
 
       - name: Dispatch Sonar workflow with inputs
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
