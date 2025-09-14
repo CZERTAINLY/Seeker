@@ -77,28 +77,13 @@ jobs:
           chmod +x "$BIN" || true
           ls -lh "$BIN"
 
-      - name: Package (${{ matrix.goos }}/${{ matrix.goarch }})
-        run: |
-          set -euo pipefail
-          NAME="${APP_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
-          cd dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            ARCHIVE="${NAME}.zip"
-            zip -9 "$ARCHIVE" "${NAME}.exe"
-          else
-            ARCHIVE="${NAME}.tar.gz"
-            tar -czf "$ARCHIVE" "$NAME"
-          fi
-          echo "Created archive: $ARCHIVE"
-          ls -lh "$ARCHIVE"
-
       - name: Checksums (per-artifact)
         run: |
           set -euo pipefail
           NAME="${APP_NAME}-${{ matrix.goos }}-${{ matrix.goarch }}"
           cd dist
           # Only hash this job's outputs to keep checksums specific
-          FILES=("$NAME${{ matrix.ext }}" "$NAME.tar.gz" "$NAME.zip")
+          FILES=("$NAME${{ matrix.ext }}")
           TO_HASH=()
           for f in "${FILES[@]}"; do
             [ -f "$f" ] && TO_HASH+=("$f")
@@ -117,7 +102,5 @@ jobs:
           name: ${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             dist/${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
-            dist/${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
-            dist/${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}.zip
             dist/SHA256SUMS-${{ env.APP_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}*.txt
           if-no-files-found: warn
