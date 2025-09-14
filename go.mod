@@ -1,6 +1,6 @@
 module github.com/CZERTAINLY/Seeker
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/CycloneDX/cyclonedx-go v0.9.2
