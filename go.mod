@@ -6,11 +6,14 @@ require (
 	github.com/CycloneDX/cyclonedx-go v0.9.2
 	github.com/anchore/stereoscope v0.1.9
 	github.com/google/uuid v1.6.0
+	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
+	github.com/smallstep/pkcs7 v0.2.1
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	go.uber.org/goleak v1.1.12
 	golang.org/x/sync v0.16.0
+	software.sslmate.com/src/go-pkcs12 v0.6.0
 )
 
 require (
@@ -118,3 +121,5 @@ require (
 	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/CZERTAINLY/Seeker/internal/model => ./internal/model
