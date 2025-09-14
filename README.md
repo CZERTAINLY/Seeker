@@ -18,7 +18,11 @@ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3
 
 ```sh
 go run -race cmd/seeker/main.go alpha scan
-DETECTED: [{Path:cert.pem Typ:X509}]
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:a01b1d1f-e7b1-486f-a0d8-37f940ee2980",
+  "version": 1,
 ```
 
 3. scan the docker image
@@ -27,5 +31,4 @@ DETECTED: [{Path:cert.pem Typ:X509}]
 
 ```sh
 go run -race cmd/seeker/main.go a scan --docker gcr.io/distroless/base-debian12
-DETECTED: [{Path:/etc/ssl/certs/ca-certificates.crt Typ:X509}]
 ```

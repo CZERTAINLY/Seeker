@@ -43,7 +43,7 @@ func TestScanner_Do(t *testing.T) {
 	noMatch := NewMockDetector(t)
 
 	isScript.On("Detect", []byte("#!/bin/sh"), "fstest::/is-script").
-		Return([]model.Detection{{Typ: "script", Path: "fstest::/is-script"}}, nil).
+		Return([]model.Detection{{Path: "fstest::/is-script"}}, nil).
 		Once()
 	isScript.On("Detect", []byte("not a script"), "fstest::/dir/not-a-script").
 		Return(nil, model.ErrNoMatch).

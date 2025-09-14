@@ -3,7 +3,9 @@ module github.com/CZERTAINLY/Seeker
 go 1.24.6
 
 require (
+	github.com/CycloneDX/cyclonedx-go v0.9.2
 	github.com/anchore/stereoscope v0.1.9
+	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
@@ -57,7 +59,6 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-containerregistry v0.20.6 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

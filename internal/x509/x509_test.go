@@ -12,6 +12,7 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
+	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -102,7 +103,8 @@ func TestIsX509(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Len(t, got, 1)
-				require.Equal(t, "X509", got[0].Typ)
+				require.Len(t, got[0].Components, 1)
+				require.Equal(t, cdx.ComponentTypeCryptographicAsset, got[0].Components[0].Type)
 			}
 		})
 	}

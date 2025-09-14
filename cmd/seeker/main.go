@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
@@ -46,17 +47,22 @@ func doScan(cmd *cobra.Command, args []string) error {
 		source = walk.Image(ctx, ociImage)
 	}
 
+	b := bom.NewBuilder()
+
 	var detectors = []scan.Detector{
 		x509.Detector{},
 	}
 	scanner := scan.New(4, detectors)
-	for detection, err := range scanner.Do(ctx, source) {
+	for results, err := range scanner.Do(ctx, source) {
 		if err != nil {
 			continue
 		}
-		fmt.Printf("DETECTED: %+v\n", detection)
+
+		for _, detection := range results {
+			b.AppendComponents(detection.Components...)
+		}
 	}
-	return nil
+	return b.AsJSON(os.Stdout)
 }
 
 var rootCmd = &cobra.Command{
