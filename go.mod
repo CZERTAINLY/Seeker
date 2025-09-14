@@ -12,7 +12,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/testcontainers/testcontainers-go v0.38.0
 	go.uber.org/goleak v1.1.12
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.17.0
 	software.sslmate.com/src/go-pkcs12 v0.6.0
 )
 
