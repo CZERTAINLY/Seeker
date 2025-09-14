@@ -50,7 +50,7 @@ jobs:
           echo "value=$FIRST_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           image-ref: ${{ steps.tag.outputs.value }}
           format: json
