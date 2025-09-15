@@ -130,6 +130,9 @@ var versionCmd = &cobra.Command{
 			fmt.Println("seeker: version info not available")
 		}
 
+		if configPathUsed != "" {
+			fmt.Printf("config: %s\n", configPathUsed)
+		}
 		fmt.Printf("seeker: %s\n", info.Main.Version)
 		fmt.Printf("go:     %s\n", info.GoVersion)
 		for _, s := range info.Settings {
