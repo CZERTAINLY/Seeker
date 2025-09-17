@@ -90,16 +90,21 @@ func doScan(cmd *cobra.Command, args []string) error {
 	var detectors = []scan.Detector{
 		x509.Detector{},
 	}
-	scanner := scan.New(4, detectors)
+	scanner := scan.New(1, detectors)
+	cntAll := 0
+	cntAppended := 0
 	for results, err := range scanner.Do(ctx, source) {
+		cntAll++
 		if err != nil {
 			continue
 		}
 
+		cntAppended++
 		for _, detection := range results {
 			b.AppendComponents(detection.Components...)
 		}
 	}
+	log.Printf("DEBUG: scanned %d files, appended %d detections", cntAll, cntAppended)
 	return b.AsJSON(os.Stdout)
 }
 
