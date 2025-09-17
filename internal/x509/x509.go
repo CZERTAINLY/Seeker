@@ -22,7 +22,6 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/pavlo-v-chernykh/keystore-go/v4"
-	stepcms "github.com/smallstep/pkcs7"
 	"software.sslmate.com/src/go-pkcs12"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -136,12 +135,13 @@ func findAllCerts(b []byte) []certHit {
 	return out
 }
 
-func parsePKCS7(b []byte) []*x509.Certificate {
-	p7, err := stepcms.Parse(b) // accepts DER or PEM
-	if err != nil || len(p7.Certificates) == 0 {
-		return nil
-	}
-	return p7.Certificates
+func parsePKCS7(_ []byte) []*x509.Certificate {
+	//FIXME: code used stepcms "github.com/smallstep/pkcs7"
+	// however it's parse method fails on a lot of common files including
+	// Go source code or JSON. The effect is that Parse allocated tons of GBs of memory
+	// and never finish.
+	// For this reason this is no-op, until we'll find a safe way how to parse PKCS7.
+	return nil
 }
 
 // --- Strict PKCS#12 sniff ---
