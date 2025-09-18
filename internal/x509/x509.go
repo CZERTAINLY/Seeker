@@ -3,6 +3,7 @@ package x509
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/dsa" //nolint:staticcheck // seeker is going to recognize even obsoleted crypto
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -15,6 +16,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"time"
@@ -37,8 +39,8 @@ type certHit struct {
 // Detector tries to parse the X509 certificate(s) and return a proper detection object
 type Detector struct{}
 
-func (d Detector) Detect(b []byte, path string) ([]model.Detection, error) {
-	hits := findAllCerts(b)
+func (d Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	hits := findAllCerts(ctx, b)
 	if len(hits) == 0 {
 		return nil, model.ErrNoMatch
 	}
@@ -58,9 +60,15 @@ func (d Detector) Detect(b []byte, path string) ([]model.Detection, error) {
 	}}, nil
 }
 
+func (d Detector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "x509"),
+	}
+}
+
 // -------- Certificate extraction (multi-source) --------
 
-func findAllCerts(b []byte) []certHit {
+func findAllCerts(ctx context.Context, b []byte) []certHit {
 	seen := make(map[[32]byte]struct{})
 	add := func(cs []*x509.Certificate, source string, out *[]certHit) {
 		for _, c := range cs {
@@ -78,7 +86,8 @@ func findAllCerts(b []byte) []certHit {
 
 	out := make([]certHit, 0, 4)
 
-	// 1) Parse ALL PEM blocks anywhere in the blob (handles leading text)
+	// 1) Detecting ALL PEM blocks anywhere in the blob (handles leading text)
+	slog.DebugContext(ctx, "Detecting ALL PEM blocks anywhere in the blob (handles leading text)")
 	rest := b
 	for {
 		p, r := pem.Decode(rest)
@@ -106,16 +115,19 @@ func findAllCerts(b []byte) []certHit {
 	}
 
 	// 2) JKS / JCEKS (Java keystores) — check magic+version before loading
+	slog.DebugContext(ctx, "Detecting JKS / JCEKS (Java keystores)")
 	if certs, kind := jksAll(b); len(certs) > 0 && kind != "" {
 		add(certs, kind, &out)
 	}
 
 	// 3) PKCS#12 (PFX) — try only if it sniffs as PFX
+	slog.DebugContext(ctx, "Detecting PKCS#12 (PFX)")
 	if sniffPKCS12(b) {
 		add(pkcs12All(b), "PKCS12", &out)
 	}
 
 	// 4) Raw DER: single/concatenated certs, or DER-encoded PKCS#7
+	slog.DebugContext(ctx, "Detecting Raw DER: single/concatenated certs, or DER-encoded PKCS#7")
 	if cs, err := x509.ParseCertificates(b); err == nil {
 		add(cs, "DER", &out)
 	} else {
@@ -126,8 +138,9 @@ func findAllCerts(b []byte) []certHit {
 	}
 
 	// 5) ZIP/JAR/APK META-INF (common in signed Java/Android artifacts)
+	slog.DebugContext(ctx, "Detecting ZIP/JAR/APK META-INF")
 	if bytes.HasPrefix(b, []byte("PK\x03\x04")) {
-		for _, h := range scanZIPForCerts(b) {
+		for _, h := range scanZIPForCerts(ctx, b) {
 			add([]*x509.Certificate{h.Cert}, "ZIP/"+h.Source, &out)
 		}
 	}
@@ -270,7 +283,7 @@ func jksAll(b []byte) ([]*x509.Certificate, string) {
 	return out, kind
 }
 
-func scanZIPForCerts(b []byte) []certHit {
+func scanZIPForCerts(ctx context.Context, b []byte) []certHit {
 	var out []certHit
 	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
 	if err != nil {
@@ -296,7 +309,7 @@ func scanZIPForCerts(b []byte) []certHit {
 		_ = rc.Close()
 
 		// Recursively analyze entry contents (they're usually PKCS#7)
-		sub := findAllCerts(data)
+		sub := findAllCerts(ctx, data)
 		for _, h := range sub {
 			out = append(out, certHit{Cert: h.Cert, Source: "ZIP/" + h.Source})
 		}
