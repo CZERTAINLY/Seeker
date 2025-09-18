@@ -50,7 +50,7 @@ func TestScanner_Do(t *testing.T) {
 		Return(nil, model.ErrNoMatch).
 		Once()
 
-	noMatch.On("Detect", mock.Anything, mock.Anything).
+	noMatch.On("Detect", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, model.ErrNoMatch).
 		Times(2)
 
