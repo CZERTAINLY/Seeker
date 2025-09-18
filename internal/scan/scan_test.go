@@ -68,6 +68,8 @@ func TestScanner_Do(t *testing.T) {
 
 	require.Len(t, detections, 1)
 	require.Equal(t, "fstest::/is-script", detections[0].Path)
+	stats := scanner.Stats()
+	require.NotNil(t, stats)
 }
 
 type MockDetector struct {
