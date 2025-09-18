@@ -1,6 +1,7 @@
 package scan_test
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"testing"
@@ -42,14 +43,14 @@ func TestScanner_Do(t *testing.T) {
 	isScript := NewMockDetector(t)
 	noMatch := NewMockDetector(t)
 
-	isScript.On("Detect", []byte("#!/bin/sh"), "fstest::/is-script").
+	isScript.On("Detect", mock.Anything, []byte("#!/bin/sh"), "fstest::/is-script").
 		Return([]model.Detection{{Path: "fstest::/is-script"}}, nil).
 		Once()
-	isScript.On("Detect", []byte("not a script"), "fstest::/dir/not-a-script").
+	isScript.On("Detect", mock.Anything, []byte("not a script"), "fstest::/dir/not-a-script").
 		Return(nil, model.ErrNoMatch).
 		Once()
 
-	noMatch.On("Detect", mock.Anything, mock.Anything).
+	noMatch.On("Detect", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, model.ErrNoMatch).
 		Times(2)
 
@@ -67,6 +68,8 @@ func TestScanner_Do(t *testing.T) {
 
 	require.Len(t, detections, 1)
 	require.Equal(t, "fstest::/is-script", detections[0].Path)
+	stats := scanner.Stats()
+	require.NotNil(t, stats)
 }
 
 type MockDetector struct {
@@ -79,8 +82,8 @@ func NewMockDetector(t *testing.T) *MockDetector {
 	return d
 }
 
-func (d *MockDetector) Detect(b []byte, path string) ([]model.Detection, error) {
-	args := d.Called(b, path)
+func (d *MockDetector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	args := d.Called(ctx, b, path)
 	var ret []model.Detection
 	if x, ok := args.Get(0).([]model.Detection); ok {
 		ret = x
