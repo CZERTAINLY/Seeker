@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"log"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
+	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
@@ -16,7 +17,7 @@ import (
 )
 
 type Detector interface {
-	Detect(b []byte, path string) ([]model.Detection, error)
+	Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error)
 }
 
 type Scan struct {
@@ -27,6 +28,12 @@ type Scan struct {
 	poolNewCounter    atomic.Int32
 	poolPutCounter    atomic.Int32
 	poolPutErrCounter atomic.Int32
+}
+
+type Stats struct {
+	PoolNewCounter    int
+	PoolPutCounter    int
+	PoolPutErrCounter int
 }
 
 func New(limit int, detectors []Detector) *Scan {
@@ -56,6 +63,8 @@ func (s *Scan) Do(parentCtx context.Context, seq iter.Seq2[walk.Entry, error]) i
 }
 
 func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, error) {
+	ctx = log.ContextAttrs(ctx, slog.String("path", entry.Path()))
+	slog.DebugContext(ctx, "scanning")
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -64,6 +73,7 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 		return nil, fmt.Errorf("scan Stat: %w", err)
 	}
 	if info.Size() > s.skipIfBigger {
+		slog.DebugContext(ctx, "scanning skiped, too big file", "size", info.Size())
 		return nil, fmt.Errorf("entry too big (%d bytes): %w", info.Size(), model.ErrTooBig)
 	}
 
@@ -91,7 +101,12 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 	var detectionErrors []error
 	res := make([]model.Detection, 0, 10)
 	for _, detector := range s.detectors {
-		d, err := detector.Detect(buf, entry.Path())
+
+		if ld, ok := detector.(interface{ LogAttrs() []slog.Attr }); ok {
+			ctx = log.ContextAttrs(ctx, ld.LogAttrs()...)
+		}
+
+		d, err := detector.Detect(ctx, buf, entry.Path())
 		s.poolPutCounter.Add(1)
 		s.pool.Put(bp)
 		switch {
@@ -110,11 +125,15 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 		return nil, errors.Join(detectionErrors...)
 	}
 
-	// DEBUG log to see how the pool is working, needs to be removed or replaced
-	// by slog
-	log.Printf("DEBUG: pool: new=%d put=%d, put(err)=%d\n", s.poolNewCounter.Load(), s.poolPutCounter.Load(), s.poolPutErrCounter.Load())
-
 	return res, nil
+}
+
+func (s *Scan) Stats() Stats {
+	return Stats{
+		PoolNewCounter:    int(s.poolNewCounter.Load()),
+		PoolPutCounter:    int(s.poolPutCounter.Load()),
+		PoolPutErrCounter: int(s.poolPutErrCounter.Load()),
+	}
 }
 
 type result[D any] struct {

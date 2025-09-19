@@ -105,7 +105,7 @@ func Test_Detect_PEM_and_DER(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var d czX509.Detector
-			got, err := d.Detect(tt.input, "testpath")
+			got, err := d.Detect(t.Context(), tt.input, "testpath")
 			if !tt.wantMatch {
 				require.Error(t, err)
 				require.ErrorIs(t, err, model.ErrNoMatch)
@@ -132,7 +132,7 @@ func Test_Detect_PKCS12_WithKey(t *testing.T) {
 	require.NoError(t, err)
 
 	var d czX509.Detector
-	got, err := d.Detect(pfx, "testpath")
+	got, err := d.Detect(t.Context(), pfx, "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.GreaterOrEqual(t, len(got[0].Components), 1)
@@ -170,7 +170,7 @@ func Test_Detect_JKS_Truststore(t *testing.T) {
 	jksBytes := buf.Bytes()
 
 	var d czX509.Detector
-	got, err := d.Detect(jksBytes, "testpath")
+	got, err := d.Detect(t.Context(), jksBytes, "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.GreaterOrEqual(t, len(got[0].Components), 1)
@@ -203,7 +203,7 @@ func Test_Detect_ZIP_META_INF(t *testing.T) {
 	require.NoError(t, zw.Close())
 
 	var d czX509.Detector
-	got, err := d.Detect(buf.Bytes(), "testpath")
+	got, err := d.Detect(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.GreaterOrEqual(t, len(got[0].Components), 1)
