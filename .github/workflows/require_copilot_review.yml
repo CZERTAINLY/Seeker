@@ -11,6 +11,7 @@ permissions:
 jobs:
   gate:
     if: ${{ !github.event.pull_request.draft }} # skip drafts
+    name: Check for Copilot Review
     runs-on: ubuntu-latest
     steps:
       - uses: actions/github-script@v8
