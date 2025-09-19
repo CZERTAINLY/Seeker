@@ -16,7 +16,7 @@ type result[D any] struct {
 // completions. The input and output are represented as iterators, so the typical usage is.
 // Map is context aware, so canceled context ends the processing.
 //
-//	for result, err := range pmap.iter(input) {}
+//	for result, err := range pmap.Iter(input) {}
 type Map[E, D any] struct {
 	parentCtx    context.Context
 	cancelParent context.CancelFunc
