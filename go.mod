@@ -7,6 +7,7 @@ require (
 	github.com/anchore/stereoscope v0.1.9
 	github.com/google/uuid v1.6.0
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
+	github.com/smallstep/pkcs7 v0.2.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1

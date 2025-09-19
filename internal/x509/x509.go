@@ -27,6 +27,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
+	"github.com/smallstep/pkcs7"
 )
 
 // ---- internal type to carry source/format label ----
@@ -100,7 +101,7 @@ func findAllCerts(ctx context.Context, b []byte) []certHit {
 				add(cs, "PEM", &out)
 			}
 		case "PKCS7", "CMS":
-			if cs := parsePKCS7(p.Bytes); len(cs) > 0 {
+			if cs := parsePKCS7Safe(ctx, p.Bytes, true /*permissive for PEM*/); len(cs) > 0 {
 				add(cs, "PKCS7-PEM", &out)
 			}
 		case "PKCS12":
@@ -132,8 +133,10 @@ func findAllCerts(ctx context.Context, b []byte) []certHit {
 		add(cs, "DER", &out)
 	} else {
 		// DER PKCS#7?
-		if cs := parsePKCS7(b); len(cs) > 0 {
-			add(cs, "PKCS7-DER", &out)
+		if sniffPKCS7DER(b) {
+			if cs := parsePKCS7Safe(ctx, b, false /*strict*/); len(cs) > 0 {
+				add(cs, "PKCS7-DER", &out)
+			}
 		}
 	}
 
@@ -148,13 +151,85 @@ func findAllCerts(ctx context.Context, b []byte) []certHit {
 	return out
 }
 
-func parsePKCS7(_ []byte) []*x509.Certificate {
-	//FIXME: code used stepcms "github.com/smallstep/pkcs7"
-	// however it's parse method fails on a lot of common files including
-	// Go source code or JSON. The effect is that Parse allocated tons of GBs of memory
-	// and never finish.
-	// For this reason this is no-op, until we'll find a safe way how to parse PKCS7.
-	return nil
+// OID prefix: 1.2.840.113549.1.7 (PKCS#7/CMS ContentInfo contentType family)
+var oidPkcs7Prefix = []int{1, 2, 840, 113549, 1, 7}
+
+func oidHasPrefix(oid asn1.ObjectIdentifier, prefix []int) bool {
+	if len(oid) < len(prefix) {
+		return false
+	}
+	for i := range prefix {
+		if oid[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// Quick DER sniff: ContentInfo with contentType under 1.2.840.113549.1.7.*
+// Be permissive: tolerate BER-ish lengths and fall back to a byte scan if needed.
+func sniffPKCS7DER(b []byte) bool {
+	if len(b) < 4 {
+		return false
+	}
+	// Heuristic fast path: scan first 2KB for the OID bytes
+	const maxScan = 2048
+	prefixBytes := []byte{0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07}
+	window := b
+	if len(window) > maxScan {
+		window = window[:maxScan]
+	}
+	if bytes.Contains(window, prefixBytes) {
+		return true
+	}
+
+	// Structured path
+	var top asn1.RawValue
+	if _, err := asn1.Unmarshal(b, &top); err != nil {
+		return false
+	}
+	type contentInfo struct {
+		ContentType asn1.ObjectIdentifier
+		Content     asn1.RawValue `asn1:"tag:0,explicit,optional"`
+	}
+	var ci contentInfo
+	if _, err := asn1.Unmarshal(top.Bytes, &ci); err != nil {
+		return false
+	}
+	return oidHasPrefix(ci.ContentType, oidPkcs7Prefix)
+}
+
+// Make the parser optionally "permissive" (e.g., for PEM blocks explicitly labeled PKCS7/CMS)
+func parsePKCS7Safe(ctx context.Context, b []byte, permissive bool) []*x509.Certificate {
+	// Only gate by sniff when not in permissive mode
+	if !permissive && !sniffPKCS7DER(b) {
+		return nil
+	}
+
+	type result struct{ certs []*x509.Certificate }
+	ch := make(chan result, 1)
+
+	timeoutCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	go func() {
+		defer func() { _ = recover() }()
+		p7, err := pkcs7.Parse(b) // github.com/smallstep/pkcs7 (supports degenerate signedData)
+		if err != nil || len(p7.Certificates) == 0 {
+			ch <- result{nil}
+			return
+		}
+		out := make([]*x509.Certificate, len(p7.Certificates))
+		copy(out, p7.Certificates)
+		ch <- result{out}
+	}()
+
+	select {
+	case <-timeoutCtx.Done():
+		return nil
+	case r := <-ch:
+		return r.certs
+	}
 }
 
 // --- Strict PKCS#12 sniff ---
