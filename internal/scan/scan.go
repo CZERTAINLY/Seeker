@@ -11,9 +11,8 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/parallel"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type Detector interface {
@@ -59,7 +58,7 @@ func New(limit int, detectors []Detector) *Scan {
 // 3. Otherwise the data are passed to the worker pool for running a detections
 // 4. Returns an iterator with a detections or Open/Read error or a ErrNoMatch if not match is found
 func (s *Scan) Do(parentCtx context.Context, seq iter.Seq2[walk.Entry, error]) iter.Seq2[[]model.Detection, error] {
-	return newParallelMap(parentCtx, s.limit, s.scan).iter(seq)
+	return parallel.NewMap(parentCtx, s.limit, s.scan).Iter(seq)
 }
 
 func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, error) {
@@ -133,78 +132,5 @@ func (s *Scan) Stats() Stats {
 		PoolNewCounter:    int(s.poolNewCounter.Load()),
 		PoolPutCounter:    int(s.poolPutCounter.Load()),
 		PoolPutErrCounter: int(s.poolPutErrCounter.Load()),
-	}
-}
-
-type result[D any] struct {
-	d D
-	e error
-}
-
-type pMap[E, D any] struct {
-	parentCtx    context.Context
-	cancelParent context.CancelFunc
-	g            *errgroup.Group
-	gctx         context.Context
-	mapped       chan result[D]
-	mapFunc      func(context.Context, E) (D, error)
-}
-
-func newParallelMap[E, D any](parentCtx context.Context, limit int, mapFunc func(context.Context, E) (D, error)) *pMap[E, D] {
-	parentCtx, cancelParent := context.WithCancel(parentCtx)
-	g, gctx := errgroup.WithContext(parentCtx)
-	g.SetLimit(limit + 1)
-
-	detects := make(chan result[D], limit)
-
-	return &pMap[E, D]{
-		parentCtx:    parentCtx,
-		cancelParent: cancelParent,
-		g:            g,
-		gctx:         gctx,
-		mapped:       detects,
-		mapFunc:      mapFunc,
-	}
-}
-
-func (s *pMap[E, D]) goWorkers(seq iter.Seq2[E, error]) {
-	s.g.Go(func() error {
-		for entry, nerr := range seq {
-			if nerr != nil {
-				continue
-			}
-			s.g.Go(func() error {
-				d, scanErr := s.mapFunc(s.gctx, entry)
-				select {
-				case <-s.gctx.Done():
-					return s.gctx.Err()
-				default:
-					s.mapped <- result[D]{d: d, e: scanErr}
-				}
-				return nil
-			})
-		}
-		return nil
-	})
-}
-
-func (s *pMap[E, D]) iter(seq iter.Seq2[E, error]) iter.Seq2[D, error] {
-	return func(yield func(D, error) bool) {
-		defer s.cancelParent()
-		s.goWorkers(seq)
-
-		go func() {
-			_ = s.g.Wait()
-			close(s.mapped)
-		}()
-
-		for r := range s.mapped {
-			if s.parentCtx.Err() != nil {
-				return
-			}
-			if !yield(r.d, r.e) {
-				return
-			}
-		}
 	}
 }
