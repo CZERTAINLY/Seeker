@@ -1,0 +1,57 @@
+name: Require Copilot Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  gate:
+    if: ${{ !github.event.pull_request.draft }} # skip drafts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request.number;
+            const copilotLogin = 'copilot-pull-request-reviewer[bot]';
+
+            let reviewed = false;
+
+            // 1) Look for a PR review from Copilot
+            for await (const { data: reviews } of github.paginate.iterator(
+              github.rest.pulls.listReviews,
+              { owner, repo, pull_number: pr, per_page: 100 }
+            )) {
+              if (reviews.some(r => r.user?.login === copilotLogin)) {
+                core.info('Found Copilot PR review.');
+                reviewed = true;
+                break;
+              }
+            }
+
+            // 2) If not found, look for any issue comment by Copilot on the PR
+            if (!reviewed) {
+              for await (const { data: comments } of github.paginate.iterator(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number: pr, per_page: 100 }
+              )) {
+                if (comments.some(c => c.user?.login === copilotLogin)) {
+                  core.info('Found Copilot issue comment.');
+                  reviewed = true;
+                  break;
+                }
+              }
+            }
+
+            if (!reviewed) {
+              core.setFailed('Copilot has not reviewed this PR yet.');
+            } else {
+              core.info('Copilot review found. ✅');
+            }
