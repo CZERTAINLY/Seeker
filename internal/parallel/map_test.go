@@ -14,9 +14,13 @@ import (
 func TestMap(t *testing.T) {
 	t.Parallel()
 
-	f := func(_ context.Context, d time.Duration) (int, error) {
-		time.Sleep(d)
-		return int(d), nil
+	f := func(ctx context.Context, d time.Duration) (int, error) {
+		select {
+		case <-ctx.Done():
+			return int(d), ctx.Err()
+		case <-time.After(d):
+			return int(d), nil
+		}
 	}
 
 	input := []time.Duration{1 * time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second}
@@ -27,30 +31,34 @@ func TestMap(t *testing.T) {
 		int(10 * time.Second),
 	}
 
-	type given struct {
-		limit int
-		ctx   func(t *testing.T) context.Context
-	}
 	tCtx := func(t *testing.T) context.Context {
 		t.Helper()
 		return t.Context()
 	}
 	tmout1s := func(t *testing.T) context.Context {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(t.Context(), 1500*time.Millisecond)
 		t.Cleanup(cancel)
 		return ctx
 	}
 
+	type given struct {
+		limit int
+		ctx   func(t *testing.T) context.Context
+	}
+	type then struct {
+		d      time.Duration
+		values []int
+	}
 	var testCases = []struct {
 		scenario string
 		given    given
-		then     time.Duration
+		then     then
 	}{
-		{"limit 1", given{1, tCtx}, 18 * time.Second},
-		{"limit 10", given{10, tCtx}, 10 * time.Second},
-		{"limit 1, cancel 1s", given{1, tmout1s}, 1 * time.Second},
-		{"limit 10, cancel 1s", given{10, tmout1s}, 1 * time.Second},
+		{"limit 1", given{1, tCtx}, then{18 * time.Second, expected}},
+		{"limit 10", given{10, tCtx}, then{10 * time.Second, expected}},
+		{"limit 1, cancel 1.5s", given{1, tmout1s}, then{1500 * time.Millisecond, []int{int(1 * time.Second)}}},
+		{"limit 10, cancel 1.5s", given{10, tmout1s}, then{1500 * time.Millisecond, []int{int(1 * time.Second)}}},
 	}
 
 	for _, tt := range testCases {
@@ -59,13 +67,11 @@ func TestMap(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				start := time.Now()
 				m1 := parallel.NewMap(tt.given.ctx(t), tt.given.limit, f).Iter(all(input))
-				require.ElementsMatch(t, expected, values(m1))
-				t.Logf("since: %+v", time.Since(start))
-				require.Equal(t, tt.then, time.Since(start))
+				require.ElementsMatch(t, tt.then.values, values(m1))
+				require.Equal(t, tt.then.d, time.Since(start))
 			})
 		})
 	}
-
 }
 
 func all[T any](s []T) iter.Seq2[T, error] {
