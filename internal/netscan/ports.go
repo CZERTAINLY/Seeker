@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"iter"
+	"log/slog"
 	"net"
 	"net/netip"
+	"runtime"
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/parallel"
@@ -14,6 +16,23 @@ import (
 var (
 	errNotListening = errors.New("not listening")
 )
+
+// LocalPorts return a list of opened local ports in the best possible way
+// on linux: tries netlink and fallback dial method
+// elsewhere: uses fallback dial method
+func LocalPorts(ctx context.Context) iter.Seq[netip.AddrPort] {
+	var seq iter.Seq[netip.AddrPort]
+	if runtime.GOOS == "linux" {
+		var err error
+		seq, err = LocalPortsNetlink()
+		if err != nil {
+			slog.WarnContext(ctx, "netlink access failed, using fallback method", "err", err)
+		}
+	} else {
+		seq = LocalPortsDial(ctx)
+	}
+	return seq
+}
 
 // LocalPortsDial scans local TCP ports by attempting to open connections tcp to them.
 // It can access the list of ip addresses, if not provided it fallback to 127.0.0.1 and [::]

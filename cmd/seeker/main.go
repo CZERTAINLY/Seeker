@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
-	"net/netip"
 	"os"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
@@ -65,6 +64,7 @@ func main() {
 
 	// net commands
 	netCmd.AddCommand(portsCmd)
+	netCmd.AddCommand(netScanCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("seeker failed", "err", err)
@@ -149,21 +149,45 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 func doNetPorts(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
-	var seq iter.Seq[netip.AddrPort]
-	if runtime.GOOS == "linux" {
-		var err error
-		seq, err = netscan.LocalPortsNetlink()
-		if err != nil {
-			slog.WarnContext(ctx, "netlink access failes", "err", err)
-		}
-	} else {
-		seq = netscan.LocalPortsDial(ctx)
-	}
-
-	for addrPort := range seq {
+	for addrPort := range netscan.LocalPorts(ctx) {
 		fmt.Printf("%s\n", addrPort.String())
 	}
 	return nil
+}
+
+func doNetScan(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+
+	var detector x509.Detector
+	b := bom.NewBuilder()
+
+	cntDetections := 0
+	for addrPort := range netscan.LocalPorts(ctx) {
+		inspectCtx := log.ContextAttrs(ctx, slog.String("addrPort", addrPort.String()))
+		res, err := netscan.InspectTLS(inspectCtx, addrPort)
+		if err != nil {
+			slog.WarnContext(inspectCtx, "inspect TLS failed", "err", err)
+			continue
+		}
+
+		for i, cert := range res.State.PeerCertificates {
+			path := "netscan://" + addrPort.String() + "/" + strconv.Itoa(i)
+			results, err := detector.Detect(inspectCtx, cert.Raw, path)
+			if err != nil {
+				slog.WarnContext(inspectCtx, "detect TLS failed", "err", err)
+				continue
+			}
+
+			cntDetections++
+			for _, detection := range results {
+				b.AppendComponents(detection.Components...)
+			}
+		}
+	}
+	if cntDetections > 0 {
+		return b.AsJSON(os.Stdout)
+	}
+	return model.ErrNoMatch
 }
 
 var rootCmd = &cobra.Command{
@@ -193,6 +217,12 @@ var portsCmd = &cobra.Command{
 	Use:   "ports",
 	Short: "prints detected local ports",
 	RunE:  doNetPorts,
+}
+
+var netScanCmd = &cobra.Command{
+	Use:   "scan",
+	Short: "scan local https ports and generate BOM",
+	RunE:  doNetScan,
 }
 
 var versionCmd = &cobra.Command{
