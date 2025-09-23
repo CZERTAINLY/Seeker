@@ -4,14 +4,17 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/netscan"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
@@ -50,6 +53,7 @@ func main() {
 
 	// alpha commands
 	alphaCmd.AddCommand(scanCmd)
+	alphaCmd.AddCommand(netCmd)
 
 	// seeker alpha scan
 	// -path
@@ -58,6 +62,9 @@ func main() {
 	// - docker
 	scanCmd.Flags().String("docker", "", "docker image to inspect, must be pulled-in")
 	_ = viper.BindPFlag("alpha.scan.docker", scanCmd.Flags().Lookup("docker"))
+
+	// net commands
+	netCmd.AddCommand(portsCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("seeker failed", "err", err)
@@ -140,6 +147,25 @@ func doScan(cmd *cobra.Command, args []string) error {
 	return model.ErrNoMatch
 }
 
+func doNetPorts(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	var seq iter.Seq[netip.AddrPort]
+	if runtime.GOOS == "linux" {
+		var err error
+		seq, err = netscan.LocalPortsNetlink()
+		if err != nil {
+			slog.WarnContext(ctx, "netlink access failes", "err", err)
+		}
+	} else {
+		seq = netscan.LocalPortsDial(ctx)
+	}
+
+	for addrPort := range seq {
+		fmt.Printf("%s\n", addrPort.String())
+	}
+	return nil
+}
+
 var rootCmd = &cobra.Command{
 	Use:          "seeker",
 	Short:        "Tool detecting secrets and providing BOM",
@@ -156,6 +182,17 @@ var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "scan scans the provided source and report detected things",
 	RunE:  doScan,
+}
+
+var netCmd = &cobra.Command{
+	Use:   "net",
+	Short: "net provides network functionality",
+}
+
+var portsCmd = &cobra.Command{
+	Use:   "ports",
+	Short: "prints detected local ports",
+	RunE:  doNetPorts,
 }
 
 var versionCmd = &cobra.Command{
