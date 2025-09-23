@@ -12,8 +12,27 @@ import (
 
 func TestLocalPortsDial(t *testing.T) {
 	t.Parallel()
-	seq := netscan.LocalPortsDial(t.Context())
-	requirePorts(t, seq)
+
+	var testCases = []struct {
+		scenario string
+		given    iter.Seq[netip.AddrPort]
+	}{
+		{
+			scenario: "LocalPortsDial",
+			given:    netscan.LocalPortsDial(t.Context()),
+		},
+		{
+			scenario: "LocalPorts",
+			given:    netscan.LocalPorts(t.Context()),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			seq := tc.given
+			requirePorts(t, seq)
+		})
+	}
 }
 
 func TestLocalPortsNetlink(t *testing.T) {
