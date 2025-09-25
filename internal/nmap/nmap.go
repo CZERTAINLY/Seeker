@@ -27,9 +27,7 @@ type Scanner struct {
 func NewTLS() Scanner {
 	return Scanner{
 		options: []nmap.Option{
-			// -sV
 			nmap.WithServiceInfo(),
-			// --script ssl-enum-ciphers,ssl-cert
 			nmap.WithScripts("ssl-enum-ciphers", "ssl-cert"),
 		},
 	}
@@ -39,9 +37,7 @@ func NewTLS() Scanner {
 func NewSSH() Scanner {
 	return Scanner{
 		options: []nmap.Option{
-			// -sV
 			nmap.WithServiceInfo(),
-			// --script ssl-enum-ciphers,ssl-cert
 			nmap.WithScripts("ssh-hostkey"),
 		},
 	}

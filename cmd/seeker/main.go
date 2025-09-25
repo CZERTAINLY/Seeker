@@ -68,7 +68,7 @@ func main() {
 
 	// seeker alpha nmap
 	// --nmap
-	nmapCmd.Flags().String("nmap", "", "nmap binary to use, defaults to audodetect")
+	nmapCmd.Flags().String("nmap", "", "nmap binary to use, defaults to autodetect")
 	_ = viper.BindPFlag("alpha.nmap.nmap", nmapCmd.Flags().Lookup("nmap"))
 	// --timeout
 	nmapCmd.Flags().Duration("timeout", 0, "timeout for a port scan (defaults to infinite)")

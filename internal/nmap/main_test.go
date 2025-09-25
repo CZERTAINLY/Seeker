@@ -185,7 +185,7 @@ func (ts *SSHServer) Start() {
 
 func (ts *SSHServer) AddrPort() netip.AddrPort {
 	if ts.Listener == nil {
-		panic("not yes started")
+		panic("not yet started")
 	}
 	n := ts.Listener.Addr()
 	return netip.MustParseAddrPort(n.String())
