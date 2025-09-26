@@ -1,4 +1,4 @@
-package nmap
+package certconst
 
 import (
 	"testing"

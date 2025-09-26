@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	cc "github.com/CZERTAINLY/Seeker/internal/certconst"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
@@ -300,7 +301,7 @@ func nameToProtoVersion(name string) string {
 }
 
 func identifiers(name string) *[]string {
-	code, ok := Code(name)
+	code, ok := cc.Code(name)
 	if !ok {
 		return nil
 	}
