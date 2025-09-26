@@ -2,32 +2,26 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/netip"
-	"os"
 
-	"github.com/CZERTAINLY/Seeker/internal/netscan"
+	"github.com/CZERTAINLY/Seeker/internal/nmap"
 )
 
 func main() {
-	ctx := context.Background()
-	if err := run(ctx); err != nil {
+	s := nmap.NewTLS().WithPorts("443")
+
+	a, err := netip.ParseAddr("23.88.35.44")
+	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func run(ctx context.Context) error {
-	var addrPort = netip.MustParseAddrPort("23.88.35.44:443")
-	log.Printf("Inspecting %s", addrPort.String())
-	log.Printf("Inspecting port: %d", addrPort.Port())
-	res, err := netscan.InspectTLS(ctx, addrPort)
+	d, err := s.Detect(context.Background(), a)
 	if err != nil {
-		return fmt.Errorf("inspect TLS: %w", err)
+		log.Fatal(err)
 	}
 
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(res)
+	for _, x := range d {
+		fmt.Printf("%+v", x)
+	}
 }

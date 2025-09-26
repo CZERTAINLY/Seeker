@@ -2,9 +2,11 @@ package nmap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -88,6 +90,20 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 	if err != nil {
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
+
+	{
+		f, err := os.Create("raw.json")
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		e := json.NewEncoder(f)
+		e.SetIndent("", "  ")
+		if err := e.Encode(r); err != nil {
+			panic(err)
+		}
+	}
+
 	return []model.Detection{
 		hostToDetection(r.Info),
 	}, nil
@@ -134,9 +150,11 @@ func hostToDetection(host nmap.Host) model.Detection {
 	portCompos := make([]cdx.Component, 0, len(host.Ports))
 	portRefs := make([]string, 0, len(host.Ports))
 	for _, port := range host.Ports {
-		compo := portToComponent(primaryAddr, port)
-		portCompos = append(portCompos, compo)
-		portRefs = append(portRefs, compo.BOMRef)
+		compo := portToComponents(primaryAddr, port)
+		portCompos = append(portCompos, compo...)
+		for _, compo := range compo {
+			portRefs = append(portRefs, compo.BOMRef)
+		}
 	}
 
 	var dependencies []cdx.Dependency
@@ -175,21 +193,14 @@ func hostToComponent(host nmap.Host) (string, cdx.Component) {
 	}
 }
 
-func portToComponent(primaryAddr string, port nmap.Port) cdx.Component {
+func portToComponents(primaryAddr string, port nmap.Port) []cdx.Component {
 	state := strings.ToLower(port.State.State)
 	proto := strings.ToLower(port.Protocol)
 
 	ref := fmt.Sprintf("nmap:%s/%s/%s:%d", proto, state, primaryAddr, port.ID)
 
 	// Collect script outputs (e.g. ssl-enum-ciphers, ssl-cert)
-	var scriptProps []cdx.Property
-	for _, s := range port.Scripts {
-		out := s.Output
-		scriptProps = append(scriptProps, cdx.Property{
-			Name:  fmt.Sprintf("nmap:script:%s", s.ID),
-			Value: out,
-		})
-	}
+	scriptProps, compos := parseScripts(port.Scripts)
 
 	props := []cdx.Property{
 		{Name: "nmap:port", Value: fmt.Sprintf("%d", port.ID)},
@@ -200,14 +211,16 @@ func portToComponent(primaryAddr string, port nmap.Port) cdx.Component {
 	}
 	props = append(props, scriptProps...)
 
-	return cdx.Component{
+	portCompo := cdx.Component{
 		BOMRef:     ref,
-		Type:       cdx.ComponentTypeDevice,
+		Type:       cdx.ComponentTypeData,
 		Name:       fmt.Sprintf("%s/%d", port.Protocol, port.ID),
 		Version:    "", // no version for port
 		PackageURL: "",
 		Properties: &props,
 	}
+
+	return append([]cdx.Component{portCompo}, compos...)
 }
 
 func addresses(host nmap.Host) string {
@@ -217,3 +230,133 @@ func addresses(host nmap.Host) string {
 	}
 	return strings.Join(addresses, ",")
 }
+
+func parseScripts(scripts []nmap.Script) ([]cdx.Property, []cdx.Component) {
+	var scriptProps []cdx.Property
+	var components []cdx.Component
+	for _, s := range scripts {
+		switch s.ID {
+		case "ssl-enum-ciphers":
+			components = append(components, sslEnumCiphers(s)...)
+		default:
+			scriptProps = append(scriptProps, cdx.Property{
+				Name:  fmt.Sprintf("nmap:script:%s", s.ID),
+				Value: s.Output,
+			})
+		}
+	}
+	return scriptProps, components
+}
+
+func sslEnumCiphers(s nmap.Script) []cdx.Component {
+	var components []cdx.Component
+
+	for _, row := range s.Tables {
+		compo := cdx.Component{
+			Name:   row.Key,
+			BOMRef: nameToBomRef(row.Key),
+			CryptoProperties: &cdx.CryptoProperties{
+				AssetType: cdx.CryptoAssetTypeProtocol,
+				ProtocolProperties: &cdx.CryptoProtocolProperties{
+					Type:         cdx.CryptoProtocolTypeTLS,
+					Version:      nameToProtoVersion(row.Key),
+					CipherSuites: cipherSuites(row.Tables),
+				},
+				OID: "1.3.18.0.2.32.104",
+			},
+		}
+		components = append(components, compo)
+	}
+
+	return components
+}
+
+func nameToBomRef(name string) string {
+	switch name {
+	case "SSLv3.0":
+		return "crypto/protocol/ssl@3.0"
+	case "TLSv1.0":
+		return "crypto/protocol/tls@1.0"
+	case "TLSv1.1":
+		return "crypto/protocol/tls@1.1"
+	case "TLSv1.2":
+		return "crypto/protocol/tls@1.2"
+	case "TLSv1.3":
+		return "crypto/protocol/tls@1.3"
+	default:
+		name = strings.ToLower(name)
+		name = strings.Replace(name, "v", "@", 1)
+		return "crypto/protocol/" + name
+	}
+}
+
+func nameToProtoVersion(name string) string {
+	bomRef := nameToBomRef(name)
+	_, after, ok := strings.Cut(bomRef, "@")
+	if !ok {
+		return "N/A"
+	}
+	return after
+}
+
+func identifiers(name string) *[]string {
+	code, ok := Code(name)
+	if !ok {
+		return nil
+	}
+	var ret = []string{
+		fmt.Sprintf("0x%X", byte(code>>8)),
+		fmt.Sprintf("0x%X", byte(code&0xFF)),
+	}
+	return &ret
+}
+
+func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
+	var ret []cdx.CipherSuite
+	for _, row := range tables {
+		if row.Key != "ciphers" {
+			continue
+		}
+		for _, cipher := range row.Tables {
+			for _, element := range cipher.Elements {
+				if element.Key == "name" {
+					s := cdx.CipherSuite{
+						Name:       element.Value,
+						Algorithms: &[]cdx.BOMReference{
+							// TODO: where to read algorithms?
+						},
+						Identifiers: identifiers(element.Value),
+					}
+					ret = append(ret, s)
+				}
+			}
+		}
+	}
+	if len(ret) == 0 {
+		return nil
+	}
+	return &ret
+}
+
+/*
+  "components": [
+          "cipherSuites": [
+            {
+              "name": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+              "algorithms": [
+                "crypto/algorithm/ecdh-curve25519@1.3.132.1.12",
+                "crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1",
+                "crypto/algorithm/aes-256-gcm@2.16.840.1.101.3.4.1.46",
+                "crypto/algorithm/sha-384@2.16.840.1.101.3.4.2.9"
+              ],
+              "identifiers": [ "0xC0", "0x30" ]
+            }
+          ],
+          "cryptoRefArray": [
+            "crypto/certificate/google.com@sha256:1e15e0fbd3ce95bde5945633ae96add551341b11e5bae7bba12e98ad84a5beb4"
+          ]
+        },
+        "oid": "1.3.18.0.2.32.104"
+      }
+    },
+*/
