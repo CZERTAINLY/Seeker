@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	cc "github.com/CZERTAINLY/Seeker/internal/certconst"
+	cc "github.com/CZERTAINLY/Seeker/internal/cryptoconst"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
