@@ -97,7 +97,12 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 		if err != nil {
 			panic(err)
 		}
-		defer f.Close()
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+				slog.ErrorContext(logCtx, "closing raw.json", "error", err)
+			}
+		}(f)
 		e := json.NewEncoder(f)
 		e.SetIndent("", "  ")
 		if err := e.Encode(r); err != nil {
@@ -322,7 +327,7 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 			for _, element := range cipher.Elements {
 				if element.Key == "name" {
 					s := cdx.CipherSuite{
-						Name:       element.Value,
+						Name: element.Value,
 						Algorithms: &[]cdx.BOMReference{
 							// TODO: where to read algorithms?
 						},
