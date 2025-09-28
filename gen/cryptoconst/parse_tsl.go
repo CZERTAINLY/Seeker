@@ -24,42 +24,39 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 	var protocol string
 
 	var buf = []byte(name)
-	if hasPrefix(buf, "TLS_") {
+
+	if isTLS, nbuf := nextIf(buf, "TLS"); isTLS {
 		protocol = "TLS"
-		buf = buf[4:]
+		buf = nbuf
 	} else {
 		return zero, fmt.Errorf("unsupported cipher suite prefix in %q", name)
 	}
 
-	tok, i := next(buf)
+	var tok string
+	tok, buf = next(buf)
 	switch tok {
-	case "NULL":
-	// TODO
-	case "RSA":
-	//TODO
-	case "DH":
-	//TODO
-	case "DHE":
-	//TODO
-	case "KRB5":
-	//TODO
-	case "PSK":
-	// TODO
-	case "SM4":
-	case "EMPTY":
+	case "AEGIS":
 	case "AES":
 	case "CHACHA20":
-	case "AEGIS":
-	case "FALLBACK":
+	case "DH":
+	case "DHE":
+	case "ECCPWD":
 	case "ECDH":
 	case "ECDHE":
-	case "SRP":
-	case "ECCPWD":
+	case "EMPTY":
+	case "FALLBACK":
+	case "GOSTR341112":
+	case "KRB5":
+	case "NULL":
+	case "PSK":
+	case "RSA":
+		return handleRSA(buf)
 	case "SHA256":
 	case "SHA384":
-	case "GOSTR341112":
+	case "SM4":
+	case "SRP":
 	default:
-		return zero, fmt.Errorf("unknown tok %q, %d", tok, i)
+		return zero, fmt.Errorf("unknown tok %q, %q", tok, string(buf))
 	}
 
 	return CipherSuite{
@@ -72,15 +69,69 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 	}, nil
 }
 
-func hasPrefix(buf []byte, prefix string) bool {
-	return bytes.HasPrefix(buf, []byte(prefix))
+/*
+ */
+func handleRSA(buf []byte) (CipherSuite, error) {
+	var zero CipherSuite
+	if isWith, nbuf := nextIf(buf, "WITH"); isWith {
+		buf = nbuf
+	} else {
+		return zero, fmt.Errorf("expected WITH in %q", string(buf))
+	}
+	cipher, buf := next(buf)
+
+	var keylen, mode, hash string
+	switch cipher {
+	case "RC4":
+		if !bytes.Equal(buf, []byte("128_SHA")) {
+			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipher, string(buf))
+		}
+		keylen, mode, hash = "128", "", "SHA"
+	case "3DES":
+		if !bytes.Equal(buf, []byte("EDE_CBC_SHA")) {
+			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipher, string(buf))
+		}
+		keylen, mode, hash = "", "EDE_CBC", "SHA"
+	case "AES":
+		keylen, buf := next(buf)
+		switch keylen {
+		case "128":
+			// TODO - allowed are
+			// CBC_SHA
+			// CBC_SHA256
+			// GCM_SHA256
+		case "256":
+			// 256_CBC_SHA
+			// 256_GCM_SHA384
+		default:
+			return zero, fmt.Errorf("unsupported %s cipher keylen %s %q", cipher, keylen, string(buf))
+		}
+	default:
+		return zero, fmt.Errorf("unknown cipher %s, %q", cipher, string(buf))
+	}
+	return CipherSuite{
+		Protocol: "TLS",
+		KexAuth:  "RSA",
+		Cipher:   cipher,
+		KeyLen:   keylen,
+		Mode:     mode,
+		Hash:     hash,
+	}, nil
 }
 
-// return next "token" and a slice index
-func next(buf []byte) (string, int) {
+// return next "token" and a remainder
+func next(buf []byte) (string, []byte) {
 	i := bytes.IndexByte(buf, '_')
 	if i == -1 {
-		return "", -1
+		return "", nil
 	}
-	return string(buf[:i]), i
+	return string(buf[:i]), buf[i+1:]
+}
+
+func nextIf(buf []byte, token string) (bool, []byte) {
+	read, ret := next(buf)
+	if read == token {
+		return true, ret
+	}
+	return false, buf
 }

@@ -11,11 +11,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
 
 func main() {
+	//TODO: use flags
+	flagParseTLS := false
+	flagSkipFormat := true
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: %s input.csv output.go\n", os.Args[0])
 		os.Exit(1)
@@ -51,11 +55,13 @@ func main() {
 		}
 		parsed[e.desc] = suite
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	err = enc.Encode(parsed)
-	if err != nil {
-		log.Fatal(err)
+	if flagParseTLS {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		err = enc.Encode(parsed)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	// go source code
@@ -80,7 +86,7 @@ func main() {
 
 	// Format
 	var src, tsrc []byte
-	if false {
+	if !flagSkipFormat {
 		src, err = format.Source(buf.Bytes())
 		if err != nil {
 			log.Fatalf("gofmt failed: %v\nRaw:\n%s", err, buf.String())
@@ -224,19 +230,22 @@ func genImports(out *errFmt, pkgs ...string) {
 
 func genTLSConstants(out *errFmt, tlsEntries []tlsEntry) {
 	out.Printf(`
-type CipherSuite uint16
+type CipherSuiteCode uint16
 type OIDValue string
 `)
 
 	// generate tls names constants
 	out.Println("const (")
 	for _, e := range tlsEntries {
-		out.Printf("\t%s CipherSuite = 0x%04X\n", e.ident, e.code)
+		out.Printf("\t%s CipherSuiteCode = 0x%04X\n", e.ident, e.code)
 	}
 	out.Printf(")\n\n")
 
-	// generate map string to CipherSuite code
-	out.Println("var toCipherSuite = map[string]CipherSuite{")
+	// generate map string to CipherSuiteCode code
+	slices.SortFunc(tlsEntries, func(a, b tlsEntry) int {
+		return strings.Compare(strings.ToLower(a.desc), strings.ToLower(b.desc))
+	})
+	out.Println("var toCipherSuiteCode = map[string]CipherSuiteCode{")
 	for _, e := range tlsEntries {
 		out.Printf("\t%q: %s,\n", e.desc, e.ident)
 	}
@@ -246,8 +255,8 @@ type OIDValue string
 func genFunctions(out *errFmt) {
 	out.Printf(`
 // Code returns IANA code for given cipher
-func Code(name string) (CipherSuite, bool) {
-	code, ok := toCipherSuite[name]
+func Code(name string) (CipherSuiteCode, bool) {
+	code, ok := toCipherSuiteCode[name]
 	return code, ok
 }
 		`)
@@ -256,10 +265,10 @@ func Code(name string) (CipherSuite, bool) {
 func genTLSTest(out *errFmt, tlsEntries []tlsEntry) {
 	// generate tests
 	out.Printf(`
-func TestCipherSuite(t *testing.T) {
+func TestCipherSuiteCode(t *testing.T) {
 	var tests = []struct{
 		desc string
-		code CipherSuite
+		code CipherSuiteCode
 	} {
 `)
 
