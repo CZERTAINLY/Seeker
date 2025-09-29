@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -222,13 +223,18 @@ func doNmap(cmd *cobra.Command, args []string) error {
 	flagSSH := viper.GetBool("alpha.nmap.ssh")
 	flagTarget := viper.GetString("alpha.nmap.target")
 
+	nmapBinary, err := findNmapBinary(flagNmap)
+	if err != nil {
+		return err
+	}
+
 	var scanner nmap.Scanner
 	if !flagSSH {
 		scanner = nmap.NewTLS()
 	} else {
 		scanner = nmap.NewSSH()
 	}
-	scanner = scanner.WithNmapBinary(flagNmap)
+	scanner = scanner.WithNmapBinary(nmapBinary)
 
 	b := bom.NewBuilder()
 	pmap := parallel.NewMap(ctx, 4, func(ctx context.Context, addr netip.Addr) ([]model.Detection, error) {
@@ -346,4 +352,19 @@ func resolveToAddr(host string) (netip.Addr, error) {
 	}
 
 	return netip.Addr{}, fmt.Errorf("no valid IP found for host %q", host)
+}
+
+func findNmapBinary(flag string) (string, error) {
+	if flag == "" {
+		nmap, err := exec.LookPath("nmap")
+		if err != nil {
+			return "", err
+		}
+		return nmap, nil
+	}
+	_, err := os.Stat(flag)
+	if err != nil {
+		return "", err
+	}
+	return flag, nil
 }
