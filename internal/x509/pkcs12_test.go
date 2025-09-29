@@ -1,7 +1,6 @@
 package x509_test
 
 import (
-	"crypto/rand"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
@@ -17,7 +16,7 @@ func Test_Detect_PKCS12_WithKey(t *testing.T) {
 	_, cert, key := genSelfSignedCert(t)
 
 	// Build a PFX with key+cert
-	pfx, err := pkcs12.Encode(rand.Reader, key, cert, nil, "changeit")
+	pfx, err := pkcs12.Modern.Encode(key, cert, nil, "changeit")
 	require.NoError(t, err)
 
 	var d czX509.Detector
@@ -46,7 +45,7 @@ func Test_PKCS12_Edge_Cases(t *testing.T) {
 	_, cert, key := genSelfSignedCert(t)
 	
 	// Test with empty password
-	pfx, err := pkcs12.Encode(rand.Reader, key, cert, nil, "")
+	pfx, err := pkcs12.Modern.Encode(key, cert, nil, "")
 	require.NoError(t, err)
 	
 	var d czX509.Detector
