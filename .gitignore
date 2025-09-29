@@ -41,3 +41,6 @@ setenv.sh
 *.out
 coverage.html
 seeker
+
+# Linter reports
+golangci-lint-report.xml
