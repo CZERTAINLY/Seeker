@@ -338,9 +338,9 @@ func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 	var hash HashAlgorithm
 	switch string(cipher) + "_" + string(buf) {
 	case "AES_128_GCM_SHA256":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, HashSHA256
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, HashSHA256
 	case "AES_256_GCM_SHA384":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, HashSHA384
+		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, HashSHA384
 	case "CHACHA20_POLY1305_SHA256":
 		cipher, keylen, mode, hash = CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256
 	default:
