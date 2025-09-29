@@ -37,3 +37,10 @@ setenv.sh
 
 /internal/server/czertainly/.openapi-generator/
 .mirrord/
+# Go coverage files
+*.out
+coverage.html
+seeker
+
+# Linter reports
+golangci-lint-report.xml
