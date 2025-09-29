@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	cc "github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	props "github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
@@ -306,7 +306,7 @@ func nameToProtoVersion(name string) string {
 }
 
 func identifiers(name string) (*[]cdx.BOMReference, *[]string) {
-	spec, err := cc.ParseCipherSuite(name)
+	spec, err := props.ParseCipherSuite(name)
 	if err != nil {
 		slog.Warn("skipping unsupported cipher suite", "name", name, "error", err)
 		return nil, nil
