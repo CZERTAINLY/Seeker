@@ -1,7 +1,9 @@
 package x509_test
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -106,18 +108,30 @@ func Test_Component_Edge_Cases(t *testing.T) {
 	require.Equal(t, ".crt", comp.CryptoProperties.CertificateProperties.CertificateExtension)
 }
 
+// Test_Component_UnsupportedKeys tests handling of key types for better coverage
 func Test_Component_UnsupportedKeys(t *testing.T) {
 	t.Parallel()
 
-	// Create a certificate with unsupported key type to exercise error paths
-	// We can't easily create unsupported keys, but we can test some edge cases
+	// Test with actual Ed25519 certificate to exercise that path
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
 
-	// Test ECDSA with unsupported key size by creating a mock certificate
-	// This is tricky to do in practice, so let's test some boundaries
-	_, cert, _ := genSelfSignedCert(t)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "Ed25519 Test Certificate",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		SignatureAlgorithm:    x509.PureEd25519,
+	}
 
-	// Just make sure we get the RSA key size correctly
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
+	require.NoError(t, err)
+
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
 
 	var d czX509.Detector
 	got, err := d.Detect(t.Context(), pemBytes, "testpath")
@@ -129,6 +143,73 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
 	requireEvidencePath(t, comp)
 	requireFormatAndDERBase64(t, comp)
+
+	// Should have Ed25519 algorithm and key references
+	require.Equal(t, "crypto/algorithm/ed25519@1.3.101.112", string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef))
+	require.Equal(t, "crypto/key/ed25519-256@1.3.101.112", string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef))
+}
+
+// Test_Component_ECDSA_Keys tests ECDSA key handling for better coverage  
+func Test_Component_ECDSA_Keys(t *testing.T) {
+	t.Parallel()
+
+	// Test P-256 ECDSA certificate
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "ECDSA P-256 Test Certificate",
+		},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		BasicConstraintsValid: true,
+		SignatureAlgorithm:    x509.ECDSAWithSHA256,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
+	require.NoError(t, err)
+
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	var d czX509.Detector
+	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.GreaterOrEqual(t, len(got[0].Components), 1)
+
+	comp := got[0].Components[0]
+	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
+	requireEvidencePath(t, comp)
+	requireFormatAndDERBase64(t, comp)
+
+	// Should have ECDSA key reference
+	require.Contains(t, string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "ecdsa")
+	
+	// Test P-384 as well  
+	priv384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	require.NoError(t, err)
+
+	template.SignatureAlgorithm = x509.ECDSAWithSHA384
+	certDER384, err := x509.CreateCertificate(rand.Reader, template, template, &priv384.PublicKey, priv384)
+	require.NoError(t, err)
+
+	pemBytes384 := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER384})
+
+	got384, err := d.Detect(t.Context(), pemBytes384, "testpath")
+	require.NoError(t, err)
+	require.Len(t, got384, 1)
+	require.GreaterOrEqual(t, len(got384[0].Components), 1)
+
+	comp384 := got384[0].Components[0]
+	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp384.Type)
+	requireEvidencePath(t, comp384)
+	requireFormatAndDERBase64(t, comp384)
+
+	// Should have ECDSA P-384 key reference
+	require.Contains(t, string(comp384.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "ecdsa-p384")
 }
 
 // Test_Component_DSA_Keys tests DSA key handling for better coverage
@@ -307,4 +388,33 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 	require.Equal(t, "crypto/algorithm/ed25519@1.3.101.112", string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef))
 	// Check Ed25519 key reference
 	require.Equal(t, "crypto/key/ed25519-256@1.3.101.112", string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef))
+}
+
+// Test_readSignatureAlgorithmRef_DirectCalls tests signature algorithm mapping directly
+func Test_readSignatureAlgorithmRef_DirectCalls(t *testing.T) {
+	t.Parallel()
+
+	// This test verifies that the signature algorithm field in the parsed certificate
+	// gets mapped correctly. Since x509.CreateCertificate will override the SignatureAlgorithm
+	// field based on the actual signature used, we need to test this differently.
+	
+	// Test with normal certificate creation to exercise the common paths
+	_, cert, _ := genSelfSignedCert(t)
+	
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+
+	var d czX509.Detector
+	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	require.GreaterOrEqual(t, len(got[0].Components), 1)
+
+	comp := got[0].Components[0]
+	
+	// The generated certificate should have some signature algorithm
+	require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
+	
+	// For RSA certificates, it should be one of the RSA algorithms
+	sigAlgRef := string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
+	require.Contains(t, sigAlgRef, "rsa")
 }
