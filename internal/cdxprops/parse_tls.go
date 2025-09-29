@@ -361,7 +361,7 @@ func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 func next(buf []byte) (string, []byte) {
 	i := bytes.IndexByte(buf, '_')
 	if i == -1 {
-		return "", nil
+		return string(buf), nil
 	}
 	return string(buf[:i]), buf[i+1:]
 }
