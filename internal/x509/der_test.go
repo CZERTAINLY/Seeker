@@ -1,7 +1,6 @@
 package x509_test
 
 import (
-	"encoding/pem"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -10,11 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Detect_PEM_and_DER(t *testing.T) {
+func Test_DER_Detection(t *testing.T) {
 	der, _, _ := genSelfSignedCert(t)
 	der2, _, _ := genSelfSignedCert(t)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 	concatDER := append(append([]byte{}, der...), der2...)
 
 	tests := []struct {
@@ -22,11 +19,9 @@ func Test_Detect_PEM_and_DER(t *testing.T) {
 		input     []byte
 		wantMatch bool
 	}{
-		{"PEM single", pemBytes, true},
 		{"DER single", der, true},
 		{"DER concatenated", concatDER, true},
 		{"Invalid", []byte("not a cert"), false},
-		{"PEM not a cert", pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}), false},
 	}
 
 	for _, tt := range tests {

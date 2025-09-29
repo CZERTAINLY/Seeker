@@ -90,5 +90,3 @@ func findAllCerts(ctx context.Context, b []byte) []certHit {
 
 	return out
 }
-
-
