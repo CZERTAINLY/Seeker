@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	cc "github.com/CZERTAINLY/Seeker/internal/cryptoconst"
+	cc "github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
@@ -305,16 +305,21 @@ func nameToProtoVersion(name string) string {
 	return after
 }
 
-func identifiers(name string) *[]string {
-	code, ok := cc.Code(name)
-	if !ok {
-		return nil
+func identifiers(name string) (*[]cdx.BOMReference, *[]string) {
+	spec, err := cc.ParseCipherSuite(name)
+	if err != nil {
+		slog.Warn("skipping unsupported cipher suite", "name", name, "error", err)
+		return nil, nil
 	}
-	var ret = []string{
+
+	algorithms := spec.Algorithms()
+
+	code := spec.Code
+	var identifiers = []string{
 		fmt.Sprintf("0x%X", byte(code>>8)),
 		fmt.Sprintf("0x%X", byte(code&0xFF)),
 	}
-	return &ret
+	return &algorithms, &identifiers
 }
 
 func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
@@ -326,12 +331,11 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 		for _, cipher := range row.Tables {
 			for _, element := range cipher.Elements {
 				if element.Key == "name" {
+					algorithms, identifiers := identifiers(element.Value)
 					s := cdx.CipherSuite{
-						Name: element.Value,
-						Algorithms: &[]cdx.BOMReference{
-							// TODO: where to read algorithms?
-						},
-						Identifiers: identifiers(element.Value),
+						Name:        element.Value,
+						Algorithms:  algorithms,
+						Identifiers: identifiers,
 					}
 					ret = append(ret, s)
 				}
@@ -343,26 +347,3 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 	}
 	return &ret
 }
-
-/*
-  "components": [
-          "cipherSuites": [
-            {
-              "name": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-              "algorithms": [
-                "crypto/algorithm/ecdh-curve25519@1.3.132.1.12",
-                "crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1",
-                "crypto/algorithm/aes-256-gcm@2.16.840.1.101.3.4.1.46",
-                "crypto/algorithm/sha-384@2.16.840.1.101.3.4.2.9"
-              ],
-              "identifiers": [ "0xC0", "0x30" ]
-            }
-          ],
-          "cryptoRefArray": [
-            "crypto/certificate/google.com@sha256:1e15e0fbd3ce95bde5945633ae96add551341b11e5bae7bba12e98ad84a5beb4"
-          ]
-        },
-        "oid": "1.3.18.0.2.32.104"
-      }
-    },
-*/

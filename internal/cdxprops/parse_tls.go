@@ -3,6 +3,8 @@ package cdxprops
 import (
 	"bytes"
 	"fmt"
+
+	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
 type Protocol uint8
@@ -16,11 +18,8 @@ const (
 type KeyExchangeAlgorithm string
 
 const (
-	KexUnknown  = "UNKNOWN"
-	KexRSA      = "RSA"
-	KexECDHE    = "ECDHE"
-	KexAES      = "AES"
-	KexCHACHA20 = "CHACHA20"
+	KexRSA   = "RSA"
+	KexECDHE = "ECDHE"
 )
 
 type KeyAuthenticationAlgorithm string
@@ -57,12 +56,13 @@ const (
 type CipherMode string
 
 const (
-	CipherModeUnknown  = "UNKNOWN"
-	CipherModeEmpty    = ""
 	CipherModeCBC      = "CBC"
-	CipherModeGCM      = "GCM"
 	CipherModeCCM      = "CCM"
+	CipherModeEDE_CBC  = "EDE_CBC"
+	CipherModeEmpty    = ""
+	CipherModeGCM      = "GCM"
 	CipherModePOLY1305 = "POLY1305"
+	CipherModeUnknown  = "UNKNOWN"
 )
 
 type HashAlgorithm string
@@ -80,6 +80,57 @@ type CipherSuite struct {
 	KeyLen      KeyLen
 	Mode        CipherMode
 	Hash        HashAlgorithm
+	Code        CipherSuiteCode
+}
+
+// Algorithms returns a list of algorithm identifiers for the cipher suite.
+func (c CipherSuite) Algorithms() []cdx.BOMReference {
+	var ret []cdx.BOMReference
+	add := func(s string) {
+		ret = append(ret, cdx.BOMReference(s))
+	}
+	switch c.KeyExchange.Exchange {
+	case KexRSA:
+		add("crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1")
+	case KexECDHE:
+		add("crypto/algorithm/ecdh-curve25519@1.3.132.1.12")
+	}
+
+	switch c.KeyExchange.Auth {
+	case KauthECDSA:
+		add("crypto/algorithm/ecdsa@1.2.840.10045.4.3.2")
+	case KauthRSA:
+		add("crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1")
+	}
+
+	// Cipher + KeyLen + Mode
+	switch {
+	case c.Cipher == CipherRC4 && c.KeyLen == KeyLen128:
+		add("crypto/algorithm/rc4-128@1.2.840.113549.3.4")
+	case c.Cipher == Cipher3DES && c.Mode == CipherModeEDE_CBC:
+		add("crypto/algorithm/3des-ede-cbc@1.2.840.113549.3.7")
+	case c.Cipher == CipherAES && c.KeyLen == KeyLen128 && c.Mode == CipherModeCBC:
+		add("crypto/algorithm/aes-128-cbc@2.16.840.1.101.3.4.1.2")
+	case c.Cipher == CipherAES && c.KeyLen == KeyLen256 && c.Mode == CipherModeCBC:
+		add("crypto/algorithm/aes-256-cbc@2.16.840.1.101.3.4.1.42")
+	case c.Cipher == CipherAES && c.KeyLen == KeyLen128 && c.Mode == CipherModeGCM:
+		add("crypto/algorithm/aes-128-gcm@2.16.840.1.101.3.4.1.6")
+	case c.Cipher == CipherAES && c.KeyLen == KeyLen256 && c.Mode == CipherModeGCM:
+		add("crypto/algorithm/aes-256-gcm@2.16.840.1.101.3.4.1.46")
+	case c.Cipher == CipherCHACHA20 && c.Mode == CipherModePOLY1305:
+		add("crypto/algorithm/chacha20-poly1305@ietf-rfc8439")
+	}
+
+	switch c.Hash {
+	case HashSHA:
+		add("crypto/algorithm/sha-1@1.3.14.3.2.26")
+	case HashSHA256:
+		add("crypto/algorithm/sha-256@2.16.840.1.101.3.4.2.1")
+	case HashSHA384:
+		add("crypto/algorithm/sha-384@2.16.840.1.101.3.4.2.2")
+	}
+
+	return ret
 }
 
 var _fallbackNames = map[string]string{
@@ -88,8 +139,9 @@ var _fallbackNames = map[string]string{
 	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305":   "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 }
 
+// ParseCipherSuite parses a TLS cipher suite name into its components.
 func ParseCipherSuite(name string) (CipherSuite, error) {
-	var zero CipherSuite
+	var ret CipherSuite
 
 	// fallback names
 	if fallback, ok := _fallbackNames[name]; ok {
@@ -101,22 +153,34 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 	if isTLS, nbuf := nextIf(buf, "TLS"); isTLS {
 		buf = nbuf
 	} else {
-		return zero, fmt.Errorf("unsupported cipher suite prefix in %q", name)
+		return ret, fmt.Errorf("unsupported cipher suite prefix in %q", name)
 	}
 
+	var err error
 	var tok string
 	tok, buf = next(buf)
 	switch tok {
 	case "AES":
-		return handleTLS13(CipherAES, buf)
+		ret, err = handleTLS13(CipherAES, buf)
 	case "CHACHA20":
-		return handleTLS13(CipherCHACHA20, buf)
+		ret, err = handleTLS13(CipherCHACHA20, buf)
 	case "ECDHE":
-		return handleECDHE(buf)
+		ret, err = handleECDHE(buf)
 	case "RSA":
-		return handleRSA(buf)
+		ret, err = handleRSA(buf)
+	default:
+		return ret, fmt.Errorf("unsupported TLS cipher %q, %q", tok, string(buf))
 	}
-	return zero, fmt.Errorf("unsupported TLS cipher %q, %q", tok, string(buf))
+	if err != nil {
+		return ret, err
+	}
+
+	code, ok := Code(name)
+	if !ok {
+		return ret, fmt.Errorf("unknown code for %q", name)
+	}
+	ret.Code = code
+	return ret, nil
 }
 
 func handleRSA(buf []byte) (CipherSuite, error) {
@@ -137,12 +201,12 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 		if !bytes.Equal(buf, []byte("128_SHA")) {
 			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
 		}
-		cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
+		cipher, keylen, mode, hash = CipherRC4, KeyLen128, CipherModeEmpty, HashSHA
 	case "3DES":
 		if !bytes.Equal(buf, []byte("EDE_CBC_SHA")) {
 			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
 		}
-		cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
+		cipher, keylen, mode, hash = Cipher3DES, 0, CipherModeEDE_CBC, HashSHA
 	case "AES":
 		cipher = CipherAES
 		keylen, buf := next(buf)
@@ -287,7 +351,6 @@ func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 		Mode:   mode,
 		Hash:   hash,
 	}, nil
-
 }
 
 // return next "token" and a remainder

@@ -51,6 +51,8 @@ func TestParseCipherSuite(t *testing.T) {
 			suite, err := cdxprops.ParseCipherSuite(tc.name)
 			require.NoError(t, err)
 			require.NotZero(t, suite)
+			algos := suite.Algorithms()
+			require.NotEmpty(t, algos)
 		})
 	}
 }
