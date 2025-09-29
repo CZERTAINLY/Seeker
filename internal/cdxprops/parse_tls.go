@@ -5,24 +5,95 @@ import (
 	"fmt"
 )
 
+type Protocol uint8
+
+const (
+	ProtocolUnknown = iota
+	SSL
+	TLS
+)
+
+type KeyExchangeAlgorithm string
+
+const (
+	KexUnknown  = "UNKNOWN"
+	KexRSA      = "RSA"
+	KexECDHE    = "ECDHE"
+	KexAES      = "AES"
+	KexCHACHA20 = "CHACHA20"
+)
+
+type KeyAuthenticationAlgorithm string
+
+const (
+	KauthEmpty = ""
+	KauthECDSA = "ECDSA"
+	KauthRSA   = "RSA"
+)
+
+type KeyExchange struct {
+	Exchange KeyExchangeAlgorithm
+	Auth     KeyAuthenticationAlgorithm
+}
+
+type CipherAlgorithm string
+
+const (
+	CipherUnknown  = "UNKNOWN"
+	CipherRC4      = "RC4"
+	Cipher3DES     = "3DES"
+	CipherAES      = "AES"
+	CipherCHACHA20 = "CHACHA20"
+)
+
+type KeyLen int
+
+const (
+	KeyLenUnspecified = 0
+	KeyLen128         = 128
+	KeyLen256         = 256
+)
+
+type CipherMode string
+
+const (
+	CipherModeUnknown  = "UNKNOWN"
+	CipherModeEmpty    = ""
+	CipherModeCBC      = "CBC"
+	CipherModeGCM      = "GCM"
+	CipherModeCCM      = "CCM"
+	CipherModePOLY1305 = "POLY1305"
+)
+
+type HashAlgorithm string
+
+const (
+	HashSHA    = "SHA"
+	HashSHA256 = "SHA256"
+	HashSHA384 = "SHA384"
+)
+
 type CipherSuite struct {
-	Protocol string
-	KexAuth  string // may be empty in TLS 1.3
-	Cipher   string
-	KeyLen   string
-	Mode     string
-	Hash     string
+	Protocol    Protocol
+	KeyExchange KeyExchange
+	Cipher      CipherAlgorithm
+	KeyLen      KeyLen
+	Mode        CipherMode
+	Hash        HashAlgorithm
+}
+
+var _fallbackNames = map[string]string{
+	// defined in Go crypto/tls
+	"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305": "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305":   "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 }
 
 func ParseCipherSuite(name string) (CipherSuite, error) {
 	var zero CipherSuite
 
 	// fallback names
-	switch name {
-	case "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305":
-		name = "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"
-	case "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305":
-		name = "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256"
+	if fallback, ok := _fallbackNames[name]; ok {
+		name = fallback
 	}
 
 	var buf = []byte(name)
@@ -37,9 +108,9 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 	tok, buf = next(buf)
 	switch tok {
 	case "AES":
-		fallthrough
+		return handleTLS13(CipherAES, buf)
 	case "CHACHA20":
-		return handleTLS13(tok, buf)
+		return handleTLS13(CipherCHACHA20, buf)
 	case "ECDHE":
 		return handleECDHE(buf)
 	case "RSA":
@@ -55,21 +126,25 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 	} else {
 		return zero, fmt.Errorf("expected WITH in %q", string(buf))
 	}
-	cipher, buf := next(buf)
+	cipherToken, buf := next(buf)
 
-	var keylen, mode, hash string
-	switch cipher {
+	var cipher CipherAlgorithm
+	var keylen KeyLen
+	var mode CipherMode
+	var hash HashAlgorithm
+	switch cipherToken {
 	case "RC4":
 		if !bytes.Equal(buf, []byte("128_SHA")) {
-			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipher, string(buf))
+			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
 		}
-		keylen, mode, hash = "128", "", "SHA"
+		cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
 	case "3DES":
 		if !bytes.Equal(buf, []byte("EDE_CBC_SHA")) {
-			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipher, string(buf))
+			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
 		}
-		keylen, mode, hash = "", "EDE_CBC", "SHA"
+		cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
 	case "AES":
+		cipher = CipherAES
 		keylen, buf := next(buf)
 		rest := string(buf)
 		switch keylen {
@@ -82,7 +157,7 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 			case "GCM_SHA256":
 				mode, hash = "GCM", "SHA256"
 			default:
-				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipher, rest)
+				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
 			}
 		case "256":
 			switch rest {
@@ -91,35 +166,35 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 			case "GCM_SHA384":
 				mode, hash = "GCM", "SHA384"
 			default:
-				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipher, rest)
+				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
 			}
 		default:
-			return zero, fmt.Errorf("unsupported %s cipher keylen %s %q", cipher, keylen, string(buf))
+			return zero, fmt.Errorf("unsupported %s cipher keylen %s %q", cipherToken, keylen, string(buf))
 		}
 	default:
-		return zero, fmt.Errorf("unknown cipher %s, %q", cipher, string(buf))
+		return zero, fmt.Errorf("unknown cipher %s, %q", cipherToken, string(buf))
 	}
 	return CipherSuite{
-		Protocol: "TLS",
-		KexAuth:  "RSA",
-		Cipher:   cipher,
-		KeyLen:   keylen,
-		Mode:     mode,
-		Hash:     hash,
+		Protocol:    TLS,
+		KeyExchange: KeyExchange{Exchange: KexRSA},
+		Cipher:      cipher,
+		KeyLen:      keylen,
+		Mode:        mode,
+		Hash:        hash,
 	}, nil
 }
 
 func handleECDHE(buf []byte) (CipherSuite, error) {
 	var zero CipherSuite
-	var kexAuth = "ECDHE"
+	var keyExchange KeyExchange
 	kexPart, buf := next(buf)
 	switch kexPart {
 	case "ECDSA":
-		fallthrough
+		keyExchange = KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}
 	case "RSA":
-		kexAuth += "_" + kexPart
+		keyExchange = KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}
 	default:
-		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexAuth, string(buf))
+		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
 	}
 
 	if ok, nbuf := nextIf(buf, "WITH"); ok {
@@ -128,80 +203,89 @@ func handleECDHE(buf []byte) (CipherSuite, error) {
 		return zero, fmt.Errorf("expected WITH in %q", string(buf))
 	}
 
-	var cipher, keylen, mode, hash string
+	var cipher CipherAlgorithm
+	var keylen KeyLen
+	var mode CipherMode
+	var hash HashAlgorithm
 	rest := string(buf)
 	switch kexPart {
 	case "ECDSA":
 		switch rest {
 		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA"
 		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA256"
 		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = "AES", "128", "GCM", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "GCM", "SHA256"
 		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = "AES", "256", "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, "CBC", "SHA"
 		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = "AES", "256", "GCM", "SHA384"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, "GCM", "SHA384"
 		case "CHACHA20_POLY1305_SHA256":
-			cipher, keylen, mode, hash = "CHACHA20", "", "POLY1305", "SHA256"
+			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
 		case "RC4_128_SHA":
-			cipher, keylen, mode, hash = "RC4", "128", "", "SHA"
+			cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
 		default:
 			return zero, fmt.Errorf("unsupported %q", rest)
 		}
 	case "RSA":
-	case "3DES_EDE_CBC_SHA":
-		cipher, keylen, mode, hash = "3DES", "", "EDE_CBC", "SHA"
-	case "AES_128_CBC_SHA":
-		cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA"
-	case "AES_128_CBC_SHA256":
-		cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA256"
-	case "AES_128_GCM_SHA256":
-		cipher, keylen, mode, hash = "AES", "128", "GCM", "SHA256"
-	case "AES_256_CBC_SHA":
-		cipher, keylen, mode, hash = "AES", "256", "CBC", "SHA"
-	case "AES_256_GCM_SHA384":
-		cipher, keylen, mode, hash = "AES", "256", "GCM", "SHA384"
-	case "CHACHA20_POLY1305_SHA256":
-		cipher, keylen, mode, hash = "CHACHA20", "", "POLY1305", "SHA256"
-	case "RC4_128_SHA":
-		cipher, keylen, mode, hash = "RC4", "128", "", "SHA"
+		switch rest {
+		case "3DES_EDE_CBC_SHA":
+			cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
+		case "AES_128_CBC_SHA":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA"
+		case "AES_128_CBC_SHA256":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA256"
+		case "AES_128_GCM_SHA256":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, "GCM", "SHA256"
+		case "AES_256_CBC_SHA":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, "CBC", "SHA"
+		case "AES_256_GCM_SHA384":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, "GCM", "SHA384"
+		case "CHACHA20_POLY1305_SHA256":
+			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
+		case "RC4_128_SHA":
+			cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
+		default:
+			return zero, fmt.Errorf("unsupported %q", rest)
+		}
 	default:
-		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexAuth, string(buf))
+		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
 	}
 
 	return CipherSuite{
-		Protocol: "TLS",
-		KexAuth:  kexAuth,
-		Cipher:   cipher,
-		KeyLen:   keylen,
-		Mode:     mode,
-		Hash:     hash,
+		Protocol:    TLS,
+		KeyExchange: keyExchange,
+		Cipher:      cipher,
+		KeyLen:      keylen,
+		Mode:        mode,
+		Hash:        hash,
 	}, nil
 }
 
-func handleTLS13(cipher string, buf []byte) (CipherSuite, error) {
+func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 	var zero CipherSuite
-	var keylen, mode, hash string
-	switch cipher + "_" + string(buf) {
+	var keylen KeyLen
+	var mode CipherMode
+	var hash HashAlgorithm
+	switch string(cipher) + "_" + string(buf) {
 	case "AES_128_GCM_SHA256":
-		cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA256"
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, HashSHA256
 	case "AES_256_GCM_SHA384":
-		cipher, keylen, mode, hash = "AES", "128", "CBC", "SHA384"
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, HashSHA384
 	case "CHACHA20_POLY1305_SHA256":
-		cipher, keylen, mode, hash = "CHACHA20", "", "POLY1305", "SHA256"
+		cipher, keylen, mode, hash = CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256
 	default:
 		return zero, fmt.Errorf("unsupported %q", string(buf))
 	}
 
 	return CipherSuite{
-		Protocol: "TLS",
-		KexAuth:  "", // empty for TLS1.3
-		Cipher:   cipher,
-		KeyLen:   keylen,
-		Mode:     mode,
-		Hash:     hash,
+		Protocol: TLS,
+		// KeyAuth is not applicable in TLS 1.3
+		Cipher: cipher,
+		KeyLen: keylen,
+		Mode:   mode,
+		Hash:   hash,
 	}, nil
 
 }
