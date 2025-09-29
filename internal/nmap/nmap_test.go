@@ -61,8 +61,8 @@ func TestScanner(t *testing.T) {
 			port := tc.given.addrPort.Port()
 			addr := tc.given.addrPort.Addr()
 
-			scanner = tc.given.scanner.WithPorts(strconv.Itoa(int(port)))
-			detections, err := scanner.Detect(t.Context(), addr)
+			tcScanner := tc.given.scanner.WithPorts(strconv.Itoa(int(port)))
+			detections, err := tcScanner.Detect(t.Context(), addr)
 			require.NoError(t, err)
 			require.NotEmpty(t, detections)
 
