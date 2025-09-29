@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -20,6 +19,7 @@ func main() {
 	//TODO: use flags
 	flagParseTLS := false
 	flagSkipFormat := true
+	flagPkg := "cdxprops"
 	if len(os.Args) < 3 {
 		fmt.Fprintf(os.Stderr, "Usage: %s input.csv output.go\n", os.Args[0])
 		os.Exit(1)
@@ -28,8 +28,7 @@ func main() {
 	inFile := os.Args[1]
 	outFile := os.Args[2]
 	tstFile := strings.Replace(outFile, ".go", "_test.go", 1)
-	_, pkg := filepath.Split(outFile)
-	pkg = strings.Replace(pkg, ".go", "", 1)
+	pkg := flagPkg
 
 	in, err := os.Open(inFile)
 	if err != nil {
@@ -47,15 +46,15 @@ func main() {
 		log.Fatalf("cannot parse csv %s: %v", inFile, err)
 	}
 
-	parsed := make(map[string]CipherSuite, len(tlsEntries))
-	for _, e := range tlsEntries {
-		suite, err := ParseCipherSuite(e.desc)
-		if err != nil {
-			log.Printf("E: parsing %q fail: %s", e.desc, err)
-		}
-		parsed[e.desc] = suite
-	}
 	if flagParseTLS {
+		parsed := make(map[string]CipherSuite, len(tlsEntries))
+		for _, e := range tlsEntries {
+			suite, err := ParseCipherSuite(e.desc)
+			if err != nil {
+				log.Printf("E: parsing %q fail: %s", e.desc, err)
+			}
+			parsed[e.desc] = suite
+		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		err = enc.Encode(parsed)
