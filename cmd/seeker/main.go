@@ -249,7 +249,11 @@ func doNmap(cmd *cobra.Command, args []string) error {
 			netip.MustParseAddr("::1"):       nil,
 		})
 	} else {
-		ip, err := resolveToAddr(flagTarget)
+		host, port, ok := strings.Cut(flagTarget, ":")
+		if ok {
+			scanner = scanner.WithPorts(port)
+		}
+		ip, err := resolveToAddr(host)
 		if err != nil {
 			return err
 		}
