@@ -92,24 +92,6 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
-	{
-		f, err := os.Create("raw.json")
-		if err != nil {
-			panic(err)
-		}
-		defer func(f *os.File) {
-			err := f.Close()
-			if err != nil {
-				slog.ErrorContext(logCtx, "closing raw.json", "error", err)
-			}
-		}(f)
-		e := json.NewEncoder(f)
-		e.SetIndent("", "  ")
-		if err := e.Encode(r); err != nil {
-			panic(err)
-		}
-	}
-
 	return []model.Detection{
 		HostToDetection(r.Info),
 	}, nil
