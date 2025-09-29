@@ -9,7 +9,7 @@ import (
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
-	"software.sslmate.com/src/go-pkcs12"
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
 //nolint:staticcheck

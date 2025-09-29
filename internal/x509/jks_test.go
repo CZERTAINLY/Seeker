@@ -10,7 +10,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
-	"github.com/pavlo-v-chernykh/keystore-go/v4"
+	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
 	"github.com/stretchr/testify/require"
 )
 

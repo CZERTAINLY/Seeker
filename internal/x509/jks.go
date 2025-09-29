@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"log/slog"
 
-	"github.com/pavlo-v-chernykh/keystore-go/v4"
+	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
 )
 
 // jksDetector handles JKS/JCEKS keystore detection

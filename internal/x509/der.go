@@ -35,6 +35,5 @@ func (d derDetector) detect(ctx context.Context, b []byte) []certHit {
 			}
 		}
 	}
-	
 	return out
 }

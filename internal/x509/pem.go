@@ -55,6 +55,5 @@ func (d pemDetector) detect(ctx context.Context, b []byte) []certHit {
 		}
 		rest = r
 	}
-	
 	return out
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/asn1"
 	"log/slog"
 
-	"software.sslmate.com/src/go-pkcs12"
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
 // pkcs12Detector handles PKCS#12/PFX detection
