@@ -6,6 +6,7 @@ import (
 	"iter"
 	"log/slog"
 	"maps"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -76,6 +77,9 @@ func main() {
 	// --ssh
 	nmapCmd.Flags().Bool("ssh", false, "perform ssh scan (defaults to tls/https)")
 	_ = viper.BindPFlag("alpha.nmap.ssh", nmapCmd.Flags().Lookup("ssh"))
+	// --host
+	nmapCmd.Flags().String("target", "", "connect to host (defaults to localhost). For testing only.")
+	_ = viper.BindPFlag("alpha.nmap.target", nmapCmd.Flags().Lookup("target"))
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("seeker failed", "err", err)
@@ -216,6 +220,7 @@ func doNmap(cmd *cobra.Command, args []string) error {
 	flagNmap := viper.GetString("alpha.nmap.nmap")
 	flagTimeout := viper.GetDuration("alpha.nmap.timeout")
 	flagSSH := viper.GetBool("alpha.nmap.ssh")
+	flagTarget := viper.GetString("alpha.nmap.target")
 
 	var scanner nmap.Scanner
 	if !flagSSH {
@@ -236,10 +241,22 @@ func doNmap(cmd *cobra.Command, args []string) error {
 		ret, err := scanner.Detect(tmoutCtx, addr)
 		return ret, err
 	})
-	seq := maps.All(map[netip.Addr]error{
-		netip.MustParseAddr("127.0.0.1"): nil,
-		netip.MustParseAddr("::1"):       nil,
-	})
+
+	var seq iter.Seq2[netip.Addr, error]
+	if flagTarget == "" {
+		seq = maps.All(map[netip.Addr]error{
+			netip.MustParseAddr("127.0.0.1"): nil,
+			netip.MustParseAddr("::1"):       nil,
+		})
+	} else {
+		ip, err := resolveToAddr(flagTarget)
+		if err != nil {
+			return err
+		}
+		seq = maps.All(map[netip.Addr]error{
+			ip: nil,
+		})
+	}
 
 	now := time.Now()
 	cntDetections := 0
@@ -303,4 +320,26 @@ func onInitialize() {
 	})
 	ctxHandler := log.New(base)
 	slog.SetDefault(slog.New(ctxHandler))
+}
+
+func resolveToAddr(host string) (netip.Addr, error) {
+	// Try parsing directly as IP first
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return ip, nil
+	}
+
+	// Otherwise, resolve hostname via DNS
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	// Pick the first IPv4 or IPv6 address
+	for _, ip := range ips {
+		if addr, ok := netip.AddrFromSlice(ip); ok {
+			return addr, nil
+		}
+	}
+
+	return netip.Addr{}, fmt.Errorf("no valid IP found for host %q", host)
 }

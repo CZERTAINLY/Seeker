@@ -4,7 +4,6 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"go/format"
 	"io"
@@ -17,7 +16,6 @@ import (
 
 func main() {
 	//TODO: use flags
-	flagParseTLS := false
 	flagSkipFormat := true
 	flagPkg := "cdxprops"
 	if len(os.Args) < 3 {
@@ -44,23 +42,6 @@ func main() {
 	tlsEntries, err := parseTLSConstants(in)
 	if err != nil {
 		log.Fatalf("cannot parse csv %s: %v", inFile, err)
-	}
-
-	if flagParseTLS {
-		parsed := make(map[string]CipherSuite, len(tlsEntries))
-		for _, e := range tlsEntries {
-			suite, err := ParseCipherSuite(e.desc)
-			if err != nil {
-				log.Printf("E: parsing %q fail: %s", e.desc, err)
-			}
-			parsed[e.desc] = suite
-		}
-		enc := json.NewEncoder(os.Stdout)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(parsed)
-		if err != nil {
-			log.Fatal(err)
-		}
 	}
 
 	// go source code
