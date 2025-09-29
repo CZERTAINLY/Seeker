@@ -2,11 +2,9 @@ package nmap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 
