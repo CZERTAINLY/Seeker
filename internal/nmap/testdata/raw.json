@@ -1,0 +1,179 @@
+{
+  "Info": {
+    "distance": {
+      "value": 0
+    },
+    "end_time": 1759148952,
+    "ip_id_sequence": {
+      "class": "",
+      "values": ""
+    },
+    "os": {
+      "ports_used": null,
+      "os_matches": null,
+      "os_fingerprints": null
+    },
+    "start_time": 1759148945,
+    "timed_out": false,
+    "status": {
+      "state": "up",
+      "reason": "syn-ack",
+      "reason_ttl": 0
+    },
+    "tcp_sequence": {
+      "index": 0,
+      "difficulty": "",
+      "values": ""
+    },
+    "tcp_ts_sequence": {
+      "class": "",
+      "values": ""
+    },
+    "times": {
+      "srtt": "29109",
+      "rttv": "27302",
+      "to": "138317"
+    },
+    "trace": {
+      "proto": "",
+      "port": 0,
+      "hops": null
+    },
+    "uptime": {
+      "seconds": 0,
+      "last_boot": ""
+    },
+    "comment": "",
+    "addresses": [
+      {
+        "addr": "23.88.35.44",
+        "addr_type": "ipv4",
+        "vendor": ""
+      }
+    ],
+    "extra_ports": null,
+    "hostnames": [
+      {
+        "name": "static.44.35.88.23.clients.your-server.de",
+        "type": "PTR"
+      }
+    ],
+    "host_scripts": null,
+    "ports": [
+      {
+        "id": 443,
+        "protocol": "tcp",
+        "owner": {
+          "name": ""
+        },
+        "service": {
+          "device_type": "",
+          "extra_info": "",
+          "high_version": "",
+          "hostname": "",
+          "low_version": "",
+          "method": "probed",
+          "name": "https",
+          "os_type": "",
+          "product": "",
+          "proto": "",
+          "rpc_num": "",
+          "service_fp": "",
+          "tunnel": "ssl",
+          "version": "",
+          "confidence": 10,
+          "cpes": null
+        },
+        "state": {
+          "state": "open",
+          "reason": "syn-ack",
+          "reason_ip": "",
+          "reason_ttl": 0
+        },
+        "scripts": [
+          {
+            "id": "ssl-enum-ciphers",
+            "output": "\n  TLSv1.3: \n    ciphers: \n      TLS_AKE_WITH_AES_128_GCM_SHA256 (ecdh_x25519) - A\n      TLS_AKE_WITH_AES_256_GCM_SHA384 (ecdh_x25519) - A\n      TLS_AKE_WITH_CHACHA20_POLY1305_SHA256 (ecdh_x25519) - A\n    cipher preference: server\n    cipher preference error: Network error\n  least strength: A",
+            "elements": [
+              {
+                "key": "least strength",
+                "value": "A"
+              }
+            ],
+            "tables": [
+              {
+                "key": "TLSv1.3",
+                "tables": [
+                  {
+                    "key": "ciphers",
+                    "tables": [
+                      {
+                        "elements": [
+                          {
+                            "key": "name",
+                            "value": "TLS_AKE_WITH_AES_128_GCM_SHA256"
+                          },
+                          {
+                            "key": "strength",
+                            "value": "A"
+                          },
+                          {
+                            "key": "kex_info",
+                            "value": "ecdh_x25519"
+                          }
+                        ]
+                      },
+                      {
+                        "elements": [
+                          {
+                            "key": "name",
+                            "value": "TLS_AKE_WITH_AES_256_GCM_SHA384"
+                          },
+                          {
+                            "key": "strength",
+                            "value": "A"
+                          },
+                          {
+                            "key": "kex_info",
+                            "value": "ecdh_x25519"
+                          }
+                        ]
+                      },
+                      {
+                        "elements": [
+                          {
+                            "key": "name",
+                            "value": "TLS_AKE_WITH_CHACHA20_POLY1305_SHA256"
+                          },
+                          {
+                            "key": "strength",
+                            "value": "A"
+                          },
+                          {
+                            "key": "kex_info",
+                            "value": "ecdh_x25519"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "elements": [
+                  {
+                    "key": "cipher preference",
+                    "value": "server"
+                  },
+                  {
+                    "key": "cipher preference error",
+                    "value": "Network error"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "smurfs": null
+  }
+}
