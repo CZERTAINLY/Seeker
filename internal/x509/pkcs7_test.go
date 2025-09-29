@@ -73,3 +73,47 @@ func Test_OidHasPrefix(t *testing.T) {
 	_, err = d.Detect(t.Context(), der, "testpath")
 	require.NoError(t, err) // Should succeed
 }
+
+// Test_oidHasPrefix_Direct tests oidHasPrefix function by creating ASN.1 data
+func Test_oidHasPrefix_Direct(t *testing.T) {
+	t.Parallel()
+
+	// Create valid ASN.1 with PKCS7 OID to trigger oidHasPrefix function
+	testData := []byte{
+		0x30, 0x82, 0x00, 0x20, // SEQUENCE with length
+		0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x07, 0x01, // OID 1.2.840.113549.1.7.1 (PKCS7)
+		0x04, 0x13, // OCTET STRING with length
+		0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x20, 0x54, 0x65, 0x73, 0x74, 0x21, 0x00, 0x00, // "Hello World Test!"
+	}
+
+	var d czX509.Detector
+	_, err := d.Detect(t.Context(), testData, "testpath")
+	// This should trigger the oidHasPrefix function with a PKCS7 OID but fail to parse as valid PKCS7
+	require.Error(t, err)
+	require.ErrorIs(t, err, model.ErrNoMatch)
+
+	// Test with an OID that doesn't match PKCS7 prefix to exercise the false path
+	testDataWrongOID := []byte{
+		0x30, 0x82, 0x00, 0x20, // SEQUENCE with length
+		0x06, 0x09, 0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x01, 0x01, // OID 1.2.840.113549.1.1.1 (RSA)
+		0x04, 0x13, // OCTET STRING with length
+		0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x20, 0x54, 0x65, 0x73, 0x74, 0x21, 0x00, 0x00, // "Hello World Test!"
+	}
+
+	_, err = d.Detect(t.Context(), testDataWrongOID, "testpath")
+	// This should also fail to find certificates
+	require.Error(t, err)
+	require.ErrorIs(t, err, model.ErrNoMatch)
+
+	// Test with short OID to exercise length check
+	testDataShortOID := []byte{
+		0x30, 0x82, 0x00, 0x15, // SEQUENCE with length
+		0x06, 0x04, 0x2A, 0x86, 0x48, 0x86, // OID 1.2.840.113549 (shorter than PKCS7 prefix)
+		0x04, 0x09, // OCTET STRING with length
+		0x54, 0x65, 0x73, 0x74, 0x20, 0x64, 0x61, 0x74, 0x61, // "Test data"
+	}
+
+	_, err = d.Detect(t.Context(), testDataShortOID, "testpath")
+	require.Error(t, err)
+	require.ErrorIs(t, err, model.ErrNoMatch)
+}
