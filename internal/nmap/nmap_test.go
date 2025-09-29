@@ -1,13 +1,17 @@
 package nmap_test
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/netip"
 	"os/exec"
 	"strconv"
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/nmap"
+	cznmap "github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Ullaakut/nmap/v3"
 )
 
 func TestScanner(t *testing.T) {
@@ -16,12 +20,12 @@ func TestScanner(t *testing.T) {
 	nmapPath, err := exec.LookPath("nmap")
 	require.NoError(t, err, "nmap binary is missing in PATH, please install it first")
 
-	scanner := nmap.NewTLS().WithNmapBinary(nmapPath)
-	sshScanner := nmap.NewSSH().WithNmapBinary(nmapPath)
+	scanner := cznmap.NewTLS().WithNmapBinary(nmapPath)
+	sshScanner := cznmap.NewSSH().WithNmapBinary(nmapPath)
 
 	type given struct {
 		addrPort netip.AddrPort
-		scanner  nmap.Scanner
+		scanner  cznmap.Scanner
 	}
 
 	var testCases = []struct {
@@ -68,4 +72,37 @@ func TestScanner(t *testing.T) {
 		})
 	}
 
+}
+
+func TestParseTLS(t *testing.T) {
+	t.Parallel()
+	rawJSON, err := testdata.ReadFile("testdata/raw.json")
+	require.NoError(t, err)
+	require.NotEmpty(t, rawJSON)
+
+	var raw struct {
+		Info nmap.Host `json:"Info"`
+	}
+	err = json.NewDecoder(bytes.NewReader(rawJSON)).Decode(&raw)
+	require.NoError(t, err)
+
+	detections := cznmap.HostToDetection(raw.Info)
+	for _, compo := range detections.Components {
+		t.Logf("%+v", compo.Name)
+		if compo.CryptoProperties == nil {
+			continue
+		}
+		require.NotNil(t, compo.CryptoProperties)
+		require.NotNil(t, compo.CryptoProperties.ProtocolProperties)
+		require.NotNil(t, compo.CryptoProperties.ProtocolProperties.CipherSuites)
+		for _, suite := range *compo.CryptoProperties.ProtocolProperties.CipherSuites {
+			t.Logf("%+v", suite.Name)
+			require.NotNil(t, suite.Algorithms)
+			require.NotNil(t, suite.Identifiers)
+			for _, algo := range *suite.Algorithms {
+				t.Logf("algo: %s", algo)
+			}
+			t.Logf("identifiers: %+v", *suite.Identifiers)
+		}
+	}
 }

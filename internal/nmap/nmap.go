@@ -111,7 +111,7 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 	}
 
 	return []model.Detection{
-		hostToDetection(r.Info),
+		HostToDetection(r.Info),
 	}, nil
 }
 
@@ -151,7 +151,7 @@ func scan(ctx context.Context, options []nmap.Option) (result, error) {
 	}, nil
 }
 
-func hostToDetection(host nmap.Host) model.Detection {
+func HostToDetection(host nmap.Host) model.Detection {
 	primaryAddr, hostCompo := hostToComponent(host)
 	portCompos := make([]cdx.Component, 0, len(host.Ports))
 	portRefs := make([]string, 0, len(host.Ports))

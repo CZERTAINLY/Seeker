@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"embed"
 	"errors"
 	"io"
 	"log"
@@ -29,6 +30,9 @@ var (
 	http6 netip.AddrPort
 	// http server over ipv4
 	ssh4 netip.AddrPort
+
+	//go:embed testdata/*
+	testdata embed.FS
 )
 
 func TestMain(m *testing.M) {
