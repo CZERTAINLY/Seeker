@@ -11,7 +11,6 @@ import (
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
-//nolint:staticcheck
 func Test_Detect_PKCS12_WithKey(t *testing.T) {
 	_, cert, key := genSelfSignedCert(t)
 
@@ -40,20 +39,20 @@ func Test_Detect_PKCS12_WithKey(t *testing.T) {
 
 func Test_PKCS12_Edge_Cases(t *testing.T) {
 	t.Parallel()
-	
+
 	// Test PKCS12 with different passwords and edge cases
 	_, cert, key := genSelfSignedCert(t)
-	
+
 	// Test with empty password
 	pfx, err := pkcs12.Modern.Encode(key, cert, nil, "")
 	require.NoError(t, err)
-	
+
 	var d czX509.Detector
 	got, err := d.Detect(t.Context(), pfx, "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
 	require.GreaterOrEqual(t, len(got[0].Components), 1)
-	
+
 	// Verify PKCS12 format is detected
 	found := false
 	for _, comp := range got[0].Components {
@@ -67,7 +66,7 @@ func Test_PKCS12_Edge_Cases(t *testing.T) {
 
 func Test_PKCS12_InvalidData(t *testing.T) {
 	t.Parallel()
-	
+
 	// Test PKCS12 sniffing with various invalid data
 	tests := []struct {
 		name string
@@ -82,7 +81,7 @@ func Test_PKCS12_InvalidData(t *testing.T) {
 			0x02, 0x01, 0xFF, // version 255 (too high)
 		}},
 	}
-	
+
 	var d czX509.Detector
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

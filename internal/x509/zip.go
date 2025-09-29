@@ -15,9 +15,9 @@ type zipDetector struct{}
 // detect finds certificates in ZIP files (typically in META-INF for signed Java/Android artifacts)
 func (d zipDetector) detect(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting ZIP/JAR/APK META-INF")
-	
+
 	var out []certHit
-	
+
 	// Check if it's a ZIP file
 	if bytes.HasPrefix(b, []byte("PK\x03\x04")) {
 		for _, h := range scanZIPForCerts(ctx, b) {
@@ -27,7 +27,7 @@ func (d zipDetector) detect(ctx context.Context, b []byte) []certHit {
 			})
 		}
 	}
-	
+
 	return out
 }
 

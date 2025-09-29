@@ -13,16 +13,16 @@ type pemDetector struct{}
 // detect finds all certificates in PEM blocks
 func (d pemDetector) detect(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting ALL PEM blocks anywhere in the blob (handles leading text)")
-	
+
 	var out []certHit
 	rest := b
-	
+
 	for {
 		p, r := pem.Decode(rest)
 		if p == nil {
 			break
 		}
-		
+
 		switch p.Type {
 		case "CERTIFICATE", "TRUSTED CERTIFICATE":
 			if cs, err := x509.ParseCertificates(p.Bytes); err == nil {

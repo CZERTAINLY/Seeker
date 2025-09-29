@@ -99,15 +99,15 @@ func Test_Detect_JKS_PrivateKeyEntry_WithChain(t *testing.T) {
 
 func Test_JKS_Edge_Cases(t *testing.T) {
 	t.Parallel()
-	
+
 	// Test JKS with malformed data to improve sniff coverage
 	badJKSData := []byte{0xFE, 0xED, 0xFE, 0xED, 0x00, 0x00, 0x00, 0x99} // Bad version
-	
+
 	var d czX509.Detector
 	_, err := d.Detect(t.Context(), badJKSData, "testpath")
 	require.Error(t, err)
 	require.ErrorIs(t, err, model.ErrNoMatch)
-	
+
 	// Test with data that looks like magic but isn't long enough
 	shortData := []byte{0xFE, 0xED} // Too short
 	_, err = d.Detect(t.Context(), shortData, "testpath")

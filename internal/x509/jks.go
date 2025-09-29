@@ -16,9 +16,9 @@ type jksDetector struct{}
 // detect finds certificates in JKS/JCEKS keystores
 func (d jksDetector) detect(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting JKS / JCEKS (Java keystores)")
-	
+
 	var out []certHit
-	
+
 	if certs, kind := jksAll(b); len(certs) > 0 && kind != "" {
 		for _, c := range certs {
 			if c != nil {
@@ -26,7 +26,7 @@ func (d jksDetector) detect(ctx context.Context, b []byte) []certHit {
 			}
 		}
 	}
-	
+
 	return out
 }
 

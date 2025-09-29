@@ -15,9 +15,9 @@ type pkcs12Detector struct{}
 // detect finds certificates in PKCS#12/PFX format
 func (d pkcs12Detector) detect(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting PKCS#12 (PFX)")
-	
+
 	var out []certHit
-	
+
 	// Only try if it sniffs as PFX
 	if sniffPKCS12(b) {
 		certs := pkcs12All(b)
@@ -27,7 +27,7 @@ func (d pkcs12Detector) detect(ctx context.Context, b []byte) []certHit {
 			}
 		}
 	}
-	
+
 	return out
 }
 
