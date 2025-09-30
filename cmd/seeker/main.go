@@ -106,7 +106,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 	leaks, err := gitleaks.NewDetector()
 	if err != nil {
-		return nil
+		return err
 	}
 
 	var detectors = []scan.Detector{
