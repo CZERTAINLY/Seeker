@@ -111,6 +111,8 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 		switch {
 		case err == nil:
 			res = append(res, d...)
+			// file was detected, so no point in trying other detectors
+			continue
 		case errors.Is(err, model.ErrNoMatch):
 			// ignore ErrNoMatch
 		default:

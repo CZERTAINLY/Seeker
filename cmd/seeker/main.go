@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
+	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
@@ -103,8 +104,14 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 	b := bom.NewBuilder()
 
+	leaks, err := gitleaks.NewDetector()
+	if err != nil {
+		return nil
+	}
+
 	var detectors = []scan.Detector{
 		x509.Detector{},
+		leaks,
 	}
 	scanner := scan.New(4, detectors)
 	cntAll := 0
