@@ -5,6 +5,7 @@ import (
 )
 
 type Detection struct {
-	Path       string
-	Components []cdx.Component
+	Path         string
+	Components   []cdx.Component
+	Dependencies []cdx.Dependency
 }

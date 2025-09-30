@@ -22,9 +22,10 @@ func init() {
 
 // Builder is a builder pattern for a CycloneDX BOM structure
 type Builder struct {
-	authors    []cdx.OrganizationalContact
-	components []cdx.Component
-	properties []cdx.Property
+	authors      []cdx.OrganizationalContact
+	components   []cdx.Component
+	dependencies []cdx.Dependency
+	properties   []cdx.Property
 }
 
 func NewBuilder() *Builder {
@@ -43,6 +44,11 @@ func (b *Builder) AppendComponents(components ...cdx.Component) *Builder {
 
 func (b *Builder) AppendProperties(properties ...cdx.Property) *Builder {
 	b.properties = append(b.properties, properties...)
+	return b
+}
+
+func (b *Builder) AppendDependencies(dependencies ...cdx.Dependency) *Builder {
+	b.dependencies = append(b.dependencies, dependencies...)
 	return b
 }
 
@@ -90,7 +96,7 @@ func (b *Builder) BOM() cdx.BOM {
 		Components:         &b.components,
 		Services:           &[]cdx.Service{},
 		ExternalReferences: &[]cdx.ExternalReference{},
-		Dependencies:       &[]cdx.Dependency{},
+		Dependencies:       &b.dependencies,
 		Compositions:       &[]cdx.Composition{},
 		Properties:         &b.properties,
 		Vulnerabilities:    &[]cdx.Vulnerability{},

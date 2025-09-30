@@ -74,7 +74,14 @@ func TestBuilder(t *testing.T) {
 		}).AppendProperties(cdx.Property{
 		Name:  "property1",
 		Value: "value1",
-	})
+	}).
+		AppendDependencies(cdx.Dependency{
+			Ref: "ref",
+			Dependencies: &[]string{
+				"dep-1",
+				"dep-2",
+			},
+		})
 
 	err := b.AsJSON(t.Output())
 	require.NoError(t, err)
