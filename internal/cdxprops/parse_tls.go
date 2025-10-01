@@ -148,10 +148,6 @@ var _fallbackNames = map[string]string{
 	"TLS_AKE_WITH_CHACHA20_POLY1305_SHA256": "TLS_CHACHA20_POLY1305_SHA256",
 }
 
-/*
-TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
-*/
-
 // ParseCipherSuite parses a TLS cipher suite name into its components.
 func ParseCipherSuite(name string) (CipherSuite, error) {
 	var ret CipherSuite
