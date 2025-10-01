@@ -18,8 +18,9 @@ const (
 type KeyExchangeAlgorithm string
 
 const (
-	KexRSA   = "RSA"
+	KexDHE   = "DHE"
 	KexECDHE = "ECDHE"
+	KexRSA   = "RSA"
 )
 
 type KeyAuthenticationAlgorithm string
@@ -74,6 +75,7 @@ const (
 )
 
 type CipherSuite struct {
+	Name        string // this is name after all fallbacks are processed
 	Protocol    Protocol
 	KeyExchange KeyExchange
 	Cipher      CipherAlgorithm
@@ -90,6 +92,9 @@ func (c CipherSuite) Algorithms() []cdx.BOMReference {
 		ret = append(ret, cdx.BOMReference(s))
 	}
 	switch c.KeyExchange.Exchange {
+	case KexDHE:
+		add("crypto/algorithm/dhe@1.2.840.10046.2.1")    // ANSI X9.42 dhpublicnumber
+		add("crypto/algorithm/dhe@1.2.840.113549.1.3.1") // PKCS#3 dkKeyAgreement
 	case KexRSA:
 		add("crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1")
 	case KexECDHE:
@@ -143,6 +148,10 @@ var _fallbackNames = map[string]string{
 	"TLS_AKE_WITH_CHACHA20_POLY1305_SHA256": "TLS_CHACHA20_POLY1305_SHA256",
 }
 
+/*
+TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384
+*/
+
 // ParseCipherSuite parses a TLS cipher suite name into its components.
 func ParseCipherSuite(name string) (CipherSuite, error) {
 	var ret CipherSuite
@@ -168,6 +177,8 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 		ret, err = handleTLS13(CipherAES, buf)
 	case "CHACHA20":
 		ret, err = handleTLS13(CipherCHACHA20, buf)
+	case "DHE":
+		ret, err = handleDHE(buf)
 	case "ECDHE":
 		ret, err = handleECDHE(buf)
 	case "RSA":
@@ -183,6 +194,7 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 	if !ok {
 		return ret, fmt.Errorf("unknown code for %q", name)
 	}
+	ret.Name = name
 	ret.Code = code
 	return ret, nil
 }
@@ -219,20 +231,20 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 		case "128":
 			switch rest {
 			case "CBC_SHA":
-				mode, hash = "CBC", "SHA"
+				mode, hash = CipherModeCBC, "SHA"
 			case "CBC_SHA256":
-				mode, hash = "CBC", "SHA256"
+				mode, hash = CipherModeCBC, "SHA256"
 			case "GCM_SHA256":
-				mode, hash = "GCM", "SHA256"
+				mode, hash = CipherModeGCM, "SHA256"
 			default:
 				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
 			}
 		case "256":
 			switch rest {
 			case "CBC_SHA":
-				mode, hash = "CBC", "SHA"
+				mode, hash = CipherModeCBC, "SHA"
 			case "GCM_SHA384":
-				mode, hash = "GCM", "SHA384"
+				mode, hash = CipherModeGCM, "SHA384"
 			default:
 				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
 			}
@@ -250,6 +262,63 @@ func handleRSA(buf []byte) (CipherSuite, error) {
 		Mode:        mode,
 		Hash:        hash,
 	}, nil
+}
+
+func handleDHE(buf []byte) (CipherSuite, error) {
+	var zero CipherSuite
+	var keyExchange KeyExchange
+	kexPart, buf := next(buf)
+	switch kexPart {
+	case "RSA":
+		keyExchange = KeyExchange{Exchange: KexDHE, Auth: KauthRSA}
+	default:
+		return zero, fmt.Errorf("unsupported DHE%s key exchange variant %q", kexPart, string(buf))
+	}
+
+	if ok, nbuf := nextIf(buf, "WITH"); ok {
+		buf = nbuf
+	} else {
+		return zero, fmt.Errorf("expected WITH in %q", string(buf))
+	}
+
+	var cipher CipherAlgorithm
+	var keylen KeyLen
+	var mode CipherMode
+	var hash HashAlgorithm
+	rest := string(buf)
+	switch kexPart {
+	case "RSA":
+		switch rest {
+		case "AES_128_CBC_SHA":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
+		case "AES_128_CBC_SHA256":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
+		case "AES_128_GCM_SHA256":
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
+		case "AES_256_CBC_SHA":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
+		case "AES_256_CBC_SHA256":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA256"
+		case "AES_256_GCM_SHA384":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
+		case "CHACHA20_POLY1305_SHA256":
+			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
+		default:
+			return zero, fmt.Errorf("unsupported %q", rest)
+		}
+	default:
+		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
+	}
+
+	return CipherSuite{
+		Protocol:    TLS,
+		KeyExchange: keyExchange,
+		Cipher:      cipher,
+		KeyLen:      keylen,
+		Mode:        mode,
+		Hash:        hash,
+	}, nil
+
 }
 
 func handleECDHE(buf []byte) (CipherSuite, error) {
@@ -280,15 +349,15 @@ func handleECDHE(buf []byte) (CipherSuite, error) {
 	case "ECDSA":
 		switch rest {
 		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
 		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
 		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "GCM", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
 		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
 		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, "GCM", "SHA384"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
 		case "CHACHA20_POLY1305_SHA256":
 			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
 		case "RC4_128_SHA":
@@ -301,15 +370,17 @@ func handleECDHE(buf []byte) (CipherSuite, error) {
 		case "3DES_EDE_CBC_SHA":
 			cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
 		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
 		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "CBC", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
 		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, "GCM", "SHA256"
+			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
 		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, "CBC", "SHA"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
+		case "AES_256_CBC_SHA384":
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA384"
 		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, "GCM", "SHA384"
+			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
 		case "CHACHA20_POLY1305_SHA256":
 			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
 		case "RC4_128_SHA":

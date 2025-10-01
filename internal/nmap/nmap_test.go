@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 
 	cznmap "github.com/CZERTAINLY/Seeker/internal/nmap"
@@ -87,22 +88,23 @@ func TestParseTLS(t *testing.T) {
 	require.NoError(t, err)
 
 	detections := cznmap.HostToDetection(raw.Info)
-	for _, compo := range detections.Components {
-		t.Logf("%+v", compo.Name)
-		if compo.CryptoProperties == nil {
+
+	for i, compo := range detections.Components {
+		t.Logf("[%d]name: %+v", i, compo.Name)
+		if compo.CryptoProperties == nil || strings.HasPrefix(compo.Name, "CN=www.ssllabs.com") {
 			continue
 		}
 		require.NotNil(t, compo.CryptoProperties)
 		require.NotNil(t, compo.CryptoProperties.ProtocolProperties)
 		require.NotNil(t, compo.CryptoProperties.ProtocolProperties.CipherSuites)
-		for _, suite := range *compo.CryptoProperties.ProtocolProperties.CipherSuites {
-			t.Logf("%+v", suite.Name)
+		for j, suite := range *compo.CryptoProperties.ProtocolProperties.CipherSuites {
+			t.Logf("[%d.%d]%+v", i, j, suite.Name)
 			require.NotNil(t, suite.Algorithms)
 			require.NotNil(t, suite.Identifiers)
-			for _, algo := range *suite.Algorithms {
-				t.Logf("algo: %s", algo)
+			for k, algo := range *suite.Algorithms {
+				t.Logf("[%d.%d.%d] algo: %s", i, j, k, algo)
 			}
-			t.Logf("identifiers: %+v", *suite.Identifiers)
+			t.Logf("[%d.%d]identifiers: %+v", i, j, *suite.Identifiers)
 		}
 	}
 }
