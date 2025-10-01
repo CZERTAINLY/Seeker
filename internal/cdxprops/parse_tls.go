@@ -285,29 +285,25 @@ func handleDHE(buf []byte) (CipherSuite, error) {
 	var keylen KeyLen
 	var mode CipherMode
 	var hash HashAlgorithm
+	var err error
 	rest := string(buf)
 	switch kexPart {
 	case "RSA":
-		switch rest {
-		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
-		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
-		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
-		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
-		case "AES_256_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA256"
-		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
-		case "CHACHA20_POLY1305_SHA256":
-			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
-		default:
-			return zero, fmt.Errorf("unsupported %q", rest)
+		allowed := map[string]struct{}{
+			"AES_128_CBC_SHA":          {},
+			"AES_128_CBC_SHA256":       {},
+			"AES_128_GCM_SHA256":       {},
+			"AES_256_CBC_SHA":          {},
+			"AES_256_CBC_SHA256":       {},
+			"AES_256_GCM_SHA384":       {},
+			"CHACHA20_POLY1305_SHA256": {},
+		}
+		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
+		if err != nil {
+			return zero, err
 		}
 	default:
-		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
+		return zero, fmt.Errorf("unsupported DHE_%s key exchange variant %q", kexPart, string(buf))
 	}
 
 	return CipherSuite{
@@ -344,49 +340,39 @@ func handleECDHE(buf []byte) (CipherSuite, error) {
 	var keylen KeyLen
 	var mode CipherMode
 	var hash HashAlgorithm
+	var err error
 	rest := string(buf)
 	switch kexPart {
 	case "ECDSA":
-		switch rest {
-		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
-		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
-		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
-		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
-		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
-		case "CHACHA20_POLY1305_SHA256":
-			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
-		case "RC4_128_SHA":
-			cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
-		default:
-			return zero, fmt.Errorf("unsupported %q", rest)
+		allowed := map[string]struct{}{
+			"AES_128_CBC_SHA":          {},
+			"AES_128_CBC_SHA256":       {},
+			"AES_128_GCM_SHA256":       {},
+			"AES_256_CBC_SHA":          {},
+			"AES_256_CBC_SHA256":       {},
+			"AES_256_GCM_SHA384":       {},
+			"CHACHA20_POLY1305_SHA256": {},
+			"RC4_128_SHA":              {},
+		}
+		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
+		if err != nil {
+			return zero, err
 		}
 	case "RSA":
-		switch rest {
-		case "3DES_EDE_CBC_SHA":
-			cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
-		case "AES_128_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
-		case "AES_128_CBC_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
-		case "AES_128_GCM_SHA256":
-			cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
-		case "AES_256_CBC_SHA":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
-		case "AES_256_CBC_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA384"
-		case "AES_256_GCM_SHA384":
-			cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
-		case "CHACHA20_POLY1305_SHA256":
-			cipher, keylen, mode, hash = CipherCHACHA20, 0, "POLY1305", "SHA256"
-		case "RC4_128_SHA":
-			cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
-		default:
-			return zero, fmt.Errorf("unsupported %q", rest)
+		allowed := map[string]struct{}{
+			"3DES_EDE_CBC_SHA":         {},
+			"AES_128_CBC_SHA":          {},
+			"AES_128_CBC_SHA256":       {},
+			"AES_128_GCM_SHA256":       {},
+			"AES_256_CBC_SHA":          {},
+			"AES_256_CBC_SHA384":       {},
+			"AES_256_GCM_SHA384":       {},
+			"CHACHA20_POLY1305_SHA256": {},
+			"RC4_128_SHA":              {},
+		}
+		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
+		if err != nil {
+			return zero, err
 		}
 	default:
 		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
@@ -407,15 +393,17 @@ func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 	var keylen KeyLen
 	var mode CipherMode
 	var hash HashAlgorithm
-	switch string(cipher) + "_" + string(buf) {
-	case "AES_128_GCM_SHA256":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, HashSHA256
-	case "AES_256_GCM_SHA384":
-		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, HashSHA384
-	case "CHACHA20_POLY1305_SHA256":
-		cipher, keylen, mode, hash = CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256
-	default:
-		return zero, fmt.Errorf("unsupported %q", string(buf))
+	var err error
+	rest := string(cipher) + "_" + string(buf)
+
+	allowed := map[string]struct{}{
+		"AES_128_GCM_SHA256":       {},
+		"AES_256_GCM_SHA384":       {},
+		"CHACHA20_POLY1305_SHA256": {},
+	}
+	cipher, keylen, mode, hash, err = handleRest(allowed, rest)
+	if err != nil {
+		return zero, err
 	}
 
 	return CipherSuite{
@@ -426,6 +414,44 @@ func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
 		Mode:   mode,
 		Hash:   hash,
 	}, nil
+}
+
+func handleRest(allowed map[string]struct{}, rest string) (CipherAlgorithm, KeyLen, CipherMode, HashAlgorithm, error) {
+	var cipher CipherAlgorithm
+	var keylen KeyLen
+	var mode CipherMode
+	var hash HashAlgorithm
+
+	if _, ok := allowed[rest]; !ok {
+		return cipher, keylen, mode, hash, fmt.Errorf("unsupported %q", rest)
+	}
+
+	switch rest {
+	case "3DES_EDE_CBC_SHA":
+		cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
+	case "AES_128_CBC_SHA":
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
+	case "AES_128_CBC_SHA256":
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
+	case "AES_128_GCM_SHA256":
+		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
+	case "AES_256_CBC_SHA":
+		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
+	case "AES_256_CBC_SHA256":
+		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA256"
+	case "AES_256_CBC_SHA384":
+		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA384"
+	case "AES_256_GCM_SHA384":
+		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
+	case "CHACHA20_POLY1305_SHA256":
+		cipher, keylen, mode, hash = CipherCHACHA20, 0, CipherModePOLY1305, "SHA256"
+	case "RC4_128_SHA":
+		cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
+	default:
+		return cipher, keylen, mode, hash, fmt.Errorf("unsupported %q", rest)
+	}
+
+	return cipher, keylen, mode, hash, nil
 }
 
 // return next "token" and a remainder
