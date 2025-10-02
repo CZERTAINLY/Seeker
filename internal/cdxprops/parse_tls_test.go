@@ -57,8 +57,8 @@ func TestParseCipherSuite(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			suite, err := cdxprops.ParseCipherSuite(tc.name)
-			require.NoError(t, err)
+			suite, ok := cdxprops.ParseCipherSuite(tc.name)
+			require.True(t, ok)
 			require.NotZero(t, suite)
 			algos := suite.Algorithms()
 			require.NotEmpty(t, algos)

@@ -1,9 +1,6 @@
 package cdxprops
 
 import (
-	"bytes"
-	"fmt"
-
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
@@ -75,13 +72,13 @@ const (
 )
 
 type CipherSuite struct {
-	Name        string // this is name after all fallbacks are processed
 	Protocol    Protocol
 	KeyExchange KeyExchange
 	Cipher      CipherAlgorithm
 	KeyLen      KeyLen
 	Mode        CipherMode
 	Hash        HashAlgorithm
+	Name        string
 	Code        CipherSuiteCode
 }
 
@@ -148,8 +145,55 @@ var _fallbackNames = map[string]string{
 	"TLS_AKE_WITH_CHACHA20_POLY1305_SHA256": "TLS_CHACHA20_POLY1305_SHA256",
 }
 
+var byCode = map[CipherSuiteCode]CipherSuite{
+	// TLS 1.3 (no key exchange/auth in struct -> zero KeyExchange)
+	TLS_AES_128_GCM_SHA256:       {TLS, KeyExchange{}, CipherAES, KeyLen128, CipherModeGCM, HashSHA256, "", 0},
+	TLS_AES_256_GCM_SHA384:       {TLS, KeyExchange{}, CipherAES, KeyLen256, CipherModeGCM, HashSHA384, "", 0},
+	TLS_CHACHA20_POLY1305_SHA256: {TLS, KeyExchange{}, CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256, "", 0},
+
+	// RSA
+	TLS_RSA_WITH_RC4_128_SHA:        {TLS, KeyExchange{Exchange: KexRSA}, CipherRC4, KeyLen128, CipherModeEmpty, HashSHA, "", 0},
+	TLS_RSA_WITH_3DES_EDE_CBC_SHA:   {TLS, KeyExchange{Exchange: KexRSA}, Cipher3DES, 0, CipherModeEDE_CBC, HashSHA, "", 0},
+	TLS_RSA_WITH_AES_128_CBC_SHA:    {TLS, KeyExchange{Exchange: KexRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA, "", 0},
+	TLS_RSA_WITH_AES_128_CBC_SHA256: {TLS, KeyExchange{Exchange: KexRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA256, "", 0},
+	TLS_RSA_WITH_AES_128_GCM_SHA256: {TLS, KeyExchange{Exchange: KexRSA}, CipherAES, KeyLen128, CipherModeGCM, HashSHA256, "", 0},
+	TLS_RSA_WITH_AES_256_CBC_SHA:    {TLS, KeyExchange{Exchange: KexRSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA, "", 0},
+	TLS_RSA_WITH_AES_256_GCM_SHA384: {TLS, KeyExchange{Exchange: KexRSA}, CipherAES, KeyLen256, CipherModeGCM, HashSHA384, "", 0},
+
+	// DHE_RSA
+	TLS_DHE_RSA_WITH_AES_128_CBC_SHA:          {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA, "", 0},
+	TLS_DHE_RSA_WITH_AES_128_CBC_SHA256:       {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA256, "", 0},
+	TLS_DHE_RSA_WITH_AES_128_GCM_SHA256:       {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeGCM, HashSHA256, "", 0},
+	TLS_DHE_RSA_WITH_AES_256_CBC_SHA:          {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA, "", 0},
+	TLS_DHE_RSA_WITH_AES_256_CBC_SHA256:       {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA256, "", 0},
+	TLS_DHE_RSA_WITH_AES_256_GCM_SHA384:       {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeGCM, HashSHA384, "", 0},
+	TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256: {TLS, KeyExchange{Exchange: KexDHE, Auth: KauthRSA}, CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256, "", 0},
+
+	// ECDHE_ECDSA
+	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA:          {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA, "", 0},
+	TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA256, "", 0},
+	TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherAES, KeyLen128, CipherModeGCM, HashSHA256, "", 0},
+	TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA:          {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA, "", 0},
+	TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherAES, KeyLen256, CipherModeGCM, HashSHA384, "", 0},
+	TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256: {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256, "", 0},
+	TLS_ECDHE_ECDSA_WITH_RC4_128_SHA:              {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}, CipherRC4, KeyLen128, CipherModeEmpty, HashSHA, "", 0},
+
+	// ECDHE_RSA
+	TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA:         {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, Cipher3DES, 0, CipherModeEDE_CBC, HashSHA, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA:          {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeCBC, HashSHA256, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen128, CipherModeGCM, HashSHA256, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA:          {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeCBC, HashSHA384, "", 0},
+	TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:       {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherAES, KeyLen256, CipherModeGCM, HashSHA384, "", 0},
+	TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256: {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherCHACHA20, 0, CipherModePOLY1305, HashSHA256, "", 0},
+	TLS_ECDHE_RSA_WITH_RC4_128_SHA:              {TLS, KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}, CipherRC4, KeyLen128, CipherModeEmpty, HashSHA, "", 0},
+}
+
 // ParseCipherSuite parses a TLS cipher suite name into its components.
-func ParseCipherSuite(name string) (CipherSuite, error) {
+// this function check fallback names and returned CipherSuite name is
+// always normalized
+func ParseCipherSuite(name string) (CipherSuite, bool) {
 	var ret CipherSuite
 
 	// fallback names
@@ -157,312 +201,17 @@ func ParseCipherSuite(name string) (CipherSuite, error) {
 		name = fallback
 	}
 
-	var buf = []byte(name)
-
-	if isTLS, nbuf := nextIf(buf, "TLS"); isTLS {
-		buf = nbuf
-	} else {
-		return ret, fmt.Errorf("unsupported cipher suite prefix in %q", name)
-	}
-
-	var err error
-	var tok string
-	tok, buf = next(buf)
-	switch tok {
-	case "AES":
-		ret, err = handleTLS13(CipherAES, buf)
-	case "CHACHA20":
-		ret, err = handleTLS13(CipherCHACHA20, buf)
-	case "DHE":
-		ret, err = handleDHE(buf)
-	case "ECDHE":
-		ret, err = handleECDHE(buf)
-	case "RSA":
-		ret, err = handleRSA(buf)
-	default:
-		return ret, fmt.Errorf("unsupported TLS cipher %q, %q", tok, string(buf))
-	}
-	if err != nil {
-		return ret, err
-	}
-
 	code, ok := Code(name)
 	if !ok {
-		return ret, fmt.Errorf("unknown code for %q", name)
-	}
-	ret.Name = name
-	ret.Code = code
-	return ret, nil
-}
-
-func handleRSA(buf []byte) (CipherSuite, error) {
-	var zero CipherSuite
-	if isWith, nbuf := nextIf(buf, "WITH"); isWith {
-		buf = nbuf
-	} else {
-		return zero, fmt.Errorf("expected WITH in %q", string(buf))
-	}
-	cipherToken, buf := next(buf)
-
-	var cipher CipherAlgorithm
-	var keylen KeyLen
-	var mode CipherMode
-	var hash HashAlgorithm
-	switch cipherToken {
-	case "RC4":
-		if !bytes.Equal(buf, []byte("128_SHA")) {
-			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
-		}
-		cipher, keylen, mode, hash = CipherRC4, KeyLen128, CipherModeEmpty, HashSHA
-	case "3DES":
-		if !bytes.Equal(buf, []byte("EDE_CBC_SHA")) {
-			return zero, fmt.Errorf("unsupported %s cipher variant %q", cipherToken, string(buf))
-		}
-		cipher, keylen, mode, hash = Cipher3DES, 0, CipherModeEDE_CBC, HashSHA
-	case "AES":
-		cipher = CipherAES
-		keylen, buf := next(buf)
-		rest := string(buf)
-		switch keylen {
-		case "128":
-			switch rest {
-			case "CBC_SHA":
-				mode, hash = CipherModeCBC, "SHA"
-			case "CBC_SHA256":
-				mode, hash = CipherModeCBC, "SHA256"
-			case "GCM_SHA256":
-				mode, hash = CipherModeGCM, "SHA256"
-			default:
-				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
-			}
-		case "256":
-			switch rest {
-			case "CBC_SHA":
-				mode, hash = CipherModeCBC, "SHA"
-			case "GCM_SHA384":
-				mode, hash = CipherModeGCM, "SHA384"
-			default:
-				return zero, fmt.Errorf("unsupported %s cipher key len %s mode_hash %q", keylen, cipherToken, rest)
-			}
-		default:
-			return zero, fmt.Errorf("unsupported %s cipher keylen %s %q", cipherToken, keylen, string(buf))
-		}
-	default:
-		return zero, fmt.Errorf("unknown cipher %s, %q", cipherToken, string(buf))
-	}
-	return CipherSuite{
-		Protocol:    TLS,
-		KeyExchange: KeyExchange{Exchange: KexRSA},
-		Cipher:      cipher,
-		KeyLen:      keylen,
-		Mode:        mode,
-		Hash:        hash,
-	}, nil
-}
-
-func handleDHE(buf []byte) (CipherSuite, error) {
-	var zero CipherSuite
-	var keyExchange KeyExchange
-	kexPart, buf := next(buf)
-	switch kexPart {
-	case "RSA":
-		keyExchange = KeyExchange{Exchange: KexDHE, Auth: KauthRSA}
-	default:
-		return zero, fmt.Errorf("unsupported DHE%s key exchange variant %q", kexPart, string(buf))
+		return ret, false
 	}
 
-	if ok, nbuf := nextIf(buf, "WITH"); ok {
-		buf = nbuf
-	} else {
-		return zero, fmt.Errorf("expected WITH in %q", string(buf))
+	suite, ok := byCode[code]
+	if !ok {
+		return ret, false
 	}
 
-	var cipher CipherAlgorithm
-	var keylen KeyLen
-	var mode CipherMode
-	var hash HashAlgorithm
-	var err error
-	rest := string(buf)
-	switch kexPart {
-	case "RSA":
-		allowed := map[string]struct{}{
-			"AES_128_CBC_SHA":          {},
-			"AES_128_CBC_SHA256":       {},
-			"AES_128_GCM_SHA256":       {},
-			"AES_256_CBC_SHA":          {},
-			"AES_256_CBC_SHA256":       {},
-			"AES_256_GCM_SHA384":       {},
-			"CHACHA20_POLY1305_SHA256": {},
-		}
-		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
-		if err != nil {
-			return zero, err
-		}
-	default:
-		return zero, fmt.Errorf("unsupported DHE_%s key exchange variant %q", kexPart, string(buf))
-	}
-
-	return CipherSuite{
-		Protocol:    TLS,
-		KeyExchange: keyExchange,
-		Cipher:      cipher,
-		KeyLen:      keylen,
-		Mode:        mode,
-		Hash:        hash,
-	}, nil
-
-}
-
-func handleECDHE(buf []byte) (CipherSuite, error) {
-	var zero CipherSuite
-	var keyExchange KeyExchange
-	kexPart, buf := next(buf)
-	switch kexPart {
-	case "ECDSA":
-		keyExchange = KeyExchange{Exchange: KexECDHE, Auth: KauthECDSA}
-	case "RSA":
-		keyExchange = KeyExchange{Exchange: KexECDHE, Auth: KauthRSA}
-	default:
-		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
-	}
-
-	if ok, nbuf := nextIf(buf, "WITH"); ok {
-		buf = nbuf
-	} else {
-		return zero, fmt.Errorf("expected WITH in %q", string(buf))
-	}
-
-	var cipher CipherAlgorithm
-	var keylen KeyLen
-	var mode CipherMode
-	var hash HashAlgorithm
-	var err error
-	rest := string(buf)
-	switch kexPart {
-	case "ECDSA":
-		allowed := map[string]struct{}{
-			"AES_128_CBC_SHA":          {},
-			"AES_128_CBC_SHA256":       {},
-			"AES_128_GCM_SHA256":       {},
-			"AES_256_CBC_SHA":          {},
-			"AES_256_CBC_SHA256":       {},
-			"AES_256_GCM_SHA384":       {},
-			"CHACHA20_POLY1305_SHA256": {},
-			"RC4_128_SHA":              {},
-		}
-		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
-		if err != nil {
-			return zero, err
-		}
-	case "RSA":
-		allowed := map[string]struct{}{
-			"3DES_EDE_CBC_SHA":         {},
-			"AES_128_CBC_SHA":          {},
-			"AES_128_CBC_SHA256":       {},
-			"AES_128_GCM_SHA256":       {},
-			"AES_256_CBC_SHA":          {},
-			"AES_256_CBC_SHA384":       {},
-			"AES_256_GCM_SHA384":       {},
-			"CHACHA20_POLY1305_SHA256": {},
-			"RC4_128_SHA":              {},
-		}
-		cipher, keylen, mode, hash, err = handleRest(allowed, rest)
-		if err != nil {
-			return zero, err
-		}
-	default:
-		return zero, fmt.Errorf("unsupported ECDHE_%s key exchange variant %q", kexPart, string(buf))
-	}
-
-	return CipherSuite{
-		Protocol:    TLS,
-		KeyExchange: keyExchange,
-		Cipher:      cipher,
-		KeyLen:      keylen,
-		Mode:        mode,
-		Hash:        hash,
-	}, nil
-}
-
-func handleTLS13(cipher CipherAlgorithm, buf []byte) (CipherSuite, error) {
-	var zero CipherSuite
-	var keylen KeyLen
-	var mode CipherMode
-	var hash HashAlgorithm
-	var err error
-	rest := string(cipher) + "_" + string(buf)
-
-	allowed := map[string]struct{}{
-		"AES_128_GCM_SHA256":       {},
-		"AES_256_GCM_SHA384":       {},
-		"CHACHA20_POLY1305_SHA256": {},
-	}
-	cipher, keylen, mode, hash, err = handleRest(allowed, rest)
-	if err != nil {
-		return zero, err
-	}
-
-	return CipherSuite{
-		Protocol: TLS,
-		// KeyAuth is not applicable in TLS 1.3
-		Cipher: cipher,
-		KeyLen: keylen,
-		Mode:   mode,
-		Hash:   hash,
-	}, nil
-}
-
-func handleRest(allowed map[string]struct{}, rest string) (CipherAlgorithm, KeyLen, CipherMode, HashAlgorithm, error) {
-	var cipher CipherAlgorithm
-	var keylen KeyLen
-	var mode CipherMode
-	var hash HashAlgorithm
-
-	if _, ok := allowed[rest]; !ok {
-		return cipher, keylen, mode, hash, fmt.Errorf("unsupported %q", rest)
-	}
-
-	switch rest {
-	case "3DES_EDE_CBC_SHA":
-		cipher, keylen, mode, hash = Cipher3DES, 0, "EDE_CBC", "SHA"
-	case "AES_128_CBC_SHA":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA"
-	case "AES_128_CBC_SHA256":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeCBC, "SHA256"
-	case "AES_128_GCM_SHA256":
-		cipher, keylen, mode, hash = CipherAES, KeyLen128, CipherModeGCM, "SHA256"
-	case "AES_256_CBC_SHA":
-		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA"
-	case "AES_256_CBC_SHA256":
-		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA256"
-	case "AES_256_CBC_SHA384":
-		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeCBC, "SHA384"
-	case "AES_256_GCM_SHA384":
-		cipher, keylen, mode, hash = CipherAES, KeyLen256, CipherModeGCM, "SHA384"
-	case "CHACHA20_POLY1305_SHA256":
-		cipher, keylen, mode, hash = CipherCHACHA20, 0, CipherModePOLY1305, "SHA256"
-	case "RC4_128_SHA":
-		cipher, keylen, mode, hash = CipherRC4, KeyLen128, "", "SHA"
-	default:
-		return cipher, keylen, mode, hash, fmt.Errorf("unsupported %q", rest)
-	}
-
-	return cipher, keylen, mode, hash, nil
-}
-
-// return next "token" and a remainder
-func next(buf []byte) (string, []byte) {
-	i := bytes.IndexByte(buf, '_')
-	if i == -1 {
-		return string(buf), nil
-	}
-	return string(buf[:i]), buf[i+1:]
-}
-
-func nextIf(buf []byte, token string) (bool, []byte) {
-	read, ret := next(buf)
-	if read == token {
-		return true, ret
-	}
-	return false, buf
+	suite.Name = name
+	suite.Code = code
+	return suite, true
 }

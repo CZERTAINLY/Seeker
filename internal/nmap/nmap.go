@@ -290,9 +290,9 @@ func nameToProtoVersion(name string) string {
 }
 
 func identifiers(name string) (cdx.CipherSuite, bool) {
-	spec, err := props.ParseCipherSuite(name)
-	if err != nil {
-		slog.Warn("skipping unsupported cipher suite", "name", name, "error", err)
+	spec, ok := props.ParseCipherSuite(name)
+	if !ok {
+		slog.Warn("skipping unsupported cipher suite", "name", name)
 		return cdx.CipherSuite{}, false
 	}
 
