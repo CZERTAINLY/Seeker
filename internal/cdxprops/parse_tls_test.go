@@ -64,4 +64,11 @@ func TestParseCipherSuite(t *testing.T) {
 			require.NotEmpty(t, algos)
 		})
 	}
+
+	t.Run("unsupported cipher suite", func(t *testing.T) {
+		t.Parallel()
+		suite, ok := cdxprops.ParseCipherSuite("TLS_WHICH_DOES_NOT_EXIST")
+		require.False(t, ok)
+		require.Zero(t, suite)
+	})
 }
