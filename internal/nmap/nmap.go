@@ -3,6 +3,7 @@ package nmap
 import (
 	"context"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	props "github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/x509"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/Ullaakut/nmap/v3"
@@ -224,6 +226,8 @@ func parseScripts(scripts []nmap.Script) ([]cdx.Property, []cdx.Component) {
 		switch s.ID {
 		case "ssl-enum-ciphers":
 			components = append(components, sslEnumCiphers(s)...)
+		case "ssl-cert":
+			components = append(components, sslCert(s)...)
 		default:
 			scriptProps = append(scriptProps, cdx.Property{
 				Name:  fmt.Sprintf("nmap:script:%s", s.ID),
@@ -285,11 +289,11 @@ func nameToProtoVersion(name string) string {
 	return after
 }
 
-func identifiers(name string) (*[]cdx.BOMReference, *[]string) {
-	spec, err := props.ParseCipherSuite(name)
-	if err != nil {
-		slog.Warn("skipping unsupported cipher suite", "name", name, "error", err)
-		return nil, nil
+func identifiers(name string) (cdx.CipherSuite, bool) {
+	spec, ok := props.ParseCipherSuite(name)
+	if !ok {
+		slog.Warn("skipping unsupported cipher suite", "name", name)
+		return cdx.CipherSuite{}, false
 	}
 
 	algorithms := spec.Algorithms()
@@ -299,7 +303,11 @@ func identifiers(name string) (*[]cdx.BOMReference, *[]string) {
 		fmt.Sprintf("0x%X", byte(code>>8)),
 		fmt.Sprintf("0x%X", byte(code&0xFF)),
 	}
-	return &algorithms, &identifiers
+	return cdx.CipherSuite{
+		Name:        spec.Name,
+		Algorithms:  &algorithms,
+		Identifiers: &identifiers,
+	}, true
 }
 
 func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
@@ -311,13 +319,11 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 		for _, cipher := range row.Tables {
 			for _, element := range cipher.Elements {
 				if element.Key == "name" {
-					algorithms, identifiers := identifiers(element.Value)
-					s := cdx.CipherSuite{
-						Name:        element.Value,
-						Algorithms:  algorithms,
-						Identifiers: identifiers,
+					suite, ok := identifiers(element.Value)
+					if !ok {
+						continue
 					}
-					ret = append(ret, s)
+					ret = append(ret, suite)
 				}
 			}
 		}
@@ -326,4 +332,24 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 		return nil
 	}
 	return &ret
+}
+
+func sslCert(s nmap.Script) []cdx.Component {
+	var components []cdx.Component
+
+	for _, row := range s.Elements {
+		if row.Key == "pem" {
+			val := html.UnescapeString(row.Value)
+			detections, err := x509.Detector{}.Detect(context.TODO(), []byte(val), "nmap")
+			if err != nil {
+				slog.Error("parsing certificate from nmap ssl-cert", "error", err)
+				return nil
+			}
+			for _, d := range detections {
+				components = append(components, d.Components...)
+			}
+			return components
+		}
+	}
+	return nil
 }

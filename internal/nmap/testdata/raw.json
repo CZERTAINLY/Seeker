@@ -91,6 +91,239 @@
           "reason_ttl": 0
         },
         "scripts": [
+        {
+          "id": "ssl-cert",
+          "output": "Subject: commonName=www.ssllabs.com/organizationName=Qualys, Inc./stateOrProvinceName=California/countryName=US\nSubject Alternative Name: DNS:www.ssllabs.com, DNS:ssllabs.com, DNS:api.ssllabs.com, DNS:clienttest.ssllabs.com, DNS:plaintext.ssllabs.com, DNS:entrust.ssllabs.com, DNS:globalsign.ssllabs.com, DNS:casecurity.ssllabs.com, DNS:wosign.ssllabs.com, DNS:akamai.ssllabs.com, DNS:ota.ssllabs.com, DNS:trustzone.ssllabs.com, DNS:biznet.ssllabs.com, DNS:comodo.ssllabs.com, DNS:globaltrust.ssllabs.com, DNS:secure128.ssllabs.com, DNS:networking4all.ssllabs.com, DNS:geocerts.ssllabs.com, DNS:staging.ssllabs.com\nIssuer: commonName=DigiCert Global G2 TLS RSA SHA256 2020 CA1/organizationName=DigiCert Inc/countryName=US\nPublic Key type: rsa\nPublic Key bits: 2048\nSignature Algorithm: sha256WithRSAEncryption\nNot valid before: 2025-07-25T00:00:00\nNot valid after:  2026-07-24T23:59:59\nMD5:   fce6:1cdf:603e:8a09:e5ce:6d11:58be:6d52\nSHA-1: fbcf:c636:0507:a8b5:1578:c00e:0dea:422a:2305:5515",
+          "elements": [
+            {
+              "key": "sig_algo",
+              "value": "sha256WithRSAEncryption"
+            },
+            {
+              "key": "md5",
+              "value": "fce61cdf603e8a09e5ce6d1158be6d52"
+            },
+            {
+              "key": "sha1",
+              "value": "fbcfc6360507a8b51578c00e0dea422a23055515"
+            },
+            {
+              "key": "pem",
+              "value": "-\u0026#45;\u0026#45;\u0026#45;\u0026#45;BEGIN CERTIFICATE-\u0026#45;\u0026#45;\u0026#45;\u0026#45;\u0026#xa;MIIIYDCCB0igAwIBAgIQDndMo7H5AH3ur3gQS1XyDjANBgkqhkiG9w0BAQsFADBZ\u0026#xa;MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMTMwMQYDVQQDEypE\u0026#xa;aWdpQ2VydCBHbG9iYWwgRzIgVExTIFJTQSBTSEEyNTYgMjAyMCBDQTEwHhcNMjUw\u0026#xa;NzI1MDAwMDAwWhcNMjYwNzI0MjM1OTU5WjBpMQswCQYDVQQGEwJVUzETMBEGA1UE\u0026#xa;CBMKQ2FsaWZvcm5pYTEUMBIGA1UEBxMLRm9zdGVyIENpdHkxFTATBgNVBAoTDFF1\u0026#xa;YWx5cywgSW5jLjEYMBYGA1UEAxMPd3d3LnNzbGxhYnMuY29tMIIBIjANBgkqhkiG\u0026#xa;9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuBAUS3EAFhVJeUQEAE+xTwn9MZniNQI3m+IT\u0026#xa;tZuLQ1z7FIspKEFh4aVFJ/T/Sn279s8OA/p9Qv5rkugehNCS8VrKcQorb/9XQN0B\u0026#xa;y7f6CZKarycJqiecVrG+qF5RTsiHnl0oxj4y4BY+wa0uqzLZ+pVh1zwua/ZP7A3i\u0026#xa;Y04gCXMM0xxtW1051BoL4dslYapb5Bcy9QsLNBXOjDncC+SoJkTWe9BKy6yzznwP\u0026#xa;JovQWgQkgyuV7n6GNmvc+0dxpamQ+O6zD7JlCcvH9CkefBl7u0/Wj3Ozxws5iNvB\u0026#xa;vX/5wEzenduY48IJAxrEhhJ8Y26Ulbe16s7NzzRsqzcu+QR5MQIDAQABo4IFEjCC\u0026#xa;BQ4wHwYDVR0jBBgwFoAUdIWAwGbH3zfez70pN6oDHb7tzRcwHQYDVR0OBBYEFJFP\u0026#xa;JGBSp5pbHuMbPm5OF22e63rSMIIBnwYDVR0RBIIBljCCAZKCD3d3dy5zc2xsYWJz\u0026#xa;LmNvbYILc3NsbGFicy5jb22CD2FwaS5zc2xsYWJzLmNvbYIWY2xpZW50dGVzdC5z\u0026#xa;c2xsYWJzLmNvbYIVcGxhaW50ZXh0LnNzbGxhYnMuY29tghNlbnRydXN0LnNzbGxh\u0026#xa;YnMuY29tghZnbG9iYWxzaWduLnNzbGxhYnMuY29tghZjYXNlY3VyaXR5LnNzbGxh\u0026#xa;YnMuY29tghJ3b3NpZ24uc3NsbGFicy5jb22CEmFrYW1haS5zc2xsYWJzLmNvbYIP\u0026#xa;b3RhLnNzbGxhYnMuY29tghV0cnVzdHpvbmUuc3NsbGFicy5jb22CEmJpem5ldC5z\u0026#xa;c2xsYWJzLmNvbYISY29tb2RvLnNzbGxhYnMuY29tghdnbG9iYWx0cnVzdC5zc2xs\u0026#xa;YWJzLmNvbYIVc2VjdXJlMTI4LnNzbGxhYnMuY29tghpuZXR3b3JraW5nNGFsbC5z\u0026#xa;c2xsYWJzLmNvbYIUZ2VvY2VydHMuc3NsbGFicy5jb22CE3N0YWdpbmcuc3NsbGFi\u0026#xa;cy5jb20wPgYDVR0gBDcwNTAzBgZngQwBAgIwKTAnBggrBgEFBQcCARYbaHR0cDov\u0026#xa;L3d3dy5kaWdpY2VydC5jb20vQ1BTMA4GA1UdDwEB/wQEAwIFoDAdBgNVHSUEFjAU\u0026#xa;BggrBgEFBQcDAQYIKwYBBQUHAwIwgZ8GA1UdHwSBlzCBlDBIoEagRIZCaHR0cDov\u0026#xa;L2NybDMuZGlnaWNlcnQuY29tL0RpZ2lDZXJ0R2xvYmFsRzJUTFNSU0FTSEEyNTYy\u0026#xa;MDIwQ0ExLTEuY3JsMEigRqBEhkJodHRwOi8vY3JsNC5kaWdpY2VydC5jb20vRGln\u0026#xa;aUNlcnRHbG9iYWxHMlRMU1JTQVNIQTI1NjIwMjBDQTEtMS5jcmwwgYcGCCsGAQUF\u0026#xa;BwEBBHsweTAkBggrBgEFBQcwAYYYaHR0cDovL29jc3AuZGlnaWNlcnQuY29tMFEG\u0026#xa;CCsGAQUFBzAChkVodHRwOi8vY2FjZXJ0cy5kaWdpY2VydC5jb20vRGlnaUNlcnRH\u0026#xa;bG9iYWxHMlRMU1JTQVNIQTI1NjIwMjBDQTEtMS5jcnQwDAYDVR0TAQH/BAIwADCC\u0026#xa;AX4GCisGAQQB1nkCBAIEggFuBIIBagFoAHcA2AlVO5RPev/IFhlvlE+Fq7D4/F6H\u0026#xa;VSYPFdEucrtFSxQAAAGYQDrLBQAABAMASDBGAiEAnkA3/i6v0B9KzoK/S6R+p35Q\u0026#xa;/v80vRQbqeJ8bQaJdtQCIQCP4WV+AdX/GIxxHpW+hfgdoeQ2yrP00qTzYTrun15T\u0026#xa;wgB1AMIxfldFGaNF7n843rKQQevHwiFaIr9/1bWtdprZDlLNAAABmEA6ywgAAAQD\u0026#xa;AEYwRAIgRV8DpJgylsWGe89E3P+MTfL5mfA4CZ8H5IIAAnKszsQCIHAJmvj+JxGW\u0026#xa;klwLu5IBolJqcCG+GFSMwheWo6+JLMaJAHYAlE5Dh/rswe+B8xkkJqgYZQHH0184\u0026#xa;AgE/cmd9VTcuGdgAAAGYQDrLIQAABAMARzBFAiEApPXpRj5NHbrm8YYZgqra/mv3\u0026#xa;JtdaBro2RPvgpTJQVakCIE9uymsmemV6Ym14l4p7L9DZ0sD/iQ1NLWA/lAyuuMAr\u0026#xa;MA0GCSqGSIb3DQEBCwUAA4IBAQB+9dJ2WloNynaGrWI+Ved2t2G0r3W90mXo7kvS\u0026#xa;qsFV+IsF78vH42SjKfvKscZZGPH4xQqfkT9pbaf+ys54fR0yjkX0751EpoSkJ3Mg\u0026#xa;RZqPxSgrUEG4fp+MdcxDiT843Ism3IN29Q8vtTvx2q34txrZq5wmwd/rPh9SdRMs\u0026#xa;rXACd5TV79gom9pnxvKIn8TsRLQGVWyHDi0NF3eMVo83JkXLf1+v11uKDXOtEBGt\u0026#xa;EtZgvRPE/Ywn6XC4Ow/HfeqHZ/MrrhGopemTtO2HkU1HQpm2dxFXIyCTCf+ezrbH\u0026#xa;7ZXRtk/Cr5S3QTEbEo0AcdwClj4VJvlyZ/vuwZwZyDpYwlD9\u0026#xa;-\u0026#45;\u0026#45;\u0026#45;\u0026#45;END CERTIFICATE-\u0026#45;\u0026#45;\u0026#45;\u0026#45;\u0026#xa;"
+            }
+          ],
+          "tables": [
+            {
+              "key": "subject",
+              "elements": [
+                {
+                  "key": "commonName",
+                  "value": "www.ssllabs.com"
+                },
+                {
+                  "key": "countryName",
+                  "value": "US"
+                },
+                {
+                  "key": "localityName",
+                  "value": "Foster City"
+                },
+                {
+                  "key": "organizationName",
+                  "value": "Qualys, Inc."
+                },
+                {
+                  "key": "stateOrProvinceName",
+                  "value": "California"
+                }
+              ]
+            },
+            {
+              "key": "issuer",
+              "elements": [
+                {
+                  "key": "commonName",
+                  "value": "DigiCert Global G2 TLS RSA SHA256 2020 CA1"
+                },
+                {
+                  "key": "countryName",
+                  "value": "US"
+                },
+                {
+                  "key": "organizationName",
+                  "value": "DigiCert Inc"
+                }
+              ]
+            },
+            {
+              "key": "pubkey",
+              "elements": [
+                {
+                  "key": "type",
+                  "value": "rsa"
+                },
+                {
+                  "key": "bits",
+                  "value": "2048"
+                },
+                {
+                  "key": "modulus",
+                  "value": "B810144B7100161549794404004FB14F09FD3199E23502379BE213B59B8B435CFB148B29284161E1A54527F4FF4A7DBBF6CF0E03FA7D42FE6B92E81E84D092F15ACA710A2B6FFF5740DD01CBB7FA09929AAF2709AA279C56B1BEA85E514EC8879E5D28C63E32E0163EC1AD2EAB32D9FA9561D73C2E6BF64FEC0DE2634E2009730CD31C6D5B5D39D41A0BE1DB2561AA5BE41732F50B0B3415CE8C39DC0BE4A82644D67BD04ACBACB3CE7C0F268BD05A0424832B95EE7E86366BDCFB4771A5A990F8EEB30FB26509CBC7F4291E7C197BBB4FD68F73B3C70B3988DBC1BD7FF9C04CDE9DDB98E3C209031AC486127C636E9495B7B5EACECDCF346CAB372EF9047931"
+                },
+                {
+                  "key": "exponent",
+                  "value": "65537"
+                }
+              ]
+            },
+            {
+              "key": "extensions",
+              "tables": [
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Authority Key Identifier"
+                    },
+                    {
+                      "key": "value",
+                      "value": "74:85:80:C0:66:C7:DF:37:DE:CF:BD:29:37:AA:03:1D:BE:ED:CD:17"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Subject Key Identifier"
+                    },
+                    {
+                      "key": "value",
+                      "value": "91:4F:24:60:52:A7:9A:5B:1E:E3:1B:3E:6E:4E:17:6D:9E:EB:7A:D2"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Subject Alternative Name"
+                    },
+                    {
+                      "key": "value",
+                      "value": "DNS:www.ssllabs.com, DNS:ssllabs.com, DNS:api.ssllabs.com, DNS:clienttest.ssllabs.com, DNS:plaintext.ssllabs.com, DNS:entrust.ssllabs.com, DNS:globalsign.ssllabs.com, DNS:casecurity.ssllabs.com, DNS:wosign.ssllabs.com, DNS:akamai.ssllabs.com, DNS:ota.ssllabs.com, DNS:trustzone.ssllabs.com, DNS:biznet.ssllabs.com, DNS:comodo.ssllabs.com, DNS:globaltrust.ssllabs.com, DNS:secure128.ssllabs.com, DNS:networking4all.ssllabs.com, DNS:geocerts.ssllabs.com, DNS:staging.ssllabs.com"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Certificate Policies"
+                    },
+                    {
+                      "key": "value",
+                      "value": "Policy: 2.23.140.1.2.2\u0026#xa;  CPS: http://www.digicert.com/CPS"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Key Usage"
+                    },
+                    {
+                      "key": "value",
+                      "value": "Digital Signature, Key Encipherment"
+                    },
+                    {
+                      "key": "critical",
+                      "value": "true"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Extended Key Usage"
+                    },
+                    {
+                      "key": "value",
+                      "value": "TLS Web Server Authentication, TLS Web Client Authentication"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 CRL Distribution Points"
+                    },
+                    {
+                      "key": "value",
+                      "value": "Full Name:\u0026#xa;  URI:http://crl3.digicert.com/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crl\u0026#xa;\u0026#xa;Full Name:\u0026#xa;  URI:http://crl4.digicert.com/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crl\u0026#xa;"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "Authority Information Access"
+                    },
+                    {
+                      "key": "value",
+                      "value": "OCSP - URI:http://ocsp.digicert.com\u0026#xa;CA Issuers - URI:http://cacerts.digicert.com/DigiCertGlobalG2TLSRSASHA2562020CA1-1.crt"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "X509v3 Basic Constraints"
+                    },
+                    {
+                      "key": "value",
+                      "value": "CA:FALSE"
+                    },
+                    {
+                      "key": "critical",
+                      "value": "true"
+                    }
+                  ]
+                },
+                {
+                  "elements": [
+                    {
+                      "key": "name",
+                      "value": "CT Precertificate SCTs"
+                    },
+                    {
+                      "key": "value",
+                      "value": "Signed Certificate Timestamp:\u0026#xa;    Version   : v1 (0x0)\u0026#xa;    Log ID    : D8:09:55:3B:94:4F:7A:FF:C8:16:19:6F:94:4F:85:AB:\u0026#xa;                B0:F8:FC:5E:87:55:26:0F:15:D1:2E:72:BB:45:4B:14\u0026#xa;    Timestamp : Jul 25 06:17:31.653 2025 GMT\u0026#xa;    Extensions: none\u0026#xa;    Signature : ecdsa-with-SHA256\u0026#xa;                30:46:02:21:00:9E:40:37:FE:2E:AF:D0:1F:4A:CE:82:\u0026#xa;                BF:4B:A4:7E:A7:7E:50:FE:FF:34:BD:14:1B:A9:E2:7C:\u0026#xa;                6D:06:89:76:D4:02:21:00:8F:E1:65:7E:01:D5:FF:18:\u0026#xa;                8C:71:1E:95:BE:85:F8:1D:A1:E4:36:CA:B3:F4:D2:A4:\u0026#xa;                F3:61:3A:EE:9F:5E:53:C2\u0026#xa;Signed Certificate Timestamp:\u0026#xa;    Version   : v1 (0x0)\u0026#xa;    Log ID    : C2:31:7E:57:45:19:A3:45:EE:7F:38:DE:B2:90:41:EB:\u0026#xa;                C7:C2:21:5A:22:BF:7F:D5:B5:AD:76:9A:D9:0E:52:CD\u0026#xa;    Timestamp : Jul 25 06:17:31.656 2025 GMT\u0026#xa;    Extensions: none\u0026#xa;    Signature : ecdsa-with-SHA256\u0026#xa;                30:44:02:20:45:5F:03:A4:98:32:96:C5:86:7B:CF:44:\u0026#xa;                DC:FF:8C:4D:F2:F9:99:F0:38:09:9F:07:E4:82:00:02:\u0026#xa;                72:AC:CE:C4:02:20:70:09:9A:F8:FE:27:11:96:92:5C:\u0026#xa;                0B:BB:92:01:A2:52:6A:70:21:BE:18:54:8C:C2:17:96:\u0026#xa;                A3:AF:89:2C:C6:89\u0026#xa;Signed Certificate Timestamp:\u0026#xa;    Version   : v1 (0x0)\u0026#xa;    Log ID    : 94:4E:43:87:FA:EC:C1:EF:81:F3:19:24:26:A8:18:65:\u0026#xa;                01:C7:D3:5F:38:02:01:3F:72:67:7D:55:37:2E:19:D8\u0026#xa;    Timestamp : Jul 25 06:17:31.681 2025 GMT\u0026#xa;    Extensions: none\u0026#xa;    Signature : ecdsa-with-SHA256\u0026#xa;                30:45:02:21:00:A4:F5:E9:46:3E:4D:1D:BA:E6:F1:86:\u0026#xa;                19:82:AA:DA:FE:6B:F7:26:D7:5A:06:BA:36:44:FB:E0:\u0026#xa;                A5:32:50:55:A9:02:20:4F:6E:CA:6B:26:7A:65:7A:62:\u0026#xa;                6D:78:97:8A:7B:2F:D0:D9:D2:C0:FF:89:0D:4D:2D:60:\u0026#xa;                3F:94:0C:AE:B8:C0:2B"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "key": "validity",
+              "elements": [
+                {
+                  "key": "notBefore",
+                  "value": "2025-07-25T00:00:00"
+                },
+                {
+                  "key": "notAfter",
+                  "value": "2026-07-24T23:59:59"
+                }
+              ]
+            }
+          ]
+        },
           {
             "id": "ssl-enum-ciphers",
             "output": "\n  TLSv1.3: \n    ciphers: \n      TLS_AKE_WITH_AES_128_GCM_SHA256 (ecdh_x25519) - A\n      TLS_AKE_WITH_AES_256_GCM_SHA384 (ecdh_x25519) - A\n      TLS_AKE_WITH_CHACHA20_POLY1305_SHA256 (ecdh_x25519) - A\n    cipher preference: server\n    cipher preference error: Network error\n  least strength: A",

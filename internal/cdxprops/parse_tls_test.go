@@ -43,16 +43,32 @@ func TestParseCipherSuite(t *testing.T) {
 		{"TLS_AES_128_GCM_SHA256"},
 		{"TLS_AES_256_GCM_SHA384"},
 		{"TLS_CHACHA20_POLY1305_SHA256"},
+		// suites returned by ssllabs.com
+		{"TLS_DHE_RSA_WITH_AES_128_CBC_SHA"},
+		{"TLS_DHE_RSA_WITH_AES_128_CBC_SHA256"},
+		{"TLS_DHE_RSA_WITH_AES_128_GCM_SHA256"},
+		{"TLS_DHE_RSA_WITH_AES_256_CBC_SHA"},
+		{"TLS_DHE_RSA_WITH_AES_256_CBC_SHA256"},
+		{"TLS_DHE_RSA_WITH_AES_256_GCM_SHA384"},
+		{"TLS_DHE_RSA_WITH_CHACHA20_POLY1305_SHA256"},
+		{"TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384"},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			suite, err := cdxprops.ParseCipherSuite(tc.name)
-			require.NoError(t, err)
+			suite, ok := cdxprops.ParseCipherSuite(tc.name)
+			require.True(t, ok)
 			require.NotZero(t, suite)
 			algos := suite.Algorithms()
 			require.NotEmpty(t, algos)
 		})
 	}
+
+	t.Run("unsupported cipher suite", func(t *testing.T) {
+		t.Parallel()
+		suite, ok := cdxprops.ParseCipherSuite("TLS_WHICH_DOES_NOT_EXIST")
+		require.False(t, ok)
+		require.Zero(t, suite)
+	})
 }
