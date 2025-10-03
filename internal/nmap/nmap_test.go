@@ -87,11 +87,17 @@ func TestParseTLS(t *testing.T) {
 	err = json.NewDecoder(bytes.NewReader(rawJSON)).Decode(&raw)
 	require.NoError(t, err)
 
-	detections := cznmap.HostToDetection(raw.Info)
+	detections := cznmap.HostToDetection(t.Context(), raw.Info)
 
 	for i, compo := range detections.Components {
 		t.Logf("[%d]name: %+v", i, compo.Name)
 		if compo.CryptoProperties == nil || strings.HasPrefix(compo.Name, "CN=www.ssllabs.com") {
+			continue
+		}
+		if compo.Name == "ecdsa-sha2-nistp256" {
+			require.NotNil(t, compo.CryptoProperties)
+			require.NotNil(t, compo.CryptoProperties.AlgorithmProperties)
+			require.NotNil(t, compo.Properties)
 			continue
 		}
 		require.NotNil(t, compo.CryptoProperties)

@@ -2,10 +2,12 @@ package nmap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
 	"net/netip"
+	"os"
 	"strings"
 	"time"
 
@@ -23,6 +25,7 @@ type Scanner struct {
 	nmap    string
 	ports   []string
 	options []nmap.Option
+	rawPath string
 }
 
 // NewTLS creates a nmap scanner with -sV and --script ssl-enum-ciphers,ssl-cert
@@ -57,6 +60,11 @@ func (s Scanner) WithPorts(defs ...string) Scanner {
 	return ret
 }
 
+func (s Scanner) WithRawPath(path string) Scanner {
+	s.rawPath = path
+	return s
+}
+
 func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection, error) {
 	options := s.options
 	if s.nmap != "" {
@@ -87,24 +95,38 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 		),
 		slog.String("target", addr.String()),
 	)
-	r, err := scan(logCtx, options)
+	run, err := scan(logCtx, options)
 	if err != nil {
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
+	if s.rawPath != "" {
+		raw, err := os.Create(s.rawPath)
+		if err != nil {
+			return nil, fmt.Errorf("saving raw nmap output: %w", err)
+		}
+		defer func() { _ = raw.Close() }()
+		enc := json.NewEncoder(raw)
+		enc.SetIndent("", "  ")
+		err = enc.Encode(run)
+		if err != nil {
+			return nil, fmt.Errorf("encoding raw nmap output: %w", err)
+		}
+	}
+
+	if len(run.Hosts) == 0 {
+		return nil, fmt.Errorf("nmap scan: no hosts results, use --raw to save raw nmap results")
+	}
+
 	return []model.Detection{
-		HostToDetection(r.Info),
+		HostToDetection(ctx, run.Hosts[0]),
 	}, nil
 }
 
-type result struct {
-	Info nmap.Host
-}
-
-func scan(ctx context.Context, options []nmap.Option) (result, error) {
+func scan(ctx context.Context, options []nmap.Option) (*nmap.Run, error) {
 	scanner, err := nmap.NewScanner(ctx, options...)
 	if err != nil {
-		return result{}, fmt.Errorf("creating nmap scanner: %w", err)
+		return nil, fmt.Errorf("creating nmap scanner: %w", err)
 	}
 
 	now := time.Now()
@@ -112,12 +134,12 @@ func scan(ctx context.Context, options []nmap.Option) (result, error) {
 	scan, warningsp, err := scanner.Run()
 	if err != nil {
 		slog.DebugContext(ctx, "scan failed", "error", err)
-		return result{}, fmt.Errorf("nmap scan: %w", err)
+		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
 	if len(scan.Hosts) == 0 {
 		slog.DebugContext(ctx, "scan found nothing")
-		return result{}, model.ErrNoMatch
+		return nil, model.ErrNoMatch
 	}
 
 	slog.DebugContext(ctx, "scan finished", "elapsed", time.Since(now).String())
@@ -128,17 +150,15 @@ func scan(ctx context.Context, options []nmap.Option) (result, error) {
 		}
 	}
 
-	return result{
-		Info: scan.Hosts[0],
-	}, nil
+	return scan, nil
 }
 
-func HostToDetection(host nmap.Host) model.Detection {
+func HostToDetection(ctx context.Context, host nmap.Host) model.Detection {
 	primaryAddr, hostCompo := hostToComponent(host)
 	portCompos := make([]cdx.Component, 0, len(host.Ports))
 	portRefs := make([]string, 0, len(host.Ports))
 	for _, port := range host.Ports {
-		compo := portToComponents(primaryAddr, port)
+		compo := portToComponents(ctx, primaryAddr, port)
 		portCompos = append(portCompos, compo...)
 		for _, compo := range compo {
 			portRefs = append(portRefs, compo.BOMRef)
@@ -181,14 +201,14 @@ func hostToComponent(host nmap.Host) (string, cdx.Component) {
 	}
 }
 
-func portToComponents(primaryAddr string, port nmap.Port) []cdx.Component {
+func portToComponents(ctx context.Context, primaryAddr string, port nmap.Port) []cdx.Component {
 	state := strings.ToLower(port.State.State)
 	proto := strings.ToLower(port.Protocol)
 
 	ref := fmt.Sprintf("nmap:%s/%s/%s:%d", proto, state, primaryAddr, port.ID)
 
 	// Collect script outputs (e.g. ssl-enum-ciphers, ssl-cert)
-	scriptProps, compos := parseScripts(port.Scripts)
+	scriptProps, compos := parseScripts(ctx, port.Scripts)
 
 	props := []cdx.Property{
 		{Name: "nmap:port", Value: fmt.Sprintf("%d", port.ID)},
@@ -219,15 +239,17 @@ func addresses(host nmap.Host) string {
 	return strings.Join(addresses, ",")
 }
 
-func parseScripts(scripts []nmap.Script) ([]cdx.Property, []cdx.Component) {
+func parseScripts(ctx context.Context, scripts []nmap.Script) ([]cdx.Property, []cdx.Component) {
 	var scriptProps []cdx.Property
 	var components []cdx.Component
 	for _, s := range scripts {
 		switch s.ID {
 		case "ssl-enum-ciphers":
-			components = append(components, sslEnumCiphers(s)...)
+			components = append(components, sslEnumCiphers(ctx, s)...)
 		case "ssl-cert":
-			components = append(components, sslCert(s)...)
+			components = append(components, sslCert(ctx, s)...)
+		case "ssh-hostkey":
+			components = append(components, sshHostKey(ctx, s)...)
 		default:
 			scriptProps = append(scriptProps, cdx.Property{
 				Name:  fmt.Sprintf("nmap:script:%s", s.ID),
@@ -238,7 +260,7 @@ func parseScripts(scripts []nmap.Script) ([]cdx.Property, []cdx.Component) {
 	return scriptProps, components
 }
 
-func sslEnumCiphers(s nmap.Script) []cdx.Component {
+func sslEnumCiphers(ctx context.Context, s nmap.Script) []cdx.Component {
 	var components []cdx.Component
 
 	for _, row := range s.Tables {
@@ -250,7 +272,7 @@ func sslEnumCiphers(s nmap.Script) []cdx.Component {
 				ProtocolProperties: &cdx.CryptoProtocolProperties{
 					Type:         cdx.CryptoProtocolTypeTLS,
 					Version:      nameToProtoVersion(row.Key),
-					CipherSuites: cipherSuites(row.Tables),
+					CipherSuites: cipherSuites(ctx, row.Tables),
 				},
 				OID: "1.3.18.0.2.32.104",
 			},
@@ -289,10 +311,10 @@ func nameToProtoVersion(name string) string {
 	return after
 }
 
-func identifiers(name string) (cdx.CipherSuite, bool) {
+func identifiers(ctx context.Context, name string) (cdx.CipherSuite, bool) {
 	spec, ok := props.ParseCipherSuite(name)
 	if !ok {
-		slog.Warn("skipping unsupported cipher suite", "name", name)
+		slog.WarnContext(ctx, "skipping unsupported cipher suite", "name", name)
 		return cdx.CipherSuite{}, false
 	}
 
@@ -310,7 +332,7 @@ func identifiers(name string) (cdx.CipherSuite, bool) {
 	}, true
 }
 
-func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
+func cipherSuites(ctx context.Context, tables []nmap.Table) *[]cdx.CipherSuite {
 	var ret []cdx.CipherSuite
 	for _, row := range tables {
 		if row.Key != "ciphers" {
@@ -319,7 +341,7 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 		for _, cipher := range row.Tables {
 			for _, element := range cipher.Elements {
 				if element.Key == "name" {
-					suite, ok := identifiers(element.Value)
+					suite, ok := identifiers(ctx, element.Value)
 					if !ok {
 						continue
 					}
@@ -334,7 +356,7 @@ func cipherSuites(tables []nmap.Table) *[]cdx.CipherSuite {
 	return &ret
 }
 
-func sslCert(s nmap.Script) []cdx.Component {
+func sslCert(ctx context.Context, s nmap.Script) []cdx.Component {
 	var components []cdx.Component
 
 	for _, row := range s.Elements {
@@ -342,7 +364,7 @@ func sslCert(s nmap.Script) []cdx.Component {
 			val := html.UnescapeString(row.Value)
 			detections, err := x509.Detector{}.Detect(context.TODO(), []byte(val), "nmap")
 			if err != nil {
-				slog.Error("parsing certificate from nmap ssl-cert", "error", err)
+				slog.ErrorContext(ctx, "parsing certificate from nmap ssl-cert", "error", err)
 				return nil
 			}
 			for _, d := range detections {
@@ -352,4 +374,44 @@ func sslCert(s nmap.Script) []cdx.Component {
 		}
 	}
 	return nil
+}
+
+func sshHostKey(ctx context.Context, s nmap.Script) []cdx.Component {
+	var components []cdx.Component
+
+	for _, table := range s.Tables {
+		var key, typ, bits, fingerprint string
+		for _, row := range table.Elements {
+			switch row.Key {
+			case "key":
+				key = row.Value
+			case "type":
+				typ = row.Value
+			case "bits":
+				bits = row.Value
+			case "fingerprint":
+				fingerprint = row.Value
+			}
+		}
+		algoProp, ok := ParseSSHAlgorithm(typ)
+		if !ok {
+			slog.WarnContext(ctx, "unsupported ssh algorithm", "algorithm", typ)
+			continue
+		}
+		compo := cdx.Component{
+			BOMRef: "crypto/ssh-hostkey/" + typ + "@" + bits,
+			Name:   typ,
+			Type:   cdx.ComponentTypeCryptographicAsset,
+			CryptoProperties: &cdx.CryptoProperties{
+				AssetType:           cdx.CryptoAssetTypeAlgorithm,
+				AlgorithmProperties: &algoProp,
+				OID:                 algoProp.ParameterSetIdentifier,
+			},
+		}
+		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostHeyContent, key)
+		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostHeyFingerprintContent, fingerprint)
+		components = append(components, compo)
+	}
+
+	return components
 }
