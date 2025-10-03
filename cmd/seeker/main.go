@@ -159,7 +159,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 		ctx = log.ContextAttrs(ctx, slog.Group(
 			"source",
 			slog.String("type", "filesystem"),
-			slog.String("path", "flagPath"),
+			slog.String("path", flagPath),
 		))
 		source = walk.Root(ctx, root)
 	} else {
