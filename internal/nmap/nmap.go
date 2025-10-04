@@ -408,8 +408,8 @@ func sshHostKey(ctx context.Context, s nmap.Script) []cdx.Component {
 				OID:                 algoProp.ParameterSetIdentifier,
 			},
 		}
-		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostHeyContent, key)
-		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostHeyFingerprintContent, fingerprint)
+		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostKeyContent, key)
+		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostKeyFingerprintContent, fingerprint)
 		components = append(components, compo)
 	}
 
