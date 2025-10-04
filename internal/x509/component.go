@@ -162,8 +162,8 @@ func toComponent(ctx context.Context, cert *x509.Certificate, path string, sourc
 				IssuerName:            cert.Issuer.String(),
 				NotValidBefore:        cert.NotBefore.Format(time.RFC3339),
 				NotValidAfter:         cert.NotAfter.Format(time.RFC3339),
-				SignatureAlgorithmRef: readSignatureAlgorithmRef(ctx, cert),
-				SubjectPublicKeyRef:   readSubjectPublicKeyRef(ctx, cert),
+				SignatureAlgorithmRef: ReadSignatureAlgorithmRef(ctx, cert),
+				SubjectPublicKeyRef:   ReadSubjectPublicKeyRef(ctx, cert),
 				CertificateFormat:     "X.509",
 				CertificateExtension:  filepath.Ext(path),
 			},
@@ -177,7 +177,7 @@ func toComponent(ctx context.Context, cert *x509.Certificate, path string, sourc
 	return c, nil
 }
 
-func readSignatureAlgorithmRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
+func ReadSignatureAlgorithmRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
 	// Prefer Go’s typed enum first (covers all classic algs cleanly).
 	if ref, ok := sigAlgRef[cert.SignatureAlgorithm]; ok {
 		return ref
@@ -197,7 +197,7 @@ func readSignatureAlgorithmRef(ctx context.Context, cert *x509.Certificate) cdx.
 	return refUnknownAlgorithm
 }
 
-func readSubjectPublicKeyRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
+func ReadSubjectPublicKeyRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
 	// First try concrete key types the stdlib understands.
 	switch pub := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
