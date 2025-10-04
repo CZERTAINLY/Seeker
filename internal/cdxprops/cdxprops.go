@@ -8,8 +8,8 @@ import (
 const (
 	CzertainlyComponentCertificateSourceFormat      = "czertainly:component:certificate:source_format"
 	CzertainlyComponentCertificateBase64Content     = "czertainly:component:certificate:base64_content"
-	CzertainlyComponentSSHHostHeyFingerprintContent = "czertainly:component:ssh_hostkey:fingerprint_content"
-	CzertainlyComponentSSHHostHeyContent            = "czertainly:component:ssh_hostkey:content"
+	CzertainlyComponentSSHHostKeyFingerprintContent = "czertainly:component:ssh_hostkey:fingerprint_content"
+	CzertainlyComponentSSHHostKeyContent            = "czertainly:component:ssh_hostkey:content"
 )
 
 // Set (or upsert) a CycloneDX component property.
