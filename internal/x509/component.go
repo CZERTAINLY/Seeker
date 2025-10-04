@@ -19,7 +19,7 @@ import (
 )
 
 // toComponent converts an X.509 certificate to a CycloneDX component
-func toComponent(cert *x509.Certificate, path string, source string) (cdx.Component, error) {
+func toComponent(ctx context.Context, cert *x509.Certificate, path string, source string) (cdx.Component, error) {
 	absPath, _ := filepath.Abs(path)
 
 	c := cdx.Component{
@@ -33,8 +33,8 @@ func toComponent(cert *x509.Certificate, path string, source string) (cdx.Compon
 				IssuerName:            cert.Issuer.String(),
 				NotValidBefore:        cert.NotBefore.Format(time.RFC3339),
 				NotValidAfter:         cert.NotAfter.Format(time.RFC3339),
-				SignatureAlgorithmRef: readSignatureAlgorithmRef(cert),
-				SubjectPublicKeyRef:   readSubjectPublicKeyRef(cert),
+				SignatureAlgorithmRef: readSignatureAlgorithmRef(ctx, cert),
+				SubjectPublicKeyRef:   readSubjectPublicKeyRef(ctx, cert),
 				CertificateFormat:     "X.509",
 				CertificateExtension:  filepath.Ext(path),
 			},
@@ -53,7 +53,7 @@ type algorithmIdentifier struct {
 	Parameters asn1.RawValue `asn1:"optional"`
 }
 
-func readSignatureAlgorithmRef(cert *x509.Certificate) cdx.BOMReference {
+func readSignatureAlgorithmRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
 	switch cert.SignatureAlgorithm {
 	case x509.MD5WithRSA:
 		return "crypto/algorithm/md5-rsa@1.2.840.113549.1.1.4"
@@ -93,7 +93,7 @@ func readSignatureAlgorithmRef(cert *x509.Certificate) cdx.BOMReference {
 	}
 	var outer certOuter
 	if _, err := asn1.Unmarshal(cert.Raw, &outer); err != nil {
-		slog.DebugContext(context.Background(), "Failed to unmarshal outer certificate", "error", err)
+		slog.DebugContext(ctx, "Failed to unmarshal outer certificate", "error", err)
 		return "crypto/algorithm/unknown@unknown"
 	}
 	oid := outer.SigAlg.Algorithm.String()
@@ -148,11 +148,11 @@ func readSignatureAlgorithmRef(cert *x509.Certificate) cdx.BOMReference {
 	}
 
 	// Unknown OID — return empty so caller can decide what to do
-	slog.DebugContext(context.Background(), "Unknown signature algorithm OID", "oid", oid)
+	slog.DebugContext(ctx, "Unknown signature algorithm OID", "oid", oid)
 	return "crypto/algorithm/unknown@unknown"
 }
 
-func readSubjectPublicKeyRef(cert *x509.Certificate) cdx.BOMReference {
+func readSubjectPublicKeyRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
 	switch pub := cert.PublicKey.(type) {
 	case *rsa.PublicKey:
 		return cdx.BOMReference(fmt.Sprintf("crypto/key/rsa-%d@1.2.840.113549.1.1.1", pub.N.BitLen()))
@@ -182,7 +182,7 @@ func readSubjectPublicKeyRef(cert *x509.Certificate) cdx.BOMReference {
 	// --- PQC & other: detect by OID in SubjectPublicKeyInfo.algorithm.algorithm ---
 	var info spki
 	if _, err := asn1.Unmarshal(cert.RawSubjectPublicKeyInfo, &info); err != nil {
-		slog.DebugContext(context.Background(), "Failed to unmarshal SubjectPublicKeyInfo", "error", err)
+		slog.DebugContext(ctx, "Failed to unmarshal SubjectPublicKeyInfo", "error", err)
 		return "crypto/key/unknown@unknown"
 	}
 	oid := info.Algorithm.Algorithm.String()
@@ -225,6 +225,6 @@ func readSubjectPublicKeyRef(cert *x509.Certificate) cdx.BOMReference {
 		return ref
 	}
 
-	slog.DebugContext(context.Background(), "Unknown public key algorithm OID", "oid", oid)
+	slog.DebugContext(ctx, "Unknown public key algorithm OID", "oid", oid)
 	return "crypto/key/unknown@unknown"
 }
