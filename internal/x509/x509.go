@@ -29,7 +29,7 @@ func (d Detector) Detect(ctx context.Context, b []byte, path string) ([]model.De
 
 	components := make([]cdx.Component, 0, len(hits))
 	for _, h := range hits {
-		component, err := toComponent(h.Cert, path, h.Source)
+		component, err := toComponent(ctx, h.Cert, path, h.Source)
 		if err != nil {
 			return nil, err
 		}

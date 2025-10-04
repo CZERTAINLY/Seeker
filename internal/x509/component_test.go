@@ -8,9 +8,12 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +71,11 @@ func Test_Component_Various_Algorithms(t *testing.T) {
 			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
 			requireEvidencePath(t, comp)
 			requireFormatAndDERBase64(t, comp)
+
+			if tt.alg == x509.UnknownSignatureAlgorithm {
+				// Even when Go enum is unknown, we should still resolve something via OID parsing
+				require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
+			}
 		})
 	}
 }
@@ -149,7 +157,7 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 	require.Equal(t, "crypto/key/ed25519-256@1.3.101.112", string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef))
 }
 
-// Test_Component_ECDSA_Keys tests ECDSA key handling for better coverage  
+// Test_Component_ECDSA_Keys tests ECDSA key handling for better coverage
 func Test_Component_ECDSA_Keys(t *testing.T) {
 	t.Parallel()
 
@@ -187,8 +195,8 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 
 	// Should have ECDSA key reference
 	require.Contains(t, string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "ecdsa")
-	
-	// Test P-384 as well  
+
+	// Test P-384 as well
 	priv384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	require.NoError(t, err)
 
@@ -210,6 +218,29 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 
 	// Should have ECDSA P-384 key reference
 	require.Contains(t, string(comp384.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "ecdsa-p384")
+
+	// --- P-521 ---
+	priv521, err := ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	require.NoError(t, err)
+
+	template.SignatureAlgorithm = x509.ECDSAWithSHA512
+	certDER521, err := x509.CreateCertificate(rand.Reader, template, template, &priv521.PublicKey, priv521)
+	require.NoError(t, err)
+
+	pemBytes521 := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER521})
+
+	got521, err := d.Detect(t.Context(), pemBytes521, "testpath")
+	require.NoError(t, err)
+	require.Len(t, got521, 1)
+	require.GreaterOrEqual(t, len(got521[0].Components), 1)
+
+	comp521 := got521[0].Components[0]
+	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp521.Type)
+	requireEvidencePath(t, comp521)
+	requireFormatAndDERBase64(t, comp521)
+
+	// Should have ECDSA P-521 key reference
+	require.Contains(t, string(comp521.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "ecdsa-p521")
 }
 
 // Test_Component_DSA_Keys tests DSA key handling for better coverage
@@ -273,7 +304,7 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 
 	for _, alg := range algorithms {
 		t.Run(alg.String(), func(t *testing.T) {
-			// Create RSA key 
+			// Create RSA key
 			priv, err := rsa.GenerateKey(rand.Reader, 2048)
 			require.NoError(t, err)
 
@@ -304,6 +335,9 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
 			requireEvidencePath(t, comp)
 			requireFormatAndDERBase64(t, comp)
+
+			// Exercise RSA SubjectPublicKeyRef (should include bit length)
+			require.Contains(t, string(comp.CryptoProperties.CertificateProperties.SubjectPublicKeyRef), "rsa-")
 		})
 	}
 }
@@ -397,10 +431,10 @@ func Test_readSignatureAlgorithmRef_DirectCalls(t *testing.T) {
 	// This test verifies that the signature algorithm field in the parsed certificate
 	// gets mapped correctly. Since x509.CreateCertificate will override the SignatureAlgorithm
 	// field based on the actual signature used, we need to test this differently.
-	
+
 	// Test with normal certificate creation to exercise the common paths
 	_, cert, _ := genSelfSignedCert(t)
-	
+
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 
 	var d czX509.Detector
@@ -410,11 +444,137 @@ func Test_readSignatureAlgorithmRef_DirectCalls(t *testing.T) {
 	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
 	comp := got[0].Components[0]
-	
+
 	// The generated certificate should have some signature algorithm
 	require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
-	
+
 	// For RSA certificates, it should be one of the RSA algorithms
 	sigAlgRef := string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
 	require.Contains(t, sigAlgRef, "rsa")
+}
+
+// --- Minimal ASN.1 structs for crafting PQC OID test certs ---
+type tAlgorithmIdentifier struct {
+	Algorithm  asn1.ObjectIdentifier
+	Parameters asn1.RawValue `asn1:"optional"`
+}
+type tCertOuter struct {
+	TBSCert   asn1.RawValue
+	SigAlg    tAlgorithmIdentifier
+	Signature asn1.BitString
+}
+type tSPKI struct {
+	Algorithm     tAlgorithmIdentifier
+	SubjectPubKey asn1.BitString
+}
+
+func parseOID(oidStr string) asn1.ObjectIdentifier {
+	parts := strings.Split(oidStr, ".")
+	oid := make(asn1.ObjectIdentifier, len(parts))
+	for i, p := range parts {
+		var v int
+		_, err := fmt.Sscanf(p, "%d", &v)
+		if err != nil {
+			return nil
+		}
+		oid[i] = v
+	}
+	return oid
+}
+
+func mkCertWithSigOID(oid string) *x509.Certificate {
+	outer := tCertOuter{
+		TBSCert:   asn1.RawValue{FullBytes: []byte{0x30, 0x00}}, // empty SEQUENCE
+		SigAlg:    tAlgorithmIdentifier{Algorithm: parseOID(oid)},
+		Signature: asn1.BitString{Bytes: []byte{0x00}},
+	}
+	raw, _ := asn1.Marshal(outer)
+	return &x509.Certificate{Raw: raw}
+}
+
+func mkCertWithSPKIOID(oid string) *x509.Certificate {
+	spki := tSPKI{
+		Algorithm:     tAlgorithmIdentifier{Algorithm: parseOID(oid)},
+		SubjectPubKey: asn1.BitString{Bytes: []byte{0x00}},
+	}
+	rawSPKI, _ := asn1.Marshal(spki)
+	return &x509.Certificate{RawSubjectPublicKeyInfo: rawSPKI}
+}
+
+func Test_PQC_SignatureAlgorithm_OIDs(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	// ML-DSA (FIPS 204)
+	for oid, want := range map[string]cdx.BOMReference{
+		"2.16.840.1.101.3.4.3.17": "crypto/algorithm/ml-dsa-44@2.16.840.1.101.3.4.3.17",
+		"2.16.840.1.101.3.4.3.18": "crypto/algorithm/ml-dsa-65@2.16.840.1.101.3.4.3.18",
+		"2.16.840.1.101.3.4.3.19": "crypto/algorithm/ml-dsa-87@2.16.840.1.101.3.4.3.19",
+	} {
+		c := mkCertWithSigOID(oid)
+		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		require.Equal(t, want, got)
+	}
+
+	// SLH-DSA (FIPS 205)
+	for oid, want := range map[string]cdx.BOMReference{
+		"2.16.840.1.101.3.4.3.20": "crypto/algorithm/slh-dsa-sha2-128s@2.16.840.1.101.3.4.3.20",
+		"2.16.840.1.101.3.4.3.25": "crypto/algorithm/slh-dsa-sha2-256f@2.16.840.1.101.3.4.3.25",
+		"2.16.840.1.101.3.4.3.26": "crypto/algorithm/slh-dsa-shake-128s@2.16.840.1.101.3.4.3.26",
+		"2.16.840.1.101.3.4.3.31": "crypto/algorithm/slh-dsa-shake-256f@2.16.840.1.101.3.4.3.31",
+	} {
+		c := mkCertWithSigOID(oid)
+		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		require.Equal(t, want, got)
+	}
+
+	// XMSS / XMSS-MT / HSS-LMS
+	for oid, want := range map[string]cdx.BOMReference{
+		"1.3.6.1.5.5.7.6.34":         "crypto/algorithm/xmss-hashsig@1.3.6.1.5.5.7.6.34",
+		"1.3.6.1.5.5.7.6.35":         "crypto/algorithm/xmssmt-hashsig@1.3.6.1.5.5.7.6.35",
+		"1.2.840.113549.1.9.16.3.17": "crypto/algorithm/hss-lms-hashsig@1.2.840.113549.1.9.16.3.17",
+	} {
+		c := mkCertWithSigOID(oid)
+		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		require.Equal(t, want, got)
+	}
+
+	// Unknown and parse-failure paths
+	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), czX509.ReadSignatureAlgorithmRef(ctx, mkCertWithSigOID("1.2.3.4.5")))
+	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), czX509.ReadSignatureAlgorithmRef(ctx, &x509.Certificate{Raw: []byte{0xff}}))
+}
+
+func Test_PQC_SPKI_OIDs(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+
+	// ML-DSA and ML-KEM
+	for oid, want := range map[string]cdx.BOMReference{
+		"2.16.840.1.101.3.4.3.17": "crypto/key/ml-dsa-44@2.16.840.1.101.3.4.3.17",
+		"2.16.840.1.101.3.4.3.19": "crypto/key/ml-dsa-87@2.16.840.1.101.3.4.3.19",
+		"2.16.840.1.101.3.4.4.1":  "crypto/key/ml-kem-512@2.16.840.1.101.3.4.4.1",
+		"2.16.840.1.101.3.4.4.3":  "crypto/key/ml-kem-1024@2.16.840.1.101.3.4.4.3",
+	} {
+		c := mkCertWithSPKIOID(oid)
+		got := czX509.ReadSubjectPublicKeyRef(ctx, c)
+		require.Equal(t, want, got)
+	}
+
+	// SLH-DSA, XMSS, XMSS-MT, HSS/LMS, HQC
+	for oid, want := range map[string]cdx.BOMReference{
+		"2.16.840.1.101.3.4.3.20":    "crypto/key/slh-dsa-sha2-128s@2.16.840.1.101.3.4.3.20",
+		"2.16.840.1.101.3.4.3.31":    "crypto/key/slh-dsa-shake-256f@2.16.840.1.101.3.4.3.31",
+		"1.3.6.1.5.5.7.6.34":         "crypto/key/xmss@1.3.6.1.5.5.7.6.34",
+		"1.3.6.1.5.5.7.6.35":         "crypto/key/xmss-mt@1.3.6.1.5.5.7.6.35",
+		"1.2.840.113549.1.9.16.3.17": "crypto/key/hss-lms@1.2.840.113549.1.9.16.3.17",
+		"1.3.9999.6.1.1":             "crypto/key/hqc-128@1.3.9999.6.1.1",
+	} {
+		c := mkCertWithSPKIOID(oid)
+		got := czX509.ReadSubjectPublicKeyRef(ctx, c)
+		require.Equal(t, want, got)
+	}
+
+	// Unknown and parse-failure paths
+	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), czX509.ReadSubjectPublicKeyRef(ctx, mkCertWithSPKIOID("1.2.3.4.5")))
+	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), czX509.ReadSubjectPublicKeyRef(ctx, &x509.Certificate{RawSubjectPublicKeyInfo: []byte{0xff}}))
 }
