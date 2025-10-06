@@ -13,7 +13,6 @@ type Uploader interface {
 
 type Supervisor struct {
 	cmd      Command
-	runner   *Runner
 	start    chan struct{}
 	uploader Uploader
 }
@@ -21,7 +20,6 @@ type Supervisor struct {
 func NewSupervisor(cmd Command, uploader Uploader) *Supervisor {
 	return &Supervisor{
 		cmd:      cmd,
-		runner:   NewRunner(),
 		start:    make(chan struct{}),
 		uploader: uploader,
 	}
@@ -29,17 +27,19 @@ func NewSupervisor(cmd Command, uploader Uploader) *Supervisor {
 
 func (s *Supervisor) Do(ctx context.Context) {
 	slog.DebugContext(ctx, "starting a supervisor")
+	runner := NewRunner()
+	defer runner.Close()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.start:
 			slog.DebugContext(ctx, "about to start", "command", s.cmd)
-			err := s.callStart(ctx)
+			err := s.callStart(ctx, runner)
 			if err != nil {
 				slog.ErrorContext(ctx, "start returned", "error", err)
 			}
-		case result := <-s.runner.WaitChan():
+		case result := <-runner.ResultsChan():
 			if result.State == nil || result.State.ExitCode() != 0 {
 				slog.ErrorContext(ctx, "scan have failed", "result", result)
 				continue
@@ -58,8 +58,8 @@ func (s *Supervisor) Start() {
 	s.start <- struct{}{}
 }
 
-func (s *Supervisor) callStart(ctx context.Context) error {
-	return s.runner.Start(ctx, s.cmd, nil)
+func (s *Supervisor) callStart(ctx context.Context, runner *Runner) error {
+	return runner.Start(ctx, s.cmd, nil)
 }
 
 func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {

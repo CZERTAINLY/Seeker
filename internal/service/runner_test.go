@@ -19,24 +19,24 @@ func TestRunner(t *testing.T) {
 	}
 
 	runner := service.NewRunner()
+	t.Cleanup(runner.Close)
 	t.Run("not yet started", func(t *testing.T) {
-		res := runner.Result()
+		res := runner.LastResult()
 		require.ErrorIs(t, res.Err, service.ErrScanNotStarted)
 	})
 
 	cmd := service.Command{
-		Path: yes,
-		Args: []string{"golang"},
-		Env:  []string{"LC_ALL=C"},
+		Path:    yes,
+		Args:    []string{"golang"},
+		Env:     []string{"LC_ALL=C"},
+		Timeout: 100 * time.Millisecond,
 	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	t.Cleanup(cancel)
+	ctx := t.Context()
 
 	t.Run("start", func(t *testing.T) {
 		err = runner.Start(ctx, cmd, nil)
 		require.NoError(t, err)
-		res := runner.Result()
+		res := runner.LastResult()
 		require.NoError(t, res.Err)
 	})
 	t.Run("in progress", func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestRunner(t *testing.T) {
 		require.ErrorIs(t, err, service.ErrScanInProgress)
 	})
 	t.Run("wait", func(t *testing.T) {
-		res := <-runner.WaitChan()
+		res := <-runner.ResultsChan()
 		require.Equal(t, yes, res.Path)
 		require.Equal(t, []string{"golang"}, res.Args)
 		require.NotZero(t, res.Started)
@@ -92,9 +92,10 @@ func TestStderr(t *testing.T) {
 	}
 
 	runner := service.NewRunner()
+	t.Cleanup(runner.Close)
 	err = runner.Start(t.Context(), cmd, handle)
 	require.NoError(t, err)
-	res := <-runner.WaitChan()
+	res := <-runner.ResultsChan()
 	require.Equal(t, "stdout\n", res.Stdout.String())
 	require.Equal(t, []string{"stderr", "stderr"}, stderr)
 }
