@@ -40,7 +40,9 @@ setenv.sh
 # Go coverage files
 *.out
 coverage.html
-seeker
+
+# Binary
+/seeker
 
 # Linter reports
 golangci-lint-report.xml

@@ -6,8 +6,10 @@ import (
 
 // Exported so tests and other packages can reference the same strings.
 const (
-	CzertainlyComponentCertificateSourceFormat  = "czertainly:component:certificate:source_format"
-	CzertainlyComponentCertificateBase64Content = "czertainly:component:certificate:base64_content"
+	CzertainlyComponentCertificateSourceFormat      = "czertainly:component:certificate:source_format"
+	CzertainlyComponentCertificateBase64Content     = "czertainly:component:certificate:base64_content"
+	CzertainlyComponentSSHHostKeyFingerprintContent = "czertainly:component:ssh_hostkey:fingerprint_content"
+	CzertainlyComponentSSHHostKeyContent            = "czertainly:component:ssh_hostkey:content"
 )
 
 // Set (or upsert) a CycloneDX component property.

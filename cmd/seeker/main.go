@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"iter"
 	"log/slog"
-	"maps"
 	"net"
 	"net/netip"
 	"os"
@@ -84,6 +83,9 @@ func main() {
 	// --host
 	nmapCmd.Flags().String("target", "", "connect to host (defaults to localhost). For testing only.")
 	_ = viper.BindPFlag("alpha.nmap.target", nmapCmd.Flags().Lookup("target"))
+	// --raw
+	nmapCmd.Flags().String("raw", "", "Store nmap's output as JSON to file. For testing only.")
+	_ = viper.BindPFlag("alpha.nmap.raw", nmapCmd.Flags().Lookup("raw"))
 
 	// seeker alpha service
 
@@ -167,7 +169,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 		ctx = log.ContextAttrs(ctx, slog.Group(
 			"source",
 			slog.String("type", "filesystem"),
-			slog.String("path", "flagPath"),
+			slog.String("path", flagPath),
 		))
 		source = walk.Root(ctx, root)
 	} else {
@@ -239,6 +241,7 @@ func doNmap(cmd *cobra.Command, args []string) error {
 	flagTimeout := viper.GetDuration("alpha.nmap.timeout")
 	flagSSH := viper.GetBool("alpha.nmap.ssh")
 	flagTarget := viper.GetString("alpha.nmap.target")
+	flagRawPath := viper.GetString("alpha.nmap.raw")
 
 	nmapBinary, err := findNmapBinary(flagNmap)
 	if err != nil {
@@ -251,7 +254,7 @@ func doNmap(cmd *cobra.Command, args []string) error {
 	} else {
 		scanner = nmap.NewSSH()
 	}
-	scanner = scanner.WithNmapBinary(nmapBinary)
+	scanner = scanner.WithNmapBinary(nmapBinary).WithRawPath(flagRawPath)
 
 	b := bom.NewBuilder()
 	pmap := parallel.NewMap(ctx, 4, func(ctx context.Context, addr netip.Addr) ([]model.Detection, error) {
@@ -265,29 +268,29 @@ func doNmap(cmd *cobra.Command, args []string) error {
 		return ret, err
 	})
 
-	var seq iter.Seq2[netip.Addr, error]
+	var targetPorts = "1-65535"
+	var targets []netip.Addr
 	if flagTarget == "" {
-		seq = maps.All(map[netip.Addr]error{
-			netip.MustParseAddr("127.0.0.1"): nil,
-			netip.MustParseAddr("::1"):       nil,
-		})
+		targets = []netip.Addr{
+			netip.MustParseAddr("127.0.0.1"),
+			netip.MustParseAddr("::1"),
+		}
 	} else {
 		host, port, ok := strings.Cut(flagTarget, ":")
 		if ok {
 			scanner = scanner.WithPorts(port)
+			targetPorts = port
 		}
 		ip, err := resolveToAddr(host)
 		if err != nil {
 			return err
 		}
-		seq = maps.All(map[netip.Addr]error{
-			ip: nil,
-		})
+		targets = []netip.Addr{ip}
 	}
 
 	now := time.Now()
 	cntDetections := 0
-	for detections, err := range pmap.Iter(seq) {
+	for detections, err := range pmap.Iter(all2(targets)) {
 		if err != nil {
 			slog.ErrorContext(ctx, "nmap scan failed", "err", err)
 			continue
@@ -301,7 +304,8 @@ func doNmap(cmd *cobra.Command, args []string) error {
 	}
 
 	slog.InfoContext(ctx, "nmap finished",
-		"addresses", "127.0.0.1, [::1]",
+		slog.Any("targets", targets),
+		"port(s)", targetPorts,
 		"detections", cntDetections,
 		"elapsed", time.Since(now).String(),
 	)
@@ -431,4 +435,14 @@ func findNmapBinary(flag string) (string, error) {
 		return "", err
 	}
 	return flag, nil
+}
+
+func all2[T any](slice []T) iter.Seq2[T, error] {
+	return func(yield func(T, error) bool) {
+		for _, s := range slice {
+			if !yield(s, nil) {
+				return
+			}
+		}
+	}
 }
