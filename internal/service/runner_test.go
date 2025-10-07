@@ -82,13 +82,14 @@ func TestStderr(t *testing.T) {
 	}
 
 	cmd := service.Command{
-		Path: sh,
-		Args: []string{"-c", "echo stdout; echo 1>&2 'stderr\nstderr\n'"},
+		Path:    sh,
+		Args:    []string{"-c", "echo stdout; echo 1>&2 'stderr\nstderr\n'"},
+		Timeout: 50 * time.Second,
 	}
 
-	var stderr []string
+	stderrChan := make(chan string, 3)
 	handle := func(_ context.Context, line string) {
-		stderr = append(stderr, line)
+		stderrChan <- line
 	}
 
 	runner := service.NewRunner().WithStderrFunc(handle)
@@ -97,5 +98,11 @@ func TestStderr(t *testing.T) {
 	require.NoError(t, err)
 	res := <-runner.ResultsChan()
 	require.Equal(t, "stdout\n", res.Stdout.String())
+
+	var stderr = []string{
+		<-stderrChan,
+		<-stderrChan,
+		<-stderrChan,
+	}
 	require.Equal(t, []string{"stderr", "stderr", ""}, stderr)
 }
