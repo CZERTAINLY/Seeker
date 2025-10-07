@@ -44,7 +44,7 @@ func TestRunner(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorIs(t, err, service.ErrScanInProgress)
 	})
-	t.Run("wait", func(t *testing.T) {
+	t.Run("results chan", func(t *testing.T) {
 		res := <-runner.ResultsChan()
 		require.Equal(t, yes, res.Path)
 		require.Equal(t, []string{"golang"}, res.Args)
