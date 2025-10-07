@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"os/exec"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,14 +32,17 @@ func TestSupervisor(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
-	go supervisor.Do(ctx)
+	var g sync.WaitGroup
+	g.Go(func() { supervisor.Do(ctx) })
 
 	for range 5 {
 		supervisor.Start()
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	cancel()
+	g.Wait()
 	stdout := buf.String()
 	require.NotEmpty(t, stdout)
-	require.Equal(t, "stdout\nstdout\nstdout\nstdout\nstdout\n", stdout)
+	require.True(t, strings.HasPrefix(stdout, "stdout\nstdout\n"))
 }

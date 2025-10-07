@@ -23,7 +23,7 @@ alpha:
       timeout: "15s"
       env:
         HOME: $HOME
-        GODEBUG: "tlssha=1,x509negativeserial=1"
+        GODEBUG: "tlsssha=1,x509negativeserial=1"
     scan_each: "20s"
 `
 
@@ -37,7 +37,7 @@ func TestParseConfig(t *testing.T) {
 	t.Logf("got: %+v", cfg)
 
 	require.Equal(t, "seeker", cfg.Command.Path)
-	require.Contains(t, cfg.Command.Env, "GODEBUG=tlssha1")
+	require.Contains(t, cfg.Command.Env["godebug"], "tlsssha=1")
 	require.Equal(t, 20*time.Second, cfg.ScanEach)
 
 	t.Run("cmd", func(t *testing.T) {
