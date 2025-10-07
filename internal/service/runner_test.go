@@ -83,7 +83,7 @@ func TestStderr(t *testing.T) {
 
 	cmd := service.Command{
 		Path: sh,
-		Args: []string{"-c", "echo stdout; echo -e 1>&2 'stderr\nstderr'"},
+		Args: []string{"-c", "echo stdout; echo 1>&2 'stderr\nstderr\n'"},
 	}
 
 	var stderr []string
@@ -97,5 +97,5 @@ func TestStderr(t *testing.T) {
 	require.NoError(t, err)
 	res := <-runner.ResultsChan()
 	require.Equal(t, "stdout\n", res.Stdout.String())
-	require.Equal(t, []string{"stderr", "stderr"}, stderr)
+	require.Equal(t, []string{"stderr", "stderr", ""}, stderr)
 }
