@@ -341,7 +341,7 @@ func doSvc(cmd *cobra.Command, args []string) error {
 		cfg.Command.Path = p
 	}
 
-	supervisor := service.NewSupervisor(cfg.Cmd(), service.StdoutUploader{})
+	supervisor := service.NewSupervisor(cfg.Cmd(), service.NewWriteUploader(os.Stdout))
 	go supervisor.Do(ctx)
 	supervisor.Start()
 

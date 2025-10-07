@@ -34,13 +34,13 @@ func TestRunner(t *testing.T) {
 	ctx := t.Context()
 
 	t.Run("start", func(t *testing.T) {
-		err = runner.Start(ctx, cmd, nil)
+		err = runner.Start(ctx, cmd)
 		require.NoError(t, err)
 		res := runner.LastResult()
 		require.NoError(t, res.Err)
 	})
 	t.Run("in progress", func(t *testing.T) {
-		err = runner.Start(ctx, cmd, nil)
+		err = runner.Start(ctx, cmd)
 		require.Error(t, err)
 		require.ErrorIs(t, err, service.ErrScanInProgress)
 	})
@@ -65,7 +65,7 @@ func TestRunner(t *testing.T) {
 		noCmd := service.Command{
 			Path: "does not exist",
 		}
-		err := runner.Start(ctx, noCmd, nil)
+		err := runner.Start(ctx, noCmd)
 		require.Error(t, err)
 		var execErr *exec.Error
 		require.ErrorAs(t, err, &execErr)
@@ -91,9 +91,9 @@ func TestStderr(t *testing.T) {
 		stderr = append(stderr, line)
 	}
 
-	runner := service.NewRunner()
+	runner := service.NewRunner().WithStderrFunc(handle)
 	t.Cleanup(runner.Close)
-	err = runner.Start(t.Context(), cmd, handle)
+	err = runner.Start(t.Context(), cmd)
 	require.NoError(t, err)
 	res := <-runner.ResultsChan()
 	require.Equal(t, "stdout\n", res.Stdout.String())

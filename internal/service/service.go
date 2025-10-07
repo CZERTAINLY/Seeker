@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"os"
 )
@@ -59,16 +60,25 @@ func (s *Supervisor) Start() {
 }
 
 func (s *Supervisor) callStart(ctx context.Context, runner *Runner) error {
-	return runner.Start(ctx, s.cmd, nil)
+	return runner.Start(ctx, s.cmd)
 }
 
 func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 	return s.uploader.Upload(ctx, stdout.Bytes())
 }
 
-type StdoutUploader struct{}
+type WriteUploader struct {
+	w io.Writer
+}
 
-func (s StdoutUploader) Upload(_ context.Context, raw []byte) error {
-	_, err := os.Stdout.Write(raw)
+func NewWriteUploader(w io.Writer) WriteUploader {
+	return WriteUploader{w: w}
+}
+
+func (u WriteUploader) Upload(_ context.Context, raw []byte) error {
+	if u.w == nil {
+		u.w = os.Stdout
+	}
+	_, err := u.w.Write(raw)
 	return err
 }

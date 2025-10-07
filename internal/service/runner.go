@@ -72,6 +72,7 @@ type Runner struct {
 	shouldSendResult atomic.Bool
 	results          chan Result
 	closing          bool
+	stderrFunc       StderrFunc
 }
 
 func NewRunner() *Runner {
@@ -101,11 +102,16 @@ type Result struct {
 	Err     error
 }
 
+func (r *Runner) WithStderrFunc(stderrFunc StderrFunc) *Runner {
+	r.stderrFunc = stderrFunc
+	return r
+}
+
 // Start run the underlying process, it ensure only single instance of a binary is active
 // returns ErrScanInProgress or an exec error, otherwise nil. Does NOT wait on
 // command to finish, use ResultsChan instead.
 // Note it spawns an internal goroutine(w) which monitors the started command and stderr
-func (r *Runner) Start(ctx context.Context, proto Command, stderrFunc StderrFunc) error {
+func (r *Runner) Start(ctx context.Context, proto Command) error {
 	r.mx.Lock()
 	defer r.mx.Unlock()
 	if r.closing {
@@ -131,14 +137,15 @@ func (r *Runner) Start(ctx context.Context, proto Command, stderrFunc StderrFunc
 
 	r.cmd = exec.CommandContext(ctx, r.result.Path, r.result.Args...)
 	r.cmd.Env = r.result.Env
-	slog.Debug("r.cmd.Env", "e", r.cmd.Env)
 	var stderr io.ReadCloser
-	if stderrFunc != nil {
+	if r.stderrFunc != nil {
 		var err error
 		stderr, err = r.cmd.StderrPipe()
 		if err != nil {
 			return err
 		}
+	} else {
+		r.cmd.Stderr = os.Stderr
 	}
 	var buf bytes.Buffer
 	r.result.Stdout = &buf
@@ -152,8 +159,8 @@ func (r *Runner) Start(ctx context.Context, proto Command, stderrFunc StderrFunc
 		return err
 	}
 
-	if stderr != nil {
-		go r.processStderr(ctx, stderr, stderrFunc)
+	if r.stderrFunc != nil {
+		go r.processStderr(ctx, stderr)
 	}
 	go r.wait(r.cmd)
 	return nil
@@ -192,10 +199,10 @@ func (r *Runner) Close() {
 	close(r.results)
 }
 
-func (r *Runner) processStderr(ctx context.Context, stderr io.Reader, stderrFunc StderrFunc) {
+func (r *Runner) processStderr(ctx context.Context, stderr io.Reader) {
 	scanner := bufio.NewScanner(stderr)
 	for scanner.Scan() {
-		stderrFunc(ctx, scanner.Text())
+		r.stderrFunc(ctx, scanner.Text())
 	}
 	err := scanner.Err()
 	if err != nil && !errors.Is(err, io.EOF) {
