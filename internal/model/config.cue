@@ -1,3 +1,4 @@
+package config
 // SCHEMA DEFINITION
 #Config
 
@@ -7,7 +8,6 @@ version: 0
 filesystem?: #Filesystem
 containers?: #Containers
 ports?: #Ports
-
 service: #Service
 }
 
