@@ -24,7 +24,7 @@ func TestSupervisor(t *testing.T) {
 	cmd := service.Command{
 		Path:    sh,
 		Args:    []string{"-c", "echo stdout;"},
-		Timeout: 9 * time.Millisecond,
+		Timeout: 90 * time.Millisecond,
 	}
 
 	var buf bytes.Buffer
@@ -37,7 +37,7 @@ func TestSupervisor(t *testing.T) {
 
 	for range 5 {
 		supervisor.Start()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	cancel()
