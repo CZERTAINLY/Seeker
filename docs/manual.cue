@@ -1,4 +1,0 @@
-package config
-
-#ManualConfig: #Config & {
-}
