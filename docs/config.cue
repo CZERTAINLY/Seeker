@@ -1,78 +1,71 @@
-// HELPER DEFINITIONS
-
-ContainersConfig: {
-  // Enable/disable the module
-  enabled?: bool | *false
-  // Unix socket paths or environment variable placeholders like ${DOCKER_HOST}.
-  sockets?: [...string]
-}
-
-FSModuleConfig: {
-  // Enable/disable the module
-  enabled?: bool | *false
-
-  // Paths to scan.
-  paths?: [...string]
-
-  // inspect local docker socket(s)
-  docker?: ContainersConfig
-
-  // inspect local podman socket(s)
-  docker?: ContainersConfig
-}
-
-// Protocol config configures the protocol
-ProtocolConfig: {
-  // disable/enable ipv4
-  ipv4?: bool | *true
-  // enable/disable ipv6
-  ipv6?: bool | *false
-  // ports to scan, defaults to 1-65535, ports can be comma separates eg 22,222,230-240
-  ports?: string | *"1-65535"
-}
-
-// PortsModuleConfig configure (local) port scanning
-PortsModuleConfig: {
-  // Enable/disable the module
-  enabled?: bool | *false
-  tls?: ProtocolConfig
-  ssh?: ProtocolConfig
-}
-
-OutputConfig: {
-  dir?: string
-  repository_url?: string
-}
-
-ModeManual: {
-  mode: "manual"
-  output: OutputConfig
-}
-
-ModeCron: {
-  mode: "cron"
-  schedule: string
-  output: OutputConfig
-}
-
-ModeDiscovery: {
-  mode: "discovery"
-  core_url: string
-  output: OutputConfig
-}
-
 // SCHEMA DEFINITION
+#Config
 
-// schema version is 1
-version: 1
-// Module definitions
-modules: {
-  // certificates scans for x509 and other certificates
-  certificates?: FSModuleConfig
-  // secrets uses gitleaks to detect various leaks
-  secrets?: FSModuleConfig
-  // ports perform a local port scan
-  ports?: PortsModuleConfig
+#Config: {
+version: *0 | int
+filesystem?: #Filesystem
+containers?: #Containers
+ports?: #Ports
+
+service: #Service
 }
-// How the service will operate
-service: (ModeManual | ModeCron | ModeDiscovery)
+
+// CUE definitions
+
+// Filesystem specify paths for scan using filesystem modules
+// if paths are missing, then the current CWD is examined
+#Filesystem: {
+  enabled?: *false | bool
+  paths?: [...string]
+}
+
+// Containers specify a list of container daemons
+// to inspect
+#Containers: [...#ContainerConfig]
+
+#ContainerDaemon: ("docker" | "podman")
+
+#ContainerConfig: {
+  enabled?: bool | *false
+  name?: string
+  type: #ContainerDaemon
+  socket?: string
+  images?: [...string]
+}
+
+#Ports: {
+  enabled?: bool | *false
+  binary?: string
+  ports?: string | *"1-65535"
+  ipv4?: bool | *true
+  ipv6?: bool | *false
+}
+
+#Service: (#ServiceManual)
+
+#ServiceManual: {
+  #OutputFields
+  mode: "manual"
+  verbose?: bool | *false
+  log?: *"stderr" | "stdout" | "discard" | string
+}
+
+#OutputFields: {
+  dir?: string
+  repository?: #Repository
+}
+
+#Repository: {
+  enabled?: bool | *false
+  url: string
+  auth: (#AuthNone|#AuthStaticToken)
+}
+
+#AuthNone: {
+  type: "none"
+}
+
+#AuthStaticToken: {
+  type: "static_token"
+  token: string
+}
