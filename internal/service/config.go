@@ -25,7 +25,7 @@ func ParseConfig(key string) (Config, error) {
 }
 
 func (c Config) Cmd() Command {
-	env := make([]string, len(c.Command.Env))
+	env := make([]string, 0, len(c.Command.Env))
 	for k, v := range c.Command.Env {
 		if strings.HasPrefix(v, "$") {
 			v = os.ExpandEnv(v)
