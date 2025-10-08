@@ -65,14 +65,14 @@ var (
 type StderrFunc func(ctx context.Context, line string)
 
 type Runner struct {
-	mx               sync.RWMutex
-	cmd              *exec.Cmd
-	cancelFunc       context.CancelFunc
-	result           Result
-	shouldSendResult atomic.Bool
-	results          chan Result
-	closing          bool
-	stderrFunc       StderrFunc
+	mx                sync.RWMutex
+	cmd               *exec.Cmd
+	cancelFunc        context.CancelFunc
+	result            Result
+	resultsChanCalled atomic.Bool
+	results           chan Result
+	closing           bool
+	stderrFunc        StderrFunc
 }
 
 func NewRunner() *Runner {
@@ -167,9 +167,10 @@ func (r *Runner) Start(ctx context.Context, proto Command) error {
 }
 
 // ResultsChan is channel which contains results of a running program
+// calling this method ensures results are sent to the channel
 func (r *Runner) ResultsChan() <-chan Result {
 	r.mx.Lock()
-	r.shouldSendResult.Store(true)
+	r.resultsChanCalled.Store(true)
 	ret := r.results
 	r.mx.Unlock()
 	return ret
@@ -195,7 +196,7 @@ func (r *Runner) Close() {
 		r.cancelFunc()
 	}
 	r.closing = true
-	r.shouldSendResult.Store(false)
+	r.resultsChanCalled.Store(false)
 	close(r.results)
 }
 
@@ -224,7 +225,7 @@ func (r *Runner) wait(cmd *exec.Cmd) {
 	r.cmd = nil
 	r.mx.Unlock()
 
-	if r.shouldSendResult.CompareAndSwap(true, true) {
+	if r.resultsChanCalled.CompareAndSwap(true, true) {
 		r.results <- r.result
 	}
 }
