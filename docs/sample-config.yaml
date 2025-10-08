@@ -1,0 +1,38 @@
+version: 1
+modules:
+  certificates:
+    enabled: true
+# Configures certificates scan
+# Each scan can be made in one or more paths
+# Additionally docker and podman images can be inspected too
+    paths:
+      - path1
+      - path2
+    docker: 
+      sockets:
+        - ${DOCKER_HOST}
+        - /var/run/docker.sock
+        - /opt/vendor/var/run/docker.sock
+    podman:
+      enabled: false
+  secrets:
+    paths:
+      - path1
+    podman:
+      sockets:
+        - ${XDG_RUNTIME_DIR}/podman/podman.sock
+# Configure nmap scan
+  nmap:
+    enabled: true
+    tls:
+      ipv6: false
+      ports: 1-65535
+    ssh:
+      ipv4: false
+      ports: 22,222
+
+# seeker has a manual mode and stores results in local directory
+service:
+  mode: "manual"
+  output:
+    dir: .
