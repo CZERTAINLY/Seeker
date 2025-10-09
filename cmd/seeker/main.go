@@ -21,6 +21,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/parallel"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
+	"github.com/CZERTAINLY/Seeker/internal/service"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
 
@@ -59,6 +60,7 @@ func main() {
 	// alpha commands
 	alphaCmd.AddCommand(scanCmd)
 	alphaCmd.AddCommand(nmapCmd)
+	alphaCmd.AddCommand(svcCmd)
 
 	// seeker alpha scan
 	// -path
@@ -84,6 +86,8 @@ func main() {
 	// --raw
 	nmapCmd.Flags().String("raw", "", "Store nmap's output as JSON to file. For testing only.")
 	_ = viper.BindPFlag("alpha.nmap.raw", nmapCmd.Flags().Lookup("raw"))
+
+	// seeker alpha service
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("seeker failed", "err", err)
@@ -114,6 +118,12 @@ var nmapCmd = &cobra.Command{
 	Aliases: []string{"n"},
 	Short:   "nmap scans local network using nmap",
 	RunE:    doNmap,
+}
+
+var svcCmd = &cobra.Command{
+	Use:   "svc",
+	Short: "seeker service - runs seeker in specified intervals",
+	RunE:  doSvc,
 }
 
 var versionCmd = &cobra.Command{
@@ -303,6 +313,53 @@ func doNmap(cmd *cobra.Command, args []string) error {
 		return b.AsJSON(os.Stdout)
 	}
 	return model.ErrNoMatch
+}
+
+func doSvc(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+
+	cfg, err := service.ParseConfig("alpha.svc")
+	if err != nil {
+		return err
+	}
+	slog.InfoContext(ctx,
+		"config",
+		slog.GroupAttrs("command",
+			slog.String("path", cfg.Command.Path),
+			slog.Any("args", cfg.Command.Args),
+			slog.Duration("timeout", cfg.Command.Timeout),
+			slog.Any("env", cfg.Command.Env),
+		),
+		slog.Duration("scan_each", cfg.ScanEach),
+	)
+
+	if !filepath.IsAbs(cfg.Command.Path) {
+		p, err := filepath.Abs(cfg.Command.Path)
+		if err != nil {
+			return err
+		}
+		cfg.Command.Path = p
+	}
+
+	supervisor := service.NewSupervisor(cfg.Cmd(), service.NewWriteUploader(os.Stdout))
+	go supervisor.Do(ctx)
+	supervisor.Start()
+
+	ticker := time.NewTicker(cfg.ScanEach)
+	defer ticker.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				supervisor.Start()
+			}
+		}
+	}()
+
+	<-ctx.Done()
+	return nil
 }
 
 func onInitialize() {
