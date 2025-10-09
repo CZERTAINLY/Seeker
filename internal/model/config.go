@@ -196,7 +196,8 @@ func DefaultConfig(ctx context.Context) Config {
 	return cfg
 }
 
-// can be removed after go1.26
+// ptr returns a pointer to v. Useful for literals in composite literals.
+// Remove when Go 1.26 (not yet released) with new(value) will be the minimum supported compiler
 func ptr[T any](v T) *T {
 	return &v
 }
