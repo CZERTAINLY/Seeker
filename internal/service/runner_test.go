@@ -18,7 +18,7 @@ func TestRunner(t *testing.T) {
 		t.Skipf("skipped, binary yes not available: %v", err)
 	}
 
-	runner := service.NewRunner()
+	runner := service.NewRunner(nil)
 	t.Cleanup(runner.Close)
 	t.Run("not yet started", func(t *testing.T) {
 		res := runner.LastResult()
@@ -92,7 +92,7 @@ func TestStderr(t *testing.T) {
 		stderrChan <- line
 	}
 
-	runner := service.NewRunner().WithStderrFunc(handle)
+	runner := service.NewRunner(handle)
 	t.Cleanup(runner.Close)
 	err = runner.Start(t.Context(), cmd)
 	require.NoError(t, err)

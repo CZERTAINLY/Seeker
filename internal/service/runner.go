@@ -75,8 +75,9 @@ type Runner struct {
 	stderrFunc        StderrFunc
 }
 
-func NewRunner() *Runner {
+func NewRunner(f StderrFunc) *Runner {
 	return &Runner{
+		stderrFunc: f,
 		result: Result{
 			Err: ErrScanNotStarted,
 		},
@@ -100,11 +101,6 @@ type Result struct {
 	State   *os.ProcessState
 	Stdout  *bytes.Buffer
 	Err     error
-}
-
-func (r *Runner) WithStderrFunc(stderrFunc StderrFunc) *Runner {
-	r.stderrFunc = stderrFunc
-	return r
 }
 
 // Start run the underlying process, it ensure only single instance of a binary is active

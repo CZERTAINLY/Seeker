@@ -28,7 +28,7 @@ func NewSupervisor(cmd Command, uploader Uploader) *Supervisor {
 
 func (s *Supervisor) Do(ctx context.Context) {
 	slog.DebugContext(ctx, "starting a supervisor")
-	runner := NewRunner()
+	runner := NewRunner(nil)
 	defer runner.Close()
 	for {
 		select {
