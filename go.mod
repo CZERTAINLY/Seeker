@@ -7,7 +7,7 @@ require (
 	github.com/CycloneDX/cyclonedx-go v0.9.3
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/anchore/stereoscope v0.1.10
-	github.com/docker/docker v28.4.0+incompatible
+	github.com/docker/docker v28.5.1+incompatible
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/google/uuid v1.6.0
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
