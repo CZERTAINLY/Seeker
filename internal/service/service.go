@@ -41,7 +41,7 @@ func (s *Supervisor) Do(ctx context.Context) {
 				slog.ErrorContext(ctx, "start returned", "error", err)
 			}
 		case result := <-runner.ResultsChan():
-			if result.State == nil || result.State.ExitCode() != 0 {
+			if result.State == nil || result.State.ExitCode() != 0 || result.Err != nil {
 				slog.ErrorContext(ctx, "scan have failed", "result", result)
 				continue
 			}
