@@ -9,6 +9,7 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	t.Parallel()
 	yml := `
 version: 0
 service:
@@ -36,6 +37,7 @@ service:
 }
 
 func TestLoadConfig_Fail(t *testing.T) {
+	t.Parallel()
 	// Missing required auth.token for static_token
 	yml := `
 version: 0
@@ -50,4 +52,11 @@ service:
 	_, err := model.LoadConfig(strings.NewReader(yml))
 	require.Error(t, err)
 	require.EqualError(t, err, "#Config.service.repository.auth.token: incomplete value string")
+}
+
+func TestDefaultConfig(t *testing.T) {
+	t.Parallel()
+	cfg := model.DefaultConfig(t.Context())
+	t.Logf("config: %+v", cfg)
+	require.NotZero(t, cfg)
 }
