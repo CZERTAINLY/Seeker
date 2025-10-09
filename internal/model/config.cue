@@ -34,7 +34,7 @@ service: #Service
   enabled?: bool | *false
   name?: string
   type: #ContainerDaemon
-  socket?: string
+  socket: string
   images?: [...string]
 }
 
@@ -51,25 +51,31 @@ service: #Service
   ipv6?: bool | *true
 }
 
-// Service mode (currently only manual supported; future modes may extend).
-#Service: (#ServiceManual)
+// Service mode manual or timer
+#Service: (#ServiceManual|#ServiceTimer)
 
 // Manual service execution configuration.
-// verbose: extra logging output when true.
-// log: destination ("stderr","stdout","discard" or file path).
-// dir: output directory (if unset may default to working directory).
-// repository: optional remote repository publication settings.
 #ServiceManual: {
-  #OutputFields
+  #ServiceFields
   mode: "manual"
-  verbose?: bool | *false
-  log?: *"stderr" | "stdout" | "discard" | string
+}
+
+// Timer service execution configuration.
+// Every is a time.Duration string saying how often scan should be scheduled
+#ServiceTimer: {
+  #ServiceFields
+  mode: "timer"
+  every: string
 }
 
 // OutputFields specify common output for a scanner
+// verbose: extra logging output when true.
+// log: destination ("stderr","stdout","discard" or file path).
 // dir: local results directory.
 // repository: remote repository configuration.
-#OutputFields: {
+#ServiceFields: {
+  verbose?: bool | *false
+  log?: *"stderr" | "stdout" | "discard" | string
   dir?: string
   repository?: #Repository
 }
@@ -87,8 +93,7 @@ service: #Service
 }
 
 // Static token authentication configuration.
-// token: secret credential (bearer/API token).
-// TODO: always read from a different file
+// token: secret credential (bearer/API token) - can be environment variable
 #AuthStaticToken: {
   type: "static_token"
   token: string
