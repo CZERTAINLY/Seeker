@@ -4,9 +4,10 @@ go 1.25
 
 require (
 	cuelang.org/go v0.14.1
-	github.com/CycloneDX/cyclonedx-go v0.9.2
+	github.com/CycloneDX/cyclonedx-go v0.9.3
 	github.com/Ullaakut/nmap/v3 v3.0.6
 	github.com/anchore/stereoscope v0.1.9
+	github.com/docker/docker v28.3.3+incompatible
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/google/uuid v1.6.0
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
@@ -66,7 +67,6 @@ require (
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/cli v28.3.3+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v28.3.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.6.0 // indirect
 	github.com/docker/go-events v0.0.0-20190806004212-e31b211e4f1c // indirect
