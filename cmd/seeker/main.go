@@ -346,13 +346,13 @@ func doSvc(cmd *cobra.Command, args []string) error {
 	supervisor.Start()
 
 	ticker := time.NewTicker(cfg.ScanEach)
+	defer ticker.Stop()
 	go func() {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				slog.Debug("tick")
 				supervisor.Start()
 			}
 		}
