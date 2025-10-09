@@ -40,7 +40,7 @@ type Config struct {
 	Filesystem *Filesystem       `json:"filesystem,omitempty"`
 	Containers []ContainerConfig `json:"containers,omitempty"`
 	Ports      *Ports            `json:"ports,omitempty"`
-	Service    Service           `json:"service"` // currently only manual mode
+	Service    Service           `json:"service"`
 }
 
 // Filesystem scanning settings.
