@@ -53,7 +53,7 @@ func TestBuilder(t *testing.T) {
 			Evidence:           &cdx.Evidence{},
 			ReleaseNotes:       &cdx.ReleaseNotes{},
 			ModelCard:          &cdx.MLModelCard{},
-			Data:               &cdx.ComponentData{},
+			Data:               &[]cdx.ComponentData{},
 			CryptoProperties: &cdx.CryptoProperties{
 				AssetType:           "certificate",
 				AlgorithmProperties: &cdx.CryptoAlgorithmProperties{},
