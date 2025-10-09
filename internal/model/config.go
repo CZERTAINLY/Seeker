@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -149,6 +150,13 @@ func LoadConfig(r io.Reader) (*Config, error) {
 // It tries to discover and ping docker/podman sockets, so those
 // scans can be added to the list
 func DefaultConfig(ctx context.Context) Config {
+	var portsEnabled = true
+	nmap, err := exec.LookPath("nmap")
+	if err != nil {
+		portsEnabled = false
+		slog.WarnContext(ctx, "nmap binary not found")
+	}
+
 	var cfg = Config{
 		Version: 0,
 		Filesystem: &Filesystem{
@@ -156,8 +164,8 @@ func DefaultConfig(ctx context.Context) Config {
 			Paths:   nil,
 		},
 		Ports: &Ports{
-			Enabled: ptr(true),
-			Binary:  nil,
+			Enabled: ptr(portsEnabled),
+			Binary:  ptr(nmap),
 			Ports:   ptr("1-65535"),
 			IPv4:    ptr(true),
 			IPv6:    ptr(true),

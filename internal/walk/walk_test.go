@@ -86,7 +86,7 @@ func TestRoot(t *testing.T) {
 		})
 
 	actual := make([]then, 0, 10)
-	for entry, err := range walk.Root(t.Context(), root) {
+	for entry, err := range walk.Roots(t.Context(), root) {
 		actual = append(actual, testEntry(t, entry, err))
 	}
 

@@ -9,9 +9,17 @@ import (
 	"path/filepath"
 )
 
-// Root is a convenience wrapper around FS for os.Root. See FS for details.
-func Root(ctx context.Context, root *os.Root) iter.Seq2[Entry, error] {
-	return FS(ctx, root.FS(), root.Name())
+// Roots is a convenience wrapper around FS for os.Root. See FS for details.
+func Roots(ctx context.Context, roots ...*os.Root) iter.Seq2[Entry, error] {
+	return func(yield func(Entry, error) bool) {
+		for _, root := range roots {
+			for entry, err := range FS(ctx, root.FS(), root.Name()) {
+				if !yield(entry, err) {
+					return
+				}
+			}
+		}
+	}
 }
 
 // FS recursively walks the filesystem rooted at root and return a handle for every regular file found.
