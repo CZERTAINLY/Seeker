@@ -1,0 +1,43 @@
+package config
+
+// Example: config with a manual mode
+// cue export -e ManualConfig --out yaml > manual-config.yaml
+ManualConfig: #Config & {
+  version: 0
+  filesystem: {
+    enabled: true
+    paths: [
+      "path1",
+      "path2",
+    ]
+  }
+  containers: [{
+    enabled: true
+    type: "docker"
+    socket: "/var/run/docker.sock"
+    images: [
+      "gcr.io/distroless/base-debian12:latest",
+      "docker.io/library/alpine:3.22.1",
+    ]
+  }]
+  ports: {
+    enabled: true
+    binary: "/usr/bin/nmap"
+    ports: "80,443,22,222,1024-65535"
+    ipv4: true
+    ipv6: false
+  }
+  service: {
+    mode: "manual"
+    verbose: true
+    log: "stderr"
+    dir: "."
+    repository: {
+      enabled: false
+      url: "https://localhost:12345"
+      auth: {
+        type: "none"
+      }
+    }
+  }
+}
