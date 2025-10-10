@@ -22,18 +22,18 @@ service: #Service
 #Containers: [...#ContainerConfig]
 
 // Supported container daemon types.
-#ContainerDaemon: ("docker" | "podman")
+#ContainerDaemon: ("" | "docker" | "podman")
 
 // Configuration for a single container daemon integration.
 // enabled: when false this entry is ignored.
 // name: optional identifier (defaults to daemon type if absent).
-// type: daemon implementation.
+// type: daemon implementation, defaults to docker.
 // socket: path or endpoint for the daemon (e.g. /var/run/docker.sock).
 // images: explicit image names/patterns to include (empty => discover all).
 #ContainerConfig: {
   enabled?: bool | *false
   name?: string
-  type: #ContainerDaemon
+  type?: #ContainerDaemon
   socket: string
   images?: [...string]
 }

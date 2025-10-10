@@ -5,11 +5,18 @@ import (
 	"io"
 	"io/fs"
 	"iter"
+	"log/slog"
 
+	"github.com/CZERTAINLY/Seeker/internal/model"
+
+	"github.com/anchore/stereoscope"
 	"github.com/anchore/stereoscope/pkg/file"
 	"github.com/anchore/stereoscope/pkg/filetree"
 	"github.com/anchore/stereoscope/pkg/filetree/filenode"
 	"github.com/anchore/stereoscope/pkg/image"
+
+	dimage "github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 )
 
 // FS recursively walks the squashed layers of an OCI image.
@@ -18,6 +25,8 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 	if image == nil {
 		panic("image is nil")
 	}
+
+	visited := make(map[file.Path]struct{})
 
 	return func(yield func(Entry, error) bool) {
 		done := make(chan struct{})
@@ -41,8 +50,17 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 					return false
 				}
 			},
-			ShouldVisit: func(_ file.Path, node filenode.FileNode) bool {
-				return !node.IsLink()
+			ShouldVisit: func(path file.Path, node filenode.FileNode) bool {
+				if node.IsLink() {
+					return false
+				}
+				// FIXME: alpine image shows /bin/busybox all the time
+				_, alreadyVisited := visited[path]
+				if alreadyVisited {
+					return false
+				}
+				visited[path] = struct{}{}
+				return true
 			},
 			ShouldContinueBranch: func(_ file.Path, node filenode.FileNode) bool {
 				return !node.IsLink()
@@ -50,6 +68,90 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 			LinkOptions: nil,
 		}
 		_ = image.SquashedTree().Walk(fn, &cond)
+	}
+}
+
+// Images traverse through all defined containers and their images and all files inside
+func Images(ctx context.Context, configs model.ContainersConfig) iter.Seq2[Entry, error] {
+	return func(yield func(Entry, error) bool) {
+		for _, cc := range configs {
+			cli, err := newClient(ctx, cc)
+			if err != nil {
+				if !yield(nil, err) {
+					return
+				}
+			}
+			slog.DebugContext(ctx, "connected to ", "socket", cc.Socket)
+			defer func() {
+				if cli != nil {
+					_ = cli.Close()
+				}
+			}()
+			for img := range images(ctx, cli, cc) {
+				for entry, err := range Image(ctx, img) {
+					if !yield(entry, err) {
+						return
+					}
+				}
+			}
+		}
+	}
+}
+
+func newClient(_ context.Context, cfg model.ContainerConfig) (*client.Client, error) {
+	cli, err := client.NewClientWithOpts(
+		client.WithHost(cfg.Socket),
+		client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return cli, nil
+}
+
+func images(ctx context.Context, cli *client.Client, cfg model.ContainerConfig) iter.Seq2[*image.Image, error] {
+	if len(cfg.Images) == 0 {
+		return imagesAll(ctx, cli)
+	}
+
+	return func(yield func(*image.Image, error) bool) {
+		for _, name := range cfg.Images {
+			img, err := stereoscope.GetImageFromSource(
+				ctx,
+				name,
+				image.DockerDaemonSource,
+				nil,
+			)
+			if !yield(img, err) {
+				return
+			}
+		}
+	}
+}
+
+func imagesAll(ctx context.Context, cli *client.Client) iter.Seq2[*image.Image, error] {
+	return func(yield func(*image.Image, error) bool) {
+		images, err := cli.ImageList(
+			ctx,
+			dimage.ListOptions{All: false},
+		)
+		if err != nil {
+			if !yield(nil, err) {
+				return
+			}
+		}
+
+		for _, dimg := range images {
+			img, err := stereoscope.GetImageFromSource(
+				ctx,
+				dimg.ID,
+				image.DockerDaemonSource,
+				nil,
+			)
+			if !yield(img, err) {
+				return
+			}
+		}
 	}
 }
 

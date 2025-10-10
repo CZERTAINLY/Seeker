@@ -181,7 +181,7 @@ func (u *osRootUploader) Upload(ctx context.Context, b []byte) error {
 
 	path := "seeker-" + time.Now().Format("2006-01-02-03-04-05") + ".json"
 
-	f, err := u.root.Create("seeker-" + time.Now().Format("2006-01-02-03:04:05") + ".json")
+	f, err := u.root.Create(path)
 	if err != nil {
 		return fmt.Errorf("creating seeker results: %w", err)
 	}

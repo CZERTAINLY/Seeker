@@ -142,6 +142,18 @@ func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entr
 	return ret, nil
 }
 
-func containers(_ context.Context, _ model.ContainersConfig) (iter.Seq2[walk.Entry, error], error) {
-	return nil, nil
+func containers(ctx context.Context, configs model.ContainersConfig) (iter.Seq2[walk.Entry, error], error) {
+	var somethingEnabled = false
+	for _, cc := range configs {
+		if cc.Enabled {
+			somethingEnabled = true
+			break
+		}
+	}
+	if !somethingEnabled {
+		return nil, nil
+	}
+
+	ret := walk.Images(ctx, configs)
+	return ret, nil
 }
