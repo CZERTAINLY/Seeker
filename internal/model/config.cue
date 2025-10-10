@@ -51,21 +51,12 @@ service: #Service
   ipv6?: bool | *true
 }
 
-// Service mode manual or timer
-#Service: (#ServiceManual|#ServiceTimer)
-
 // Manual service execution configuration.
-#ServiceManual: {
+#Service: {
   #ServiceFields
-  mode: "manual"
-}
-
-// Timer service execution configuration.
-// Every is a time.Duration string saying how often scan should be scheduled
-#ServiceTimer: {
-  #ServiceFields
-  mode: "timer"
-  every: string
+  mode: *"manual" | "timer"
+  every?: string
+  if mode == "timer" { every: string & !="" }
 }
 
 // OutputFields specify common output for a scanner
@@ -83,18 +74,11 @@ service: #Service
 #Repository: {
   enabled?: bool | *false
   url: string
-  auth: (#AuthNone|#AuthStaticToken)
+  auth: #Auth
 }
 
-// No-authentication configuration (public / anonymous access).
-// Usually for development purposes only!
-#AuthNone: {
-  type: "none"
-}
-
-// Static token authentication configuration.
-// token: secret credential (bearer/API token) - can be environment variable
-#AuthStaticToken: {
-  type: "static_token"
-  token: string
+#Auth: {
+  type: *"" | "token"
+  token?: string
+  if type == "token" { token: string & !="" }
 }
