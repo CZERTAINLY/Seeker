@@ -148,6 +148,7 @@ func init() {
 }
 
 // LoadConfig validates YAML from r against CUE schema and decodes to Config.
+// NOT SAFE for multiple goroutines
 func LoadConfig(r io.Reader) (Config, error) {
 	var zero Config
 	yamlFile, err := yaml.Extract("config.yaml", r)
@@ -183,6 +184,7 @@ func CueErrDetails(err error) []string {
 // DefaultConfig returns a default configuration for seeker
 // It tries to discover and ping docker/podman sockets, so those
 // scans can be added to the list
+// NOT SAFE for multiple goroutines
 func DefaultConfig(ctx context.Context) Config {
 	var portsEnabled = true
 	nmap, err := exec.LookPath("nmap")

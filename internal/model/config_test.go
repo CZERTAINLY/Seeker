@@ -11,7 +11,6 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	t.Parallel()
 	yml := `
 version: 0
 service:
@@ -42,8 +41,6 @@ service:
 }
 
 func TestLoadConfig_Fail(t *testing.T) {
-	t.Parallel()
-
 	var testCases = []struct {
 		scenario string
 		given    string
@@ -67,7 +64,6 @@ service:
 
 	for _, tc := range testCases {
 		t.Run(tc.scenario, func(t *testing.T) {
-			t.Parallel()
 			_, err := model.LoadConfig(strings.NewReader(tc.given))
 			require.Error(t, err)
 			for _, d := range model.CueErrDetails(err) {
@@ -79,7 +75,6 @@ service:
 }
 
 func TestDefaultConfig(t *testing.T) {
-	t.Parallel()
 	cfg := model.DefaultConfig(t.Context())
 	require.NotZero(t, cfg)
 

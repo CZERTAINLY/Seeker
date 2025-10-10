@@ -38,6 +38,7 @@ type Uploader interface {
 // Scanner is a component, which encapsulates the scan functionality and executes it.
 type Scanner struct {
 	filesystems iter.Seq2[walk.Entry, error]
+	containers  iter.Seq2[walk.Entry, error]
 }
 
 func NewScanner(ctx context.Context, config model.Config) (Scanner, error) {
@@ -50,8 +51,14 @@ func NewScanner(ctx context.Context, config model.Config) (Scanner, error) {
 		return Scanner{}, fmt.Errorf("initializing filesystem scan: %w", err)
 	}
 
+	containers, err := containers(ctx, config.Containers)
+	if err != nil {
+		return Scanner{}, fmt.Errorf("initializing containers scan: %w", err)
+	}
+
 	return Scanner{
 		filesystems: filesystems,
+		containers:  containers,
 	}, nil
 }
 
@@ -67,19 +74,21 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 		}
 	}()
 
+	// TODO: configure a paralelism
 	// filesystem scanners
-	scanner := scan.New(4, detectors)
 	if s.filesystems != nil {
+		scanner := scan.New(4, detectors)
 		g.Go(func() error {
-			for results, err := range scanner.Do(ctx, s.filesystems) {
-				if err != nil {
-					slog.DebugContext(ctx, "error on filesystem scan", "error", err)
-					continue
-				}
-				for _, detection := range results {
-					detections <- detection
-				}
-			}
+			goScan(ctx, scanner, s.filesystems, detections)
+			return nil
+		})
+	}
+
+	// containers scanners
+	if s.containers != nil {
+		scanner := scan.New(2, detectors)
+		g.Go(func() error {
+			goScan(ctx, scanner, s.containers, detections)
 			return nil
 		})
 	}
@@ -92,6 +101,18 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 		return fmt.Errorf("formatting BOM as JSON: %w", err)
 	}
 	return nil
+}
+
+func goScan(ctx context.Context, scanner *scan.Scan, seq iter.Seq2[walk.Entry, error], detections chan<- model.Detection) {
+	for results, err := range scanner.Do(ctx, seq) {
+		if err != nil {
+			slog.DebugContext(ctx, "error on filesystem scan", "error", err)
+			continue
+		}
+		for _, detection := range results {
+			detections <- detection
+		}
+	}
 }
 
 func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entry, error], error) {
@@ -119,4 +140,8 @@ func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entr
 	}
 	ret := walk.Roots(ctx, roots...)
 	return ret, nil
+}
+
+func containers(_ context.Context, _ model.ContainersConfig) (iter.Seq2[walk.Entry, error], error) {
+	return nil, nil
 }
