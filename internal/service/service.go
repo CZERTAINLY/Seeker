@@ -69,18 +69,20 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 
 	// filesystem scanners
 	scanner := scan.New(4, detectors)
-	g.Go(func() error {
-		for results, err := range scanner.Do(ctx, s.filesystems) {
-			if err != nil {
-				slog.DebugContext(ctx, "error on filesystem scan", "error", err)
-				continue
+	if s.filesystems != nil {
+		g.Go(func() error {
+			for results, err := range scanner.Do(ctx, s.filesystems) {
+				if err != nil {
+					slog.DebugContext(ctx, "error on filesystem scan", "error", err)
+					continue
+				}
+				for _, detection := range results {
+					detections <- detection
+				}
 			}
-			for _, detection := range results {
-				detections <- detection
-			}
-		}
-		return nil
-	})
+			return nil
+		})
+	}
 
 	_ = g.Wait() // goroutines do not return an error
 	close(detections)
@@ -92,14 +94,14 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-func filesystems(ctx context.Context, cfg *model.Filesystem) (iter.Seq2[walk.Entry, error], error) {
+func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entry, error], error) {
 	var filesystems iter.Seq2[walk.Entry, error]
-	if cfg == nil || !get(cfg.Enabled) {
+	if !cfg.Enabled {
 		return filesystems, nil
 	}
 
 	paths := cfg.Paths
-	if paths == nil {
+	if len(paths) == 0 {
 		cwd, err := os.Getwd()
 		if err != nil {
 			return filesystems, fmt.Errorf("getting working directory: %w", err)
@@ -115,13 +117,6 @@ func filesystems(ctx context.Context, cfg *model.Filesystem) (iter.Seq2[walk.Ent
 		}
 		roots = append(roots, root)
 	}
-	return walk.Roots(ctx, roots...), nil
-}
-
-func get[T any](pt *T) T {
-	var zero T
-	if pt == nil {
-		return zero
-	}
-	return *pt
+	ret := walk.Roots(ctx, roots...)
+	return ret, nil
 }

@@ -33,7 +33,10 @@ func TestSupervisor(t *testing.T) {
 	t.Cleanup(cancel)
 
 	var g sync.WaitGroup
-	g.Go(func() { supervisor.Do(ctx) })
+	g.Go(func() {
+		err := supervisor.Do(ctx)
+		require.NoError(t, err)
+	})
 
 	for range 5 {
 		supervisor.Start()

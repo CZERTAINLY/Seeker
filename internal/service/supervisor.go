@@ -23,7 +23,7 @@ type Supervisor struct {
 func NewSupervisor(cmd Command, uploaders ...Uploader) *Supervisor {
 	return &Supervisor{
 		cmd:       cmd,
-		start:     make(chan struct{}),
+		start:     make(chan struct{}, 1),
 		uploaders: uploaders,
 	}
 }
@@ -37,9 +37,17 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 	if err != nil {
 		return nil, fmt.Errorf("cannot determine path to executable: %w", err)
 	}
+	args := []string{
+		"_scan",
+		"--config",
+		configPath,
+	}
+	if cfg.Verbose {
+		args = append(args, "--verbose")
+	}
 	cmd := Command{
 		Path: seeker,
-		Args: []string{"_scan", "--config", configPath},
+		Args: args,
 		Env: []string{
 			"HOME=" + os.Getenv("HOME"),
 			"GODEBUG=tlssha1=1,x509rsacrt=0,x509negativeserial=1",
@@ -50,24 +58,37 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 
 	return &Supervisor{
 		cmd:       cmd,
-		start:     make(chan struct{}),
+		start:     make(chan struct{}, 1),
 		uploaders: uploaders,
-		oneshot:   cfg.Mode == "manual",
+		oneshot:   cfg.Mode == model.ServiceModeManual,
 	}, nil
 }
 
-func (s *Supervisor) Do(ctx context.Context) {
+// Do performs in two different modes
+// "manual" aka oneshot - in this case scan and upload is executed once and its error is returned
+// others: errors are only logged and never returned
+func (s *Supervisor) Do(ctx context.Context) error {
 	slog.DebugContext(ctx, "starting a supervisor")
 	runner := NewRunner(nil)
 	defer runner.Close()
+
+	if s.oneshot {
+		slog.DebugContext(ctx, "start oneshot job")
+		s.Start()
+		slog.DebugContext(ctx, "startED oneshot job")
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return nil
 		case <-s.start:
 			slog.DebugContext(ctx, "about to start", "command", s.cmd)
 			err := s.callStart(ctx, runner)
 			if err != nil {
+				if s.oneshot {
+					return err
+				}
 				slog.ErrorContext(ctx, "start returned", "error", err)
 			}
 		case result := <-runner.ResultsChan():
@@ -77,12 +98,12 @@ func (s *Supervisor) Do(ctx context.Context) {
 			}
 			slog.DebugContext(ctx, "scan succeeded: uploading")
 			err := s.upload(ctx, result.Stdout)
+			if s.oneshot {
+				return err
+			}
 			if err != nil {
 				slog.ErrorContext(ctx, "upload failed", "error", err)
 				continue
-			}
-			if s.oneshot {
-				return
 			}
 		}
 	}
@@ -108,18 +129,18 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 }
 
 func uploaders(ctx context.Context, cfg model.Service) ([]Uploader, error) {
-	if cfg.Dir == nil && (cfg.Repository == nil || !get(cfg.Repository.Enabled)) {
+	if cfg.Dir == "" && !cfg.Repository.Enabled {
 		return []Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
 	var uploaders []Uploader
-	if cfg.Dir != nil {
-		u, err := newOsRootUploader(*cfg.Dir)
+	if cfg.Dir != "" {
+		u, err := newOsRootUploader(cfg.Dir)
 		if err != nil {
 			return nil, err
 		}
 		uploaders = append(uploaders, u)
 	}
-	if cfg.Repository != nil {
+	if cfg.Repository.Enabled {
 		slog.WarnContext(ctx, "repository support is not yet implemented")
 	}
 	return uploaders, nil
@@ -153,17 +174,30 @@ func newOsRootUploader(path string) (*osRootUploader, error) {
 	return &osRootUploader{root: root}, nil
 }
 
-func (u *osRootUploader) Upload(_ context.Context, b []byte) error {
+func (u *osRootUploader) Upload(ctx context.Context, b []byte) error {
 	if u.root == nil {
 		return errors.New("root already closed")
 	}
 
+	path := "seeker-" + time.Now().Format("2006-01-02-03-04-05") + ".json"
+
 	f, err := u.root.Create("seeker-" + time.Now().Format("2006-01-02-03:04:05") + ".json")
 	if err != nil {
-		return fmt.Errorf("storing seeker results: %w", err)
+		return fmt.Errorf("creating seeker results: %w", err)
 	}
-	_ = f.Close()
-	_ = u.root.Close()
+	_, err = f.Write(b)
+	if err != nil {
+		return fmt.Errorf("saving seeker results: %w", err)
+	}
+	err = f.Close()
+	if err != nil {
+		return fmt.Errorf("closing seeker result: %w", err)
+	}
+	err = u.root.Close()
+	if err != nil {
+		return fmt.Errorf("closing seeker result's dir: %w", err)
+	}
+	slog.InfoContext(ctx, "bom saved", "path", path)
 	u.root = nil
 	return nil
 }
