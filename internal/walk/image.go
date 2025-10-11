@@ -2,6 +2,7 @@ package walk
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"iter"
@@ -23,10 +24,10 @@ import (
 // Each Entry's Path() is a real path of file inside.
 func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 	if image == nil {
-		panic("image is nil")
+		return func(yield func(Entry, error) bool) {
+			yield(nil, errors.New("image is nil"))
+		}
 	}
-
-	visited := make(map[file.Path]struct{})
 
 	return func(yield func(Entry, error) bool) {
 		done := make(chan struct{})
@@ -51,16 +52,7 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 				}
 			},
 			ShouldVisit: func(path file.Path, node filenode.FileNode) bool {
-				if node.IsLink() {
-					return false
-				}
-				// FIXME: alpine image shows /bin/busybox all the time
-				_, alreadyVisited := visited[path]
-				if alreadyVisited {
-					return false
-				}
-				visited[path] = struct{}{}
-				return true
+				return !node.IsLink()
 			},
 			ShouldContinueBranch: func(_ file.Path, node filenode.FileNode) bool {
 				return !node.IsLink()
