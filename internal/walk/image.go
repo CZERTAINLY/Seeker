@@ -73,7 +73,7 @@ func Images(ctx context.Context, configs model.ContainersConfig) iter.Seq2[Entry
 					return
 				}
 			}
-			slog.DebugContext(ctx, "connected to ", "socket", cc.Socket)
+			slog.DebugContext(ctx, "connected to ", "socket", cc.Host)
 			defer func() {
 				if cli != nil {
 					_ = cli.Close()
@@ -92,7 +92,7 @@ func Images(ctx context.Context, configs model.ContainersConfig) iter.Seq2[Entry
 
 func newClient(_ context.Context, cfg model.ContainerConfig) (*client.Client, error) {
 	cli, err := client.NewClientWithOpts(
-		client.WithHost(cfg.Socket),
+		client.WithHost(cfg.Host),
 		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {

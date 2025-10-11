@@ -60,7 +60,7 @@ type ContainerConfig struct {
 	Enabled bool     `json:"enabled"`
 	Name    string   `json:"name,omitempty"`
 	Type    string   `json:"type"`             // "docker" | "podman"
-	Socket  string   `json:"socket,omitempty"` // e.g. /var/run/docker.sock
+	Host    string   `json:"host,omitempty"`   // e.g. /var/run/docker.sock or ${DOCKER_HOST}
 	Images  []string `json:"images,omitempty"` // explicit images (empty => discover)
 }
 
@@ -249,7 +249,7 @@ func containerConfig(ctx context.Context, typ string, sockPath string) (Containe
 		Enabled: true,
 		Name:    typ + " " + sockPath,
 		Type:    typ,
-		Socket:  sockPath,
+		Host:    sockPath,
 		Images:  []string{},
 	}, nil
 }
