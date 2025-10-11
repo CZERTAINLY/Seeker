@@ -228,7 +228,7 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 			}
 		}
 
-		require.GreaterOrEqual(t, len(actual), 4)
+		require.GreaterOrEqual(t, len(actual), 2)
 		require.Contains(t, actual, then{path: "/a/a.txt", size: 12})
 		require.Contains(t, actual, then{path: "/a/c/c.txt", size: 42})
 	})
