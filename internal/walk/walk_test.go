@@ -195,7 +195,7 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 
 	host := os.Getenv("DOCKER_HOST")
 	if host == "" {
-		host = "/var/run/docker.sock"
+		host = "unix:///var/run/docker.sock"
 	}
 	t.Run("walk.Images", func(t *testing.T) {
 		actual := make([]then, 0, 10)

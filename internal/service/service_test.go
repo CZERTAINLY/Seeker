@@ -65,7 +65,6 @@ func TestSupervisor(t *testing.T) {
 
 func TestSupervisorFromConfig(t *testing.T) {
 	cfg := model.Config{
-		Version: 0,
 		Service: model.Service{
 			Verbose: true,
 		},
