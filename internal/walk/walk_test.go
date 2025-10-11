@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
 	"github.com/anchore/stereoscope"
@@ -166,30 +167,66 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 		require.NoError(t, err)
 	})
 
-	ociImage, err := stereoscope.GetImageFromSource(
-		t.Context(),
-		info.Image,
-		image.DockerDaemonSource,
-		nil,
-	)
-	require.NoError(t, err)
+	t.Run("walk.Image", func(t *testing.T) {
+		ociImage, err := stereoscope.GetImageFromSource(
+			t.Context(),
+			info.Image,
+			image.DockerDaemonSource,
+			nil,
+		)
+		require.NoError(t, err)
 
-	actual := make([]then, 0, 10)
-	for entry, err := range walk.Image(t.Context(), ociImage) {
-		if strings.HasPrefix(entry.Path(), "/a") {
-			actual = append(actual, testEntry(t, entry, err))
+		actual := make([]then, 0, 10)
+		for entry, err := range walk.Image(t.Context(), ociImage) {
+			if strings.HasPrefix(entry.Path(), "/a") {
+				actual = append(actual, testEntry(t, entry, err))
+			}
 		}
+
+		require.Len(t, actual, 2)
+		require.ElementsMatch(t,
+			[]then{
+				{path: "/a/a.txt", size: 12},
+				{path: "/a/c/c.txt", size: 42}, // len of RUN echo command above
+			},
+			actual,
+		)
+	})
+
+	host := os.Getenv("DOCKER_HOST")
+	if host == "" {
+		host = "/var/run/docker.sock"
 	}
+	t.Run("walk.Images", func(t *testing.T) {
+		actual := make([]then, 0, 10)
+		cfg := model.ContainersConfig{
+			{
+				Enabled: true,
+				Host:    host,
+				Images:  []string{},
+			},
+			{
+				Enabled: true,
+				Host:    host,
+				Images: []string{
+					info.ID,
+				},
+			},
+		}
+		for entry, err := range walk.Images(t.Context(), cfg) {
+			if err != nil {
+				t.Logf("err=%+v", err)
+				continue
+			}
+			if strings.HasPrefix(entry.Path(), "/a") {
+				actual = append(actual, testEntry(t, entry, err))
+			}
+		}
 
-	require.Len(t, actual, 2)
-	require.ElementsMatch(t,
-		[]then{
-			{path: "/a/a.txt", size: 12},
-			{path: "/a/c/c.txt", size: 42}, // len of RUN echo command above
-		},
-		actual,
-	)
-
+		require.GreaterOrEqual(t, len(actual), 4)
+		require.Contains(t, actual, then{path: "/a/a.txt", size: 12})
+		require.Contains(t, actual, then{path: "/a/c/c.txt", size: 42})
+	})
 }
 
 type then struct {
