@@ -48,10 +48,10 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 	cmd := Command{
 		Path: seeker,
 		Args: args,
-		Env: []string{
-			"HOME=" + os.Getenv("HOME"),
+		Env: append(
+			os.Environ(),
 			"GODEBUG=tlssha1=1,x509rsacrt=0,x509negativeserial=1",
-		},
+		),
 		// TODO: scan timeout
 		Timeout: 0,
 	}
@@ -73,9 +73,8 @@ func (s *Supervisor) Do(ctx context.Context) error {
 	defer runner.Close()
 
 	if s.oneshot {
-		slog.DebugContext(ctx, "start oneshot job")
+		slog.DebugContext(ctx, "starting oneshot job")
 		s.Start()
-		slog.DebugContext(ctx, "startED oneshot job")
 	}
 
 	for {

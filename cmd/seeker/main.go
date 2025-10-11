@@ -189,9 +189,14 @@ func initSeeker(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
+	// --verbose has a precedence over config file
+	if flagVerbose {
+		config.Service.Verbose = true
+	}
+
 	// initialize logging
 	level := slog.LevelInfo
-	if flagVerbose || config.Service.Verbose {
+	if config.Service.Verbose {
 		level = slog.LevelDebug
 	}
 	base := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
