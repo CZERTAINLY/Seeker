@@ -138,7 +138,7 @@ func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error)
 	}
 	var uploaders []model.Uploader
 	if cfg.Dir != "" {
-		u, err := newOsRootUploader(cfg.Dir)
+		u, err := NewOSRootUploader(cfg.Dir)
 		if err != nil {
 			return nil, err
 		}
@@ -166,19 +166,19 @@ func (u WriteUploader) Upload(_ context.Context, raw []byte) error {
 	return err
 }
 
-type osRootUploader struct {
+type OSRootUploader struct {
 	root *os.Root
 }
 
-func newOsRootUploader(path string) (*osRootUploader, error) {
+func NewOSRootUploader(path string) (*OSRootUploader, error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, err
 	}
-	return &osRootUploader{root: root}, nil
+	return &OSRootUploader{root: root}, nil
 }
 
-func (u *osRootUploader) Upload(ctx context.Context, b []byte) error {
+func (u *OSRootUploader) Upload(ctx context.Context, b []byte) error {
 	if u.root == nil {
 		return errors.New("root already closed")
 	}

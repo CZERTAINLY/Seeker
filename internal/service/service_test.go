@@ -73,3 +73,12 @@ func TestSupervisorFromConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, supervisor)
 }
+
+func TestOSRootUploader(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	u, err := service.NewOSRootUploader(dir)
+	require.NoError(t, err)
+	err = u.Upload(t.Context(), []byte("raw"))
+	require.NoError(t, err)
+}
