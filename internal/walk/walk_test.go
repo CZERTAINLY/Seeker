@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
@@ -198,6 +200,9 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 		host = "unix:///var/run/docker.sock"
 	}
 	t.Run("walk.Images", func(t *testing.T) {
+		if testing.Verbose() {
+			slog.SetDefault(log.New(true))
+		}
 		actual := make([]then, 0, 10)
 		cfg := model.ContainersConfig{
 			{

@@ -214,16 +214,7 @@ func initSeeker(cmd *cobra.Command, _ []string) error {
 	}
 
 	// initialize logging
-	level := slog.LevelInfo
-	if config.Service.Verbose {
-		level = slog.LevelDebug
-	}
-	base := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: false,
-		Level:     level,
-	})
-	ctxHandler := log.New(base)
-	slog.SetDefault(slog.New(ctxHandler))
+	slog.SetDefault(log.New(config.Service.Verbose))
 
 	slog.Debug("seeker run", "configPath", configPath)
 	slog.Debug("seeker run", "config", config)

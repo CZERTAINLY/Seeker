@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log/slog"
 
+	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
 	"github.com/anchore/stereoscope"
@@ -64,22 +65,37 @@ func Image(ctx context.Context, image *image.Image) iter.Seq2[Entry, error] {
 }
 
 // Images traverse through all defined containers and their images and all files inside
-func Images(ctx context.Context, configs model.ContainersConfig) iter.Seq2[Entry, error] {
+func Images(parentContext context.Context, configs model.ContainersConfig) iter.Seq2[Entry, error] {
 	return func(yield func(Entry, error) bool) {
 		for _, cc := range configs {
+			ctx := log.ContextAttrs(parentContext, slog.String("host", cc.Host))
 			cli, err := newClient(ctx, cc)
 			if err != nil {
+				slog.ErrorContext(ctx, "can't connect", "error", err)
 				if !yield(nil, err) {
 					return
 				}
 			}
-			slog.DebugContext(ctx, "connected to ", "socket", cc.Host)
+			slog.DebugContext(ctx, "connected")
 			defer func() {
 				if cli != nil {
 					_ = cli.Close()
 				}
 			}()
 			for img := range images(ctx, cli, cc) {
+				if img == nil {
+					slog.DebugContext(ctx, "img is nil skipping")
+					continue
+				}
+
+				var ident string
+				if img.Metadata.Tags != nil {
+					ident = img.Metadata.Tags[0].String()
+				} else {
+					ident = img.Metadata.ID
+				}
+
+				slog.DebugContext(ctx, "scanning", "image", ident)
 				for entry, err := range Image(ctx, img) {
 					if !yield(entry, err) {
 						return
