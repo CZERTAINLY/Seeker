@@ -8,15 +8,20 @@ import (
 	"path/filepath"
 	"runtime/debug"
 
+	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/service"
+	"github.com/CZERTAINLY/Seeker/internal/x509"
 	"gopkg.in/yaml.v3"
 
 	"github.com/spf13/cobra"
 )
 
 var (
+	detectors []scan.Detector
+
 	userConfigPath string // /default/config/path/seeker on given OS
 	configPath     string // actual config file used (if loaded)
 	config         model.Config
@@ -26,11 +31,25 @@ var (
 )
 
 func init() {
+	// user configuration
 	d, err := os.UserConfigDir()
 	if err != nil {
 		panic(err)
 	}
 	userConfigPath = filepath.Join(d, "seeker")
+
+	// configure default detectors
+	// secrets:
+	leaks, err := gitleaks.NewDetector()
+	if err != nil {
+		panic(err)
+	}
+
+	// certificates:
+	detectors = []scan.Detector{
+		x509.Detector{},
+		leaks,
+	}
 }
 
 func main() {
@@ -108,11 +127,11 @@ func doScan(cmd *cobra.Command, args []string) error {
 		slog.Int("pid", os.Getpid()),
 	)
 	ctx = log.ContextAttrs(ctx, attrs)
-	scanner, err := service.NewScanner(ctx, config)
+	seeker, err := NewSeeker(ctx, detectors, config)
 	if err != nil {
 		return err
 	}
-	return scanner.Do(ctx, os.Stdout)
+	return seeker.Do(ctx, os.Stdout)
 }
 
 func doRun(cmd *cobra.Command, args []string) error {

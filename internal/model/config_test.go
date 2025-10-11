@@ -93,3 +93,17 @@ func TestDefaultConfig(t *testing.T) {
 
 	require.Equal(t, cfg, cfg2)
 }
+
+func TestIsZero(t *testing.T) {
+	t.Parallel()
+
+	var f model.Filesystem
+	var cc model.ContainersConfig
+	var p model.Ports
+	var s model.Service
+	var c model.Config
+
+	for _, z := range []interface{ IsZero() bool }{f, cc, p, s, c} {
+		require.True(t, z.IsZero())
+	}
+}

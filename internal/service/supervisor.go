@@ -16,16 +16,21 @@ import (
 type Supervisor struct {
 	cmd       Command
 	start     chan struct{}
-	uploaders []Uploader
+	uploaders []model.Uploader
 	oneshot   bool
 }
 
-func NewSupervisor(cmd Command, uploaders ...Uploader) *Supervisor {
+func NewSupervisor(cmd Command, uploaders ...model.Uploader) *Supervisor {
 	return &Supervisor{
 		cmd:       cmd,
 		start:     make(chan struct{}, 1),
 		uploaders: uploaders,
 	}
+}
+
+func (s *Supervisor) SetOneshot(oneshot bool) *Supervisor {
+	s.oneshot = oneshot
+	return s
 }
 
 func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
@@ -127,11 +132,11 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 	return errors.Join(errs...)
 }
 
-func uploaders(ctx context.Context, cfg model.Service) ([]Uploader, error) {
+func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error) {
 	if cfg.Dir == "" && !cfg.Repository.Enabled {
-		return []Uploader{NewWriteUploader(os.Stdout)}, nil
+		return []model.Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
-	var uploaders []Uploader
+	var uploaders []model.Uploader
 	if cfg.Dir != "" {
 		u, err := newOsRootUploader(cfg.Dir)
 		if err != nil {
