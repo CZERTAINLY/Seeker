@@ -6,11 +6,13 @@ import (
 	"io"
 	"iter"
 	"log/slog"
+	"net/netip"
 	"os"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
@@ -39,6 +41,8 @@ type Uploader interface {
 type Scanner struct {
 	filesystems iter.Seq2[walk.Entry, error]
 	containers  iter.Seq2[walk.Entry, error]
+	nmaps       []nmap.Scanner
+	ips         []netip.Addr
 }
 
 func NewScanner(ctx context.Context, config model.Config) (Scanner, error) {
@@ -56,9 +60,16 @@ func NewScanner(ctx context.Context, config model.Config) (Scanner, error) {
 		return Scanner{}, fmt.Errorf("initializing containers scan: %w", err)
 	}
 
+	nmaps, ips, err := nmaps(ctx, config.Ports)
+	if err != nil {
+		return Scanner{}, fmt.Errorf("initializing port scan: %w", err)
+	}
+
 	return Scanner{
 		filesystems: filesystems,
 		containers:  containers,
+		nmaps:       nmaps,
+		ips:         ips,
 	}, nil
 }
 
@@ -68,7 +79,7 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 	b := bom.NewBuilder()
 	detections := make(chan model.Detection)
 	go func() {
-		for d := range detections { // will be done after g.Wait()
+		for d := range detections { // will be closed after g.Wait()
 			b.AppendComponents(d.Components...)
 			b.AppendDependencies(d.Dependencies...)
 		}
@@ -93,7 +104,17 @@ func (s Scanner) Do(ctx context.Context, out io.Writer) error {
 		})
 	}
 
-	_ = g.Wait() // goroutines do not return an error
+	// nmap scans
+	for _, ip := range s.ips {
+		g.Go(func() error {
+			for _, n := range s.nmaps {
+				nmapScan(ctx, n, ip, detections)
+			}
+			return nil
+		})
+	}
+
+	_ = g.Wait()
 	close(detections)
 
 	err := b.AsJSON(out)
@@ -112,6 +133,16 @@ func goScan(ctx context.Context, scanner *scan.Scan, seq iter.Seq2[walk.Entry, e
 		for _, detection := range results {
 			detections <- detection
 		}
+	}
+}
+
+func nmapScan(ctx context.Context, scanner nmap.Scanner, ip netip.Addr, detections chan<- model.Detection) {
+	results, err := scanner.Detect(ctx, ip)
+	if err != nil {
+		slog.ErrorContext(ctx, "nmap scan failed", "error", err)
+	}
+	for _, d := range results {
+		detections <- d
 	}
 }
 
@@ -156,4 +187,41 @@ func containers(ctx context.Context, configs model.ContainersConfig) (iter.Seq2[
 
 	ret := walk.Images(ctx, configs)
 	return ret, nil
+}
+
+func nmaps(ctx context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr, error) {
+	if !cfg.Enabled {
+		return nil, nil, nil
+	}
+
+	if !cfg.IPv4 && !cfg.IPv6 {
+		return nil, nil, nil
+	}
+
+	var ips []netip.Addr
+	if cfg.IPv4 {
+		ips = append(ips, netip.MustParseAddr("127.0.0.1"))
+	}
+	if cfg.IPv6 {
+		ips = append(ips, netip.IPv6Loopback())
+	}
+
+	var scanners = []nmap.Scanner{
+		nmap.NewTLS(),
+		nmap.NewSSH(),
+	}
+
+	if cfg.Binary != "" {
+		for idx, s := range scanners {
+			scanners[idx] = s.WithNmapBinary(cfg.Binary)
+		}
+	}
+	if cfg.Ports != "" {
+		for idx, s := range scanners {
+			scanners[idx] = s.WithPorts(cfg.Ports)
+		}
+	}
+
+	return scanners, ips, nil
+
 }
