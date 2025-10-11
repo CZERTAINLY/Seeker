@@ -3,6 +3,7 @@ package log
 import (
 	"context"
 	"log/slog"
+	"os"
 )
 
 type slogKeyT struct{}
@@ -13,7 +14,7 @@ type ContextHandler struct {
 	slog.Handler
 }
 
-func New(handler slog.Handler) ContextHandler {
+func NewContextHandler(handler slog.Handler) ContextHandler {
 	return ContextHandler{
 		Handler: handler,
 	}
@@ -34,4 +35,17 @@ func ContextAttrs(ctx context.Context, attrs ...slog.Attr) context.Context {
 	}
 	a = append(a, attrs...)
 	return context.WithValue(ctx, slogKey, a)
+}
+
+func New(verbose bool) *slog.Logger {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+	base := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+		AddSource: false,
+		Level:     level,
+	})
+	ctxHandler := NewContextHandler(base)
+	return slog.New(ctxHandler)
 }

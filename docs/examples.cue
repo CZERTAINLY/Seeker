@@ -14,7 +14,7 @@ ManualConfig: #Config & {
   containers: [{
     enabled: true
     type: "docker"
-    socket: "/var/run/docker.sock"
+    host: "${DOCKER_HOST}"
     images: [
       "gcr.io/distroless/base-debian12:latest",
       "docker.io/library/alpine:3.22.1",
@@ -36,7 +36,7 @@ ManualConfig: #Config & {
       enabled: false
       url: "https://localhost:12345"
       auth: {
-        type: "none"
+        type: ""
       }
     }
   }

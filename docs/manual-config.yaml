@@ -7,7 +7,7 @@ filesystem:
 containers:
   - enabled: true
     type: docker
-    socket: /var/run/docker.sock
+    host: ${DOCKER_HOST}
     images:
       - gcr.io/distroless/base-debian12:latest
       - docker.io/library/alpine:3.22.1
@@ -18,12 +18,12 @@ ports:
   ipv4: true
   ipv6: false
 service:
-  dir: .
   mode: manual
+  verbose: true
+  log: stderr
+  dir: .
   repository:
     enabled: false
     url: https://localhost:12345
     auth:
-      type: none
-  verbose: true
-  log: stderr
+      type: ""

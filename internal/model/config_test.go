@@ -1,15 +1,16 @@
 package model_test
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestLoadConfig(t *testing.T) {
-	t.Parallel()
 	yml := `
 version: 0
 service:
@@ -19,27 +20,35 @@ service:
     enabled: true
     url: https://example.com/repo
     auth:
-      type: static_token
+      type: token
       token: ABC123
 `
 	cfg, err := model.LoadConfig(strings.NewReader(yml))
+	if err != nil {
+		for _, d := range model.CueErrDetails(err) {
+			t.Logf("%s\n", d)
+		}
+	}
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
-	require.NotNil(t, cfg.Service.Log)
-	require.Equal(t, model.LogStderr, *cfg.Service.Log)
+	require.Equal(t, model.LogStderr, cfg.Service.Log)
 	require.NotNil(t, cfg.Service.Repository)
-	require.NotNil(t, cfg.Service.Repository.Enabled)
-	require.True(t, *cfg.Service.Repository.Enabled)
+	require.True(t, cfg.Service.Repository.Enabled)
 	require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
-	require.Equal(t, "static_token", cfg.Service.Repository.Auth.Type)
+	require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
 	require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
 }
 
 func TestLoadConfig_Fail(t *testing.T) {
-	t.Parallel()
-	// Missing required auth.token for static_token
-	yml := `
+	var testCases = []struct {
+		scenario string
+		given    string
+		then     string
+	}{
+		{
+			scenario: "Missing required auth.token for token auth type",
+			given: `
 version: 0
 service:
   mode: manual
@@ -47,16 +56,54 @@ service:
     enabled: true
     url: https://example.com/repo
     auth:
-      type: static_token
-`
-	_, err := model.LoadConfig(strings.NewReader(yml))
-	require.Error(t, err)
-	require.EqualError(t, err, "#Config.service.repository.auth.token: incomplete value string")
+      type: token
+`,
+			then: `#Config.service.repository.auth.token: incomplete value !=""`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			_, err := model.LoadConfig(strings.NewReader(tc.given))
+			require.Error(t, err)
+			for _, d := range model.CueErrDetails(err) {
+				t.Logf("%s", d)
+			}
+			require.EqualError(t, err, tc.then)
+		})
+	}
 }
 
 func TestDefaultConfig(t *testing.T) {
-	t.Parallel()
 	cfg := model.DefaultConfig(t.Context())
-	t.Logf("config: %+v", cfg)
 	require.NotZero(t, cfg)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	err := enc.Encode(cfg)
+	require.NoError(t, err)
+
+	cfg2, err := model.LoadConfig(&buf)
+	if err != nil {
+		for _, d := range model.CueErrDetails(err) {
+			t.Logf("%s", d)
+		}
+	}
+	require.NoError(t, err)
+
+	require.Equal(t, cfg, cfg2)
+}
+
+func TestIsZero(t *testing.T) {
+	t.Parallel()
+
+	var f model.Filesystem
+	var cc model.ContainersConfig
+	var p model.Ports
+	var s model.Service
+	var c model.Config
+
+	for _, z := range []interface{ IsZero() bool }{f, cc, p, s, c} {
+		require.True(t, z.IsZero())
+	}
 }
