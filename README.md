@@ -35,13 +35,17 @@ This configuration snippet searches for certificates and secrets inside local di
 
 ```sh
 $ ./seeker run --config seeker.yaml
-{"time":"2025-10-10T14:14:04.632066182+02:00","level":"WARN","msg":"command has no timeout","path":"/home/michal/projects/3key/Seeker/seeker","seeker":{"cmd":"run","pid":2488398}}
+{"time":"2025-10-10T14:14:04.632066182+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2488398}}
 {"time":"2025-10-10T14:14:05.410539638+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-10-02:14:05.json","seeker":{"cmd":"run","pid":2488398}}
 ```
 
 # Container scan
 
-Seeker can scan images stored inside Docker(podman). Those searches for certificates and secrets exactly like filesystem scan do. Docker host can be specified via environment variable.
+Seeker can scan images stored inside Docker(podman). Those searches for
+certificates and secrets exactly like filesystem scan do. Docker host can be
+specified via environment variable.
+
+The docker host can be specified via environment variable such as `${DOCKER_HOST}`.
 
 
 ```yaml
@@ -63,7 +67,7 @@ containers:
 
 ```sh
 $ time ./seeker run --config seeker.yaml
-{"time":"2025-10-11T11:38:54.207199641+02:00","level":"WARN","msg":"command has no timeout","path":"/home/michal/projects/3key/Seeker/seeker","seeker":{"cmd":"run","pid":2610219}}
+{"time":"2025-10-11T11:38:54.207199641+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2610219}}
 {"time":"2025-10-11T11:39:41.257456265+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-11-11-39-41.json","seeker":{"cmd":"run","pid":2610219}}
 
 real    0m47.083s
@@ -85,10 +89,14 @@ ports:
 
 ```sh
 $ time ./seeker run --config seeker.yaml
-{"time":"2025-10-11T11:46:39.889049897+02:00","level":"WARN","msg":"command has no timeout","path":"/home/michal/projects/3key/Seeker/seeker","seeker":{"cmd":"run","pid":2614823}}
+{"time":"2025-10-11T11:46:39.889049897+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2614823}}
 {"time":"2025-10-11T11:46:57.244593739+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-11-11-46-57.json","seeker":{"cmd":"run","pid":2614823}}
 
 real    0m17.389s
 user    0m0.838s
 sys     0m2.538s
 ```
+
+# File format specification
+
+See [docs/config.cue] for a specification and (manual-config.yaml)[docs/manual-config.yaml] for an example config.
