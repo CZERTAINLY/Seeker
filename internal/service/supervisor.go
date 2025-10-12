@@ -36,7 +36,7 @@ func (s *Supervisor) SetOneshot(oneshot bool) *Supervisor {
 func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
 	uploaders, err := uploaders(ctx, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("inicializing uploaders: %w", err)
+		return nil, fmt.Errorf("initializing uploaders: %w", err)
 	}
 	seeker, err := os.Executable()
 	if err != nil {
