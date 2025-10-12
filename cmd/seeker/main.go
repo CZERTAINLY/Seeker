@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
@@ -29,6 +30,31 @@ var (
 	flagConfigFilePath string // value of --config flag
 	flagVerbose        bool   //valur if --verbose flag
 )
+
+var rootCmd = &cobra.Command{
+	Use:          "seeker",
+	Short:        "Tool detecting secrets and providing BOM",
+	SilenceUsage: true,
+}
+
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "run command reads the configuration and executes the scan",
+	RunE:  doRun,
+}
+
+var scanCmd = &cobra.Command{
+	Use:    "_scan",
+	Short:  "internal command",
+	RunE:   doScan,
+	Hidden: true,
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "version provide version of a seeker",
+	RunE:  doVersion,
+}
 
 func init() {
 	// user configuration
@@ -57,70 +83,60 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&flagConfigFilePath, "config", "", "Config file to load - default is seeker.yaml in current directory or in "+userConfigPath)
 	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose logging")
 
-	// never print messages
+	// never print messages and usage
 	rootCmd.SilenceErrors = true
-
-	// parse or create a config, setup logging
-	rootCmd.PersistentPreRunE = initSeeker
+	rootCmd.SilenceUsage = true
 
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(scanCmd)
 	rootCmd.AddCommand(versionCmd)
 
-	if err := rootCmd.Execute(); err != nil {
+	if cmd, err := rootCmd.ExecuteC(); err != nil {
 		slog.Error("seeker failed", "err", err)
+		if strings.HasPrefix(err.Error(), "unknown command") {
+			_ = rootCmd.Help() // ./cmd bflmp
+		} else {
+			_ = cmd.Help() // ./cmd run gfagf (extra arg)
+		}
 		os.Exit(1)
 	}
 }
 
-var rootCmd = &cobra.Command{
-	Use:          "seeker",
-	Short:        "Tool detecting secrets and providing BOM",
-	SilenceUsage: true,
-}
+func doVersion(cmd *cobra.Command, args []string) error {
+	if err := initSeeker(cmd, args); err != nil {
+		return err
+	}
 
-var runCmd = &cobra.Command{
-	Use:   "run",
-	Short: "run command reads the configuration and executes the scan",
-	RunE:  doRun,
-}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		fmt.Println("seeker: version info not available")
+	}
 
-var scanCmd = &cobra.Command{
-	Use:    "_scan",
-	Short:  "internal command",
-	RunE:   doScan,
-	Hidden: true,
-}
-
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "version provide version of a seeker",
-	Run: func(cmd *cobra.Command, args []string) {
-		info, ok := debug.ReadBuildInfo()
-		if !ok {
-			fmt.Println("seeker: version info not available")
+	if configPath != "" {
+		fmt.Printf("config: %s\n", configPath)
+	}
+	fmt.Printf("seeker: %s\n", info.Main.Version)
+	fmt.Printf("go:     %s\n", info.GoVersion)
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			fmt.Printf("commit: %s\n", s.Value)
+		case "vcs.time":
+			fmt.Printf("date:   %s\n", s.Value)
+		case "vcs.modified":
+			fmt.Printf("dirty:  %s\n", s.Value)
 		}
+	}
+	fmt.Println()
 
-		if configPath != "" {
-			fmt.Printf("config: %s\n", configPath)
-		}
-		fmt.Printf("seeker: %s\n", info.Main.Version)
-		fmt.Printf("go:     %s\n", info.GoVersion)
-		for _, s := range info.Settings {
-			switch s.Key {
-			case "vcs.revision":
-				fmt.Printf("commit: %s\n", s.Value)
-			case "vcs.time":
-				fmt.Printf("date:   %s\n", s.Value)
-			case "vcs.modified":
-				fmt.Printf("dirty:  %s\n", s.Value)
-			}
-		}
-		fmt.Println()
-	},
+	return nil
 }
 
 func doScan(cmd *cobra.Command, args []string) error {
+	if err := initSeeker(cmd, args); err != nil {
+		return err
+	}
+
 	ctx := cmd.Context()
 	attrs := slog.Group("seeker",
 		slog.String("cmd", "_scan"),
@@ -135,6 +151,13 @@ func doScan(cmd *cobra.Command, args []string) error {
 }
 
 func doRun(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unsupported arguments: %s", strings.Join(args, ", "))
+	}
+	if err := initSeeker(cmd, args); err != nil {
+		return err
+	}
+
 	ctx := cmd.Context()
 	if config.Service.Mode != model.ServiceModeManual {
 		return fmt.Errorf("only manual mode is supported now")
@@ -154,7 +177,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	return supervisor.Do(ctx)
 }
 
-func initSeeker(cmd *cobra.Command, _ []string) error {
+func initSeeker(_ *cobra.Command, _ []string) error {
 	if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
 		configPath = envConfig
 	} else if flagConfigFilePath != "" {
