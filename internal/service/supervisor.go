@@ -183,7 +183,7 @@ func (u *OSRootUploader) Upload(ctx context.Context, b []byte) error {
 		return errors.New("root already closed")
 	}
 
-	path := "seeker-" + time.Now().Format("2006-01-02-03-04-05") + ".json"
+	path := "seeker-" + time.Now().Format("2006-01-02-15-04-05") + ".json"
 
 	f, err := u.root.Create(path)
 	if err != nil {
