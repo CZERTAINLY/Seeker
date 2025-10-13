@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -106,4 +107,66 @@ func TestIsZero(t *testing.T) {
 	for _, z := range []interface{ IsZero() bool }{f, cc, p, s, c} {
 		require.True(t, z.IsZero())
 	}
+}
+
+func TestExpandEnv(t *testing.T) {
+	// this must not be parallel
+	const inp = `
+version: 0
+service:
+  mode: manual
+  dir: ${TEST_EE_SERVICE_DIR}
+filesystem:
+  paths:
+    - $TEST_EE_FILESYSTEM_PATH_1
+    - $TEST_EE_FILESYSTEM_PATH_2
+    - $TEST_EE_FILESYSTEM_PATH_undefined
+containers:
+  config:
+    - name: ${TEST_EE_CONTAINERS1_NAME}
+      host: ${TEST_EE_CONTAINERS1_HOST}
+      images: 
+        - $TEST_EE_CONTAINERS1_IMAGE_1
+ports:
+  binary: ${TEST_EE_NMAP_BINARY}
+`
+
+	var names = []string{
+		"TEST_EE_SERVICE_DIR",
+		"TEST_EE_FILESYSTEM_PATH_1",
+		"TEST_EE_FILESYSTEM_PATH_2",
+		"TEST_EE_CONTAINERS1_NAME",
+		"TEST_EE_CONTAINERS1_HOST",
+		"TEST_EE_CONTAINERS1_IMAGE_1",
+		"TEST_EE_NMAP_BINARY",
+	}
+
+	for _, name := range names {
+		require.NoError(t, os.Setenv(name, strings.ToLower(name)))
+	}
+
+	t.Cleanup(func() {
+		for _, name := range names {
+			require.NoError(t, os.Unsetenv(name))
+		}
+	})
+
+	cfg, err := model.LoadConfig(strings.NewReader(inp))
+	require.NoError(t, err)
+
+	require.Equal(t, "test_ee_service_dir", cfg.Service.Dir)
+	require.Len(t, cfg.Filesystem.Paths, 3)
+	require.Equal(t, "test_ee_filesystem_path_1", cfg.Filesystem.Paths[0])
+	require.Equal(t, "test_ee_filesystem_path_2", cfg.Filesystem.Paths[1])
+	require.Equal(t, "", cfg.Filesystem.Paths[2])
+
+	require.Len(t, cfg.Containers.Config, 1)
+	c0 := cfg.Containers.Config[0]
+	require.Equal(t, "test_ee_containers1_name", c0.Name)
+	require.Equal(t, "test_ee_containers1_host", c0.Host)
+	require.Len(t, c0.Images, 1)
+	require.Equal(t, "test_ee_containers1_image_1", c0.Images[0])
+
+	require.Equal(t, "test_ee_nmap_binary", cfg.Ports.Binary)
+
 }

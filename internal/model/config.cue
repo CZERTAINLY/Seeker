@@ -19,7 +19,10 @@ service: #Service
 }
 
 // List of container daemon configurations to inspect (Docker/Podman).
-#Containers: [...#ContainerConfig]
+#Containers: {
+  enabled?: bool | *false
+  config: [...#ContainerConfig]
+}
 
 // Supported container daemon types.
 #ContainerDaemon: ("" | "docker" | "podman")

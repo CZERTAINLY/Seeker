@@ -5,12 +5,13 @@ filesystem:
     - path1
     - path2
 containers:
-  - enabled: true
-    type: docker
-    host: ${DOCKER_HOST}
-    images:
-      - gcr.io/distroless/base-debian12:latest
-      - docker.io/library/alpine:3.22.1
+  enabled: true
+  config:
+    - type: docker
+      host: ${DOCKER_HOST}
+      images:
+        - gcr.io/distroless/base-debian12:latest
+        - docker.io/library/alpine:3.22.1
 ports:
   enabled: true
   binary: /usr/bin/nmap

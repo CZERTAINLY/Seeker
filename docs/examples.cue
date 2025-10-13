@@ -11,15 +11,17 @@ ManualConfig: #Config & {
       "path2",
     ]
   }
-  containers: [{
-    enabled: true
+  containers: {
+    enabled: true,
+    config: [
+  {
     type: "docker"
     host: "${DOCKER_HOST}"
     images: [
       "gcr.io/distroless/base-debian12:latest",
       "docker.io/library/alpine:3.22.1",
     ]
-  }]
+  }]}
   ports: {
     enabled: true
     binary: "/usr/bin/nmap"

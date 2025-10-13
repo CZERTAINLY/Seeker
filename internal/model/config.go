@@ -40,11 +40,11 @@ const (
 )
 
 type Config struct {
-	Version    int              `json:"version"` // fixed 0 for now
-	Filesystem Filesystem       `json:"filesystem,omitempty"`
-	Containers ContainersConfig `json:"containers,omitempty"`
-	Ports      Ports            `json:"ports,omitempty"`
-	Service    Service          `json:"service"`
+	Version    int        `json:"version"` // fixed 0 for now
+	Filesystem Filesystem `json:"filesystem"`
+	Containers Containers `json:"containers"`
+	Ports      Ports      `json:"ports"`
+	Service    Service    `json:"service"`
 }
 
 // Filesystem scanning settings.
@@ -53,15 +53,19 @@ type Filesystem struct {
 	Paths   []string `json:"paths,omitempty"` // nil/empty => use CWD
 }
 
+type Containers struct {
+	Enabled bool `json:"enabled"`
+	Config  ContainersConfig
+}
+
 type ContainersConfig []ContainerConfig
 
 // Container daemon configuration list element.
 type ContainerConfig struct {
-	Enabled bool     `json:"enabled"`
-	Name    string   `json:"name,omitempty"`
-	Type    string   `json:"type"`             // "docker" | "podman"
-	Host    string   `json:"host,omitempty"`   // e.g. /var/run/docker.sock or ${DOCKER_HOST}
-	Images  []string `json:"images,omitempty"` // explicit images (empty => discover)
+	Name   string   `json:"name,omitempty"`
+	Type   string   `json:"type"`             // "docker" | "podman"
+	Host   string   `json:"host,omitempty"`   // e.g. /var/run/docker.sock or ${DOCKER_HOST}
+	Images []string `json:"images,omitempty"` // explicit images (empty => discover)
 }
 
 // Local ports scanning module configuration.
@@ -77,17 +81,17 @@ type Ports struct {
 type Service struct {
 	Mode       string     `json:"mode"` // must be "manual" or "timer"
 	Verbose    bool       `json:"verbose,omitempty"`
-	Log        string     `json:"log,omitempty"`        // "stderr"|"stdout"|"discard"|path - defaults to stderr
-	Dir        string     `json:"dir,omitempty"`        // output directory
-	Repository Repository `json:"repository,omitempty"` // remote publication
-	Every      string     `json:"every,omitempty"`      // only for mode timer
+	Log        string     `json:"log,omitempty"`   // "stderr"|"stdout"|"discard"|path - defaults to stderr
+	Dir        string     `json:"dir,omitempty"`   // output directory
+	Repository Repository `json:"repository"`      // remote publication
+	Every      string     `json:"every,omitempty"` // only for mode timer
 }
 
 // Repository publication settings.
 type Repository struct {
 	Enabled bool   `json:"enabled"`
 	URL     string `json:"url"`
-	Auth    Auth   `json:"auth,omitempty"` // discriminated union by Auth.Type
+	Auth    Auth   `json:"auth"` // discriminated union by Auth.Type
 }
 
 // Auth is a tagged union: Type "none" or "static_token".
@@ -98,7 +102,7 @@ type Auth struct {
 
 func (c Config) IsZero() bool {
 	return c.Filesystem.IsZero() &&
-		c.Containers.IsZero() &&
+		c.Containers.Config.IsZero() &&
 		c.Ports.IsZero() &&
 		c.Service.IsZero()
 }
@@ -114,6 +118,47 @@ func (c Ports) IsZero() bool {
 }
 func (c Service) IsZero() bool {
 	return isZero(c)
+}
+
+func (c *Config) ExpandEnv() {
+	var kids = []interface{ ExpandEnv() }{
+		&c.Filesystem,
+		&c.Containers,
+		&c.Ports,
+		&c.Service,
+	}
+	for _, ee := range kids {
+		ee.ExpandEnv()
+	}
+}
+
+func (c *Filesystem) ExpandEnv() {
+	c.Paths = expandStrings(c.Paths)
+}
+
+func (c *Containers) ExpandEnv() {
+	for idx, cc := range c.Config {
+		cc.Name = os.ExpandEnv(cc.Name)
+		cc.Host = os.ExpandEnv(cc.Host)
+		cc.Images = expandStrings(cc.Images)
+		c.Config[idx] = cc
+	}
+}
+
+func (c *Ports) ExpandEnv() {
+	c.Binary = os.ExpandEnv(c.Binary)
+}
+
+func (c *Service) ExpandEnv() {
+	c.Dir = os.ExpandEnv(c.Dir)
+}
+
+func expandStrings(slice []string) []string {
+	ret := make([]string, len(slice))
+	for idx, s := range slice {
+		ret[idx] = os.ExpandEnv(s)
+	}
+	return ret
 }
 
 //go:embed config.cue
@@ -170,6 +215,7 @@ func LoadConfig(r io.Reader) (Config, error) {
 		return zero, err
 	}
 
+	out.ExpandEnv()
 	return out, nil
 }
 
@@ -214,6 +260,7 @@ func DefaultConfig(ctx context.Context) Config {
 		},
 	}
 
+	var containers ContainersConfig
 	slog.DebugContext(ctx, "probing docker/podman sockets")
 	// detect docker socket
 	for _, path := range []string{"${DOCKER_HOST}", "/run/docker.sock", "/var/run/docker.sock"} {
@@ -223,7 +270,7 @@ func DefaultConfig(ctx context.Context) Config {
 			slog.DebugContext(ctx, "probe failed", "error", err)
 			continue
 		}
-		cfg.Containers = append(cfg.Containers, cc)
+		containers = append(containers, cc)
 	}
 	// detect podman sockets
 	for _, path := range []string{"${PODMAN_SOCKET}", "/run/podman/podman.sock", "/var/run/podman/podman.sock"} {
@@ -233,8 +280,14 @@ func DefaultConfig(ctx context.Context) Config {
 			slog.DebugContext(ctx, "probe failed", "error", err)
 			continue
 		}
-		cfg.Containers = append(cfg.Containers, cc)
+		containers = append(containers, cc)
 	}
+
+	if len(containers) > 0 {
+		cfg.Containers.Enabled = true
+		cfg.Containers.Config = containers
+	}
+
 	return cfg
 }
 
@@ -246,11 +299,10 @@ func containerConfig(ctx context.Context, typ string, sockPath string) (Containe
 		return ContainerConfig{}, err
 	}
 	return ContainerConfig{
-		Enabled: true,
-		Name:    typ + " " + sockPath,
-		Type:    typ,
-		Host:    sockPath,
-		Images:  []string{},
+		Name:   typ,
+		Type:   typ,
+		Host:   sockPath,
+		Images: []string{},
 	}, nil
 }
 
