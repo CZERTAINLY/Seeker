@@ -3,97 +3,33 @@ package main
 import (
 	"context"
 	"fmt"
-	"iter"
 	"log/slog"
-	"net"
-	"net/netip"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
-	"time"
 
-	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	"github.com/CZERTAINLY/Seeker/internal/nmap"
-	"github.com/CZERTAINLY/Seeker/internal/parallel"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/service"
-	"github.com/CZERTAINLY/Seeker/internal/walk"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
+	"gopkg.in/yaml.v3"
 
-	"github.com/anchore/stereoscope"
-	"github.com/anchore/stereoscope/pkg/image"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var (
+	detectors []scan.Detector
+
+	userConfigPath string // /default/config/path/seeker on given OS
+	configPath     string // actual config file used (if loaded)
+	config         model.Config
+
 	flagConfigFilePath string // value of --config flag
-	defaultConfigPath  string // /default/config/path/seeker on given OS
-	configPathUsed     string // actual config file used (if loaded)
-
-	flagVerbose bool
+	flagVerbose        bool   //valur if --verbose flag
 )
-
-func init() {
-	d, err := os.UserConfigDir()
-	if err != nil {
-		panic(err)
-	}
-	defaultConfigPath = filepath.Join(d, "seeker")
-}
-
-func main() {
-	cobra.OnInitialize(onInitialize)
-
-	// root flags
-	rootCmd.PersistentFlags().StringVar(&flagConfigFilePath, "config", "", "Config file to load - default is seeker.yaml in current directory or in "+defaultConfigPath)
-	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose logging")
-	// root sub-commands
-	rootCmd.AddCommand(alphaCmd)
-	rootCmd.AddCommand(versionCmd)
-
-	// alpha commands
-	alphaCmd.AddCommand(scanCmd)
-	alphaCmd.AddCommand(nmapCmd)
-	alphaCmd.AddCommand(svcCmd)
-
-	// seeker alpha scan
-	// -path
-	scanCmd.Flags().String("path", ".", "local path to inspect")
-	_ = viper.BindPFlag("alpha.scan.path", scanCmd.Flags().Lookup("path"))
-	// - docker
-	scanCmd.Flags().String("docker", "", "docker image to inspect, must be pulled-in")
-	_ = viper.BindPFlag("alpha.scan.docker", scanCmd.Flags().Lookup("docker"))
-
-	// seeker alpha nmap
-	// --nmap
-	nmapCmd.Flags().String("nmap", "", "nmap binary to use, defaults to autodetect")
-	_ = viper.BindPFlag("alpha.nmap.nmap", nmapCmd.Flags().Lookup("nmap"))
-	// --timeout
-	nmapCmd.Flags().Duration("timeout", 0, "timeout for a port scan (defaults to infinite)")
-	_ = viper.BindPFlag("alpha.nmap.timeout", nmapCmd.Flags().Lookup("timeout"))
-	// --ssh
-	nmapCmd.Flags().Bool("ssh", false, "perform ssh scan (defaults to tls/https)")
-	_ = viper.BindPFlag("alpha.nmap.ssh", nmapCmd.Flags().Lookup("ssh"))
-	// --host
-	nmapCmd.Flags().String("target", "", "connect to host (defaults to localhost). For testing only.")
-	_ = viper.BindPFlag("alpha.nmap.target", nmapCmd.Flags().Lookup("target"))
-	// --raw
-	nmapCmd.Flags().String("raw", "", "Store nmap's output as JSON to file. For testing only.")
-	_ = viper.BindPFlag("alpha.nmap.raw", nmapCmd.Flags().Lookup("raw"))
-
-	// seeker alpha service
-
-	if err := rootCmd.Execute(); err != nil {
-		slog.Error("seeker failed", "err", err)
-		os.Exit(1)
-	}
-}
 
 var rootCmd = &cobra.Command{
 	Use:          "seeker",
@@ -101,348 +37,219 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 }
 
-var alphaCmd = &cobra.Command{
-	Use:     "alpha",
-	Aliases: []string{"a"},
-	Short:   "alpha command has unstable API, may change at any time",
+var runCmd = &cobra.Command{
+	Use:   "run",
+	Short: "run command reads the configuration and executes the scan",
+	RunE:  doRun,
 }
 
 var scanCmd = &cobra.Command{
-	Use:   "scan",
-	Short: "scan scans the provided source and report detected things",
-	RunE:  doScan,
-}
-
-var nmapCmd = &cobra.Command{
-	Use:     "nmap",
-	Aliases: []string{"n"},
-	Short:   "nmap scans local network using nmap",
-	RunE:    doNmap,
-}
-
-var svcCmd = &cobra.Command{
-	Use:   "svc",
-	Short: "seeker service - runs seeker in specified intervals",
-	RunE:  doSvc,
+	Use:    "_scan",
+	Short:  "internal command",
+	RunE:   doScan,
+	Hidden: true,
 }
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "version provide version of a seeker",
-	Run: func(cmd *cobra.Command, args []string) {
-		info, ok := debug.ReadBuildInfo()
-		if !ok {
-			fmt.Println("seeker: version info not available")
-		}
-
-		if configPathUsed != "" {
-			fmt.Printf("config: %s\n", configPathUsed)
-		}
-		fmt.Printf("seeker: %s\n", info.Main.Version)
-		fmt.Printf("go:     %s\n", info.GoVersion)
-		for _, s := range info.Settings {
-			switch s.Key {
-			case "vcs.revision":
-				fmt.Printf("commit: %s\n", s.Value)
-			case "vcs.time":
-				fmt.Printf("date:   %s\n", s.Value)
-			case "vcs.modified":
-				fmt.Printf("dirty:  %s\n", s.Value)
-			}
-		}
-		fmt.Println()
-	},
+	RunE:  doVersion,
 }
 
-func doScan(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	flagPath := viper.GetString("alpha.scan.path")
-	flagDocker := viper.GetString("alpha.scan.docker")
-
-	var source iter.Seq2[walk.Entry, error]
-
-	if flagDocker == "" {
-		root, err := os.OpenRoot(flagPath)
-		if err != nil {
-			return fmt.Errorf("can't open path %s: %w", flagPath, err)
-		}
-		ctx = log.ContextAttrs(ctx, slog.Group(
-			"source",
-			slog.String("type", "filesystem"),
-			slog.String("path", flagPath),
-		))
-		source = walk.Root(ctx, root)
-	} else {
-		ociImage, err := stereoscope.GetImageFromSource(
-			ctx,
-			flagDocker,
-			image.DockerDaemonSource,
-			nil,
-		)
-		if err != nil {
-			return fmt.Errorf("can't open docker image, please docker pull %s first: %w", flagDocker, err)
-		}
-		ctx = log.ContextAttrs(ctx, slog.Group(
-			"source",
-			slog.String("type", "docker"),
-			slog.String("image", flagDocker),
-		))
-		source = walk.Image(ctx, ociImage)
+func init() {
+	// user configuration
+	d, err := os.UserConfigDir()
+	if err != nil {
+		panic(err)
 	}
+	userConfigPath = filepath.Join(d, "seeker")
 
-	b := bom.NewBuilder()
-
+	// configure default detectors
+	// secrets:
 	leaks, err := gitleaks.NewDetector()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	var detectors = []scan.Detector{
+	// certificates:
+	detectors = []scan.Detector{
 		x509.Detector{},
 		leaks,
 	}
-	scanner := scan.New(4, detectors)
-	cntAll := 0
-	cntDetections := 0
-	for results, err := range scanner.Do(ctx, source) {
-		cntAll++
-		if err != nil {
-			continue
-		}
-
-		cntDetections++
-		for _, detection := range results {
-			b.AppendComponents(detection.Components...)
-		}
-	}
-
-	slog.InfoContext(ctx, "scan finished",
-		"processed-files", cntAll,
-		"detections", cntDetections,
-	)
-	stats := scanner.Stats()
-	slog.DebugContext(ctx, "processing-stats",
-		slog.Group(
-			"pool",
-			slog.Int("new", stats.PoolNewCounter),
-			slog.Int("put", stats.PoolPutCounter),
-			slog.Int("put(err)", stats.PoolPutErrCounter),
-		),
-	)
-	if cntDetections > 0 {
-		return b.AsJSON(os.Stdout)
-	}
-	return model.ErrNoMatch
 }
 
-func doNmap(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-	flagNmap := viper.GetString("alpha.nmap.nmap")
-	flagTimeout := viper.GetDuration("alpha.nmap.timeout")
-	flagSSH := viper.GetBool("alpha.nmap.ssh")
-	flagTarget := viper.GetString("alpha.nmap.target")
-	flagRawPath := viper.GetString("alpha.nmap.raw")
+func main() {
+	// root flags
+	rootCmd.PersistentFlags().StringVar(&flagConfigFilePath, "config", "", "Config file to load - default is seeker.yaml in current directory or in "+userConfigPath)
+	rootCmd.PersistentFlags().BoolVar(&flagVerbose, "verbose", false, "verbose logging")
 
-	nmapBinary, err := findNmapBinary(flagNmap)
-	if err != nil {
+	// never print messages and usage
+	rootCmd.SilenceErrors = true
+	rootCmd.SilenceUsage = true
+
+	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(scanCmd)
+	rootCmd.AddCommand(versionCmd)
+
+	if cmd, err := rootCmd.ExecuteC(); err != nil {
+		slog.Error("seeker failed", "err", err)
+		if strings.HasPrefix(err.Error(), "unknown command") {
+			_ = rootCmd.Help() // ./cmd bflmp
+		} else {
+			_ = cmd.Help() // ./cmd run gfagf (extra arg)
+		}
+		os.Exit(1)
+	}
+}
+
+func doVersion(cmd *cobra.Command, args []string) error {
+	if err := initSeeker(cmd, args); err != nil {
 		return err
 	}
 
-	var scanner nmap.Scanner
-	if !flagSSH {
-		scanner = nmap.NewTLS()
-	} else {
-		scanner = nmap.NewSSH()
-	}
-	scanner = scanner.WithNmapBinary(nmapBinary).WithRawPath(flagRawPath)
-
-	b := bom.NewBuilder()
-	pmap := parallel.NewMap(ctx, 4, func(ctx context.Context, addr netip.Addr) ([]model.Detection, error) {
-		var tmoutCtx = ctx
-		if flagTimeout > 0 {
-			var cancel context.CancelFunc
-			tmoutCtx, cancel = context.WithTimeout(ctx, flagTimeout)
-			defer cancel()
-		}
-		ret, err := scanner.Detect(tmoutCtx, addr)
-		return ret, err
-	})
-
-	var targetPorts = "1-65535"
-	var targets []netip.Addr
-	if flagTarget == "" {
-		targets = []netip.Addr{
-			netip.MustParseAddr("127.0.0.1"),
-			netip.MustParseAddr("::1"),
-		}
-	} else {
-		host, port, ok := strings.Cut(flagTarget, ":")
-		if ok {
-			scanner = scanner.WithPorts(port)
-			targetPorts = port
-		}
-		ip, err := resolveToAddr(host)
-		if err != nil {
-			return err
-		}
-		targets = []netip.Addr{ip}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		fmt.Println("seeker: version info not available")
 	}
 
-	now := time.Now()
-	cntDetections := 0
-	for detections, err := range pmap.Iter(all2(targets)) {
-		if err != nil {
-			slog.ErrorContext(ctx, "nmap scan failed", "err", err)
-			continue
-		}
-
-		cntDetections++
-		for _, detection := range detections {
-			b.AppendComponents(detection.Components...)
-			b.AppendDependencies(detection.Dependencies...)
+	if configPath != "" {
+		fmt.Printf("config: %s\n", configPath)
+	}
+	fmt.Printf("seeker: %s\n", info.Main.Version)
+	fmt.Printf("go:     %s\n", info.GoVersion)
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			fmt.Printf("commit: %s\n", s.Value)
+		case "vcs.time":
+			fmt.Printf("date:   %s\n", s.Value)
+		case "vcs.modified":
+			fmt.Printf("dirty:  %s\n", s.Value)
 		}
 	}
+	fmt.Println()
 
-	slog.InfoContext(ctx, "nmap finished",
-		slog.Any("targets", targets),
-		"port(s)", targetPorts,
-		"detections", cntDetections,
-		"elapsed", time.Since(now).String(),
-	)
-	if cntDetections > 0 {
-		return b.AsJSON(os.Stdout)
-	}
-	return model.ErrNoMatch
-}
-
-func doSvc(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
-
-	cfg, err := service.ParseConfig("alpha.svc")
-	if err != nil {
-		return err
-	}
-	slog.InfoContext(ctx,
-		"config",
-		slog.GroupAttrs("command",
-			slog.String("path", cfg.Command.Path),
-			slog.Any("args", cfg.Command.Args),
-			slog.Duration("timeout", cfg.Command.Timeout),
-			slog.Any("env", cfg.Command.Env),
-		),
-		slog.Duration("scan_each", cfg.ScanEach),
-	)
-
-	if !filepath.IsAbs(cfg.Command.Path) {
-		p, err := filepath.Abs(cfg.Command.Path)
-		if err != nil {
-			return err
-		}
-		cfg.Command.Path = p
-	}
-
-	supervisor := service.NewSupervisor(cfg.Cmd(), service.NewWriteUploader(os.Stdout))
-	go supervisor.Do(ctx)
-	supervisor.Start()
-
-	ticker := time.NewTicker(cfg.ScanEach)
-	defer ticker.Stop()
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				supervisor.Start()
-			}
-		}
-	}()
-
-	<-ctx.Done()
 	return nil
 }
 
-func onInitialize() {
-	// use
-	if flagConfigFilePath != "" {
-		// 1.) passed --config path, so load the file
-		viper.SetConfigFile(flagConfigFilePath)
-	} else if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
-		// 2.) or use SEEKERCONFIG - no underscore to not confuse viper
-		viper.SetConfigFile(envConfig)
+func doScan(cmd *cobra.Command, args []string) error {
+	if err := initSeeker(cmd, args); err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+	attrs := slog.Group("seeker",
+		slog.String("cmd", "_scan"),
+		slog.Int("pid", os.Getpid()),
+	)
+	ctx = log.ContextAttrs(ctx, attrs)
+	seeker, err := NewSeeker(ctx, detectors, config)
+	if err != nil {
+		return err
+	}
+	return seeker.Do(ctx, os.Stdout)
+}
+
+func doRun(cmd *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return fmt.Errorf("unsupported arguments: %s", strings.Join(args, ", "))
+	}
+	if err := initSeeker(cmd, args); err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+	if config.Service.Mode != model.ServiceModeManual {
+		return fmt.Errorf("only manual mode is supported now")
+	}
+
+	attrs := slog.Group("seeker",
+		slog.String("cmd", "run"),
+		slog.Int("pid", os.Getpid()),
+	)
+	ctx = log.ContextAttrs(ctx, attrs)
+	slog.DebugContext(ctx, "", "environ", os.Environ())
+	slog.DebugContext(ctx, "", "config", config)
+
+	supervisor, err := service.SupervisorFromConfig(ctx, config.Service, configPath)
+	if err != nil {
+		return err
+	}
+
+	return supervisor.Do(ctx)
+}
+
+func initSeeker(_ *cobra.Command, _ []string) error {
+	if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
+		configPath = envConfig
+	} else if flagConfigFilePath != "" {
+		configPath = flagConfigFilePath
 	} else {
-		// 3.) try to load seeker.yaml from current directory or default path for config files
-		viper.AddConfigPath(".")
-		viper.AddConfigPath(defaultConfigPath)
-		viper.SetConfigName("seeker")
-		viper.SetConfigType("yaml")
-	}
-
-	// env variables are SEEKER with underscores
-	viper.SetEnvPrefix("SEEKER")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err == nil {
-		configPathUsed = viper.ConfigFileUsed()
-	}
-
-	// initialize logging
-	level := slog.LevelInfo
-	if flagVerbose {
-		level = slog.LevelDebug
-	}
-	base := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		AddSource: false,
-		Level:     level,
-	})
-	ctxHandler := log.New(base)
-	slog.SetDefault(slog.New(ctxHandler))
-}
-
-func resolveToAddr(host string) (netip.Addr, error) {
-	// Try parsing directly as IP first
-	if ip, err := netip.ParseAddr(host); err == nil {
-		return ip, nil
-	}
-
-	// Otherwise, resolve hostname via DNS
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return netip.Addr{}, err
-	}
-
-	// Pick the first IPv4 or IPv6 address
-	for _, ip := range ips {
-		if addr, ok := netip.AddrFromSlice(ip); ok {
-			return addr, nil
-		}
-	}
-
-	return netip.Addr{}, fmt.Errorf("no valid IP found for host %q", host)
-}
-
-func findNmapBinary(flag string) (string, error) {
-	if flag == "" {
-		nmap, err := exec.LookPath("nmap")
-		if err != nil {
-			return "", err
-		}
-		return nmap, nil
-	}
-	_, err := os.Stat(flag)
-	if err != nil {
-		return "", err
-	}
-	return flag, nil
-}
-
-func all2[T any](slice []T) iter.Seq2[T, error] {
-	return func(yield func(T, error) bool) {
-		for _, s := range slice {
-			if !yield(s, nil) {
-				return
+		for _, d := range []string{userConfigPath, "."} {
+			path := filepath.Join(d, "seeker.yaml")
+			if exists(path) {
+				configPath = path
+				break
 			}
 		}
 	}
+
+	// store default configuration
+	if configPath == "" {
+		config = model.DefaultConfig(context.Background())
+		configPath = filepath.Join(userConfigPath, "seeker.yaml")
+		err := os.MkdirAll(filepath.Dir(configPath), 0755)
+		if err != nil {
+			return fmt.Errorf("creating directory %s: %w", filepath.Dir(configPath), err)
+		}
+
+		f, err := os.Create(configPath)
+		if err != nil {
+			return fmt.Errorf("creating file %s: %w", configPath, err)
+		}
+		defer func() {
+			_ = f.Close()
+		}()
+		enc := yaml.NewEncoder(f)
+		err = enc.Encode(config)
+		if err != nil {
+			return fmt.Errorf("storing configuration: %w", err)
+		}
+	} else {
+		var err error
+		f, err := os.Open(configPath)
+		if err != nil {
+			return fmt.Errorf("storing opening config file: %w", err)
+		}
+		defer func() {
+			_ = f.Close()
+		}()
+		config, err = model.LoadConfig(f)
+		if err != nil {
+			for _, d := range model.CueErrDetails(err) {
+				slog.Error(d)
+			}
+			return fmt.Errorf("parsing config: %w", err)
+		}
+	}
+
+	// --verbose has a precedence over config file
+	if flagVerbose {
+		config.Service.Verbose = true
+	}
+
+	// initialize logging
+	slog.SetDefault(log.New(config.Service.Verbose))
+
+	slog.Debug("seeker run", "configPath", configPath)
+	slog.Debug("seeker run", "config", config)
+	return nil
+}
+
+func exists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.Mode().IsRegular()
 }

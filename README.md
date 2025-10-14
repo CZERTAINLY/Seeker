@@ -1,65 +1,102 @@
 # Seeker
 
-Is in alpha phase, no stable CLI exists
+CLI tool, which scans actual filesystem, containers and ports and detects
 
-## Detect x509 certificate
+ * certificates
+ * secrets
 
-* PEM format
-* raw DER format
-* or try to detect the chain
+Generates BOM in CycloneDX format.
 
-1. create one
+# Usage
 
+Generate X509 certificate to have something to scan
 ```sh
-openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname"
+$ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname"
 ```
 
-2. scan local filesystem
-
-```sh
-./seeker alpha scan
-{
-  "bomFormat": "CycloneDX",
-  "specVersion": "1.6",
-  "serialNumber": "urn:uuid:a01b1d1f-e7b1-486f-a0d8-37f940ee2980",
-  "version": 1,
-```
-
-3. scan the docker image
-
-> docker pull must be done before
-
-```sh
-./seeker a scan --docker gcr.io/distroless/base-debian12
-```
-
-## Environment variables
-
-Those follow the structure of CLI. Use prefix `SEEKER_`.
-
-```sh
-./seeker a scan --path /path
-```
-
-is an equivalent of
-
-```sh
-SEEKER_ALPHA_SCAN_PATH=/path ./seeker a scan
-```
-
-## and config file
-
-The same apply for a config file. The config file structure matches the CLI flags.
+# Filesystem scan
 
 ```yaml
-alpha:
-  scan:
-    path: /path
+version: 0
+
+service:
+    mode: manual
+    verbose: false
+    log: stderr
+    dir: .
+
+filesystem:
+    enabled: true
+    paths: []
 ```
 
-The file `seeker.yaml` is read from
+This configuration snippet searches for certificates and secrets inside local directory.
 
-1. current directory
-2. default OS config directory
-3. via --config file `./seeker --config /path/to/config.yaml`
-4. or path can be specified via `SEEKERCONFIG` environment variable
+
+```sh
+$ ./seeker run --config seeker.yaml
+{"time":"2025-10-10T14:14:04.632066182+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2488398}}
+{"time":"2025-10-10T14:14:05.410539638+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-10-02:14:05.json","seeker":{"cmd":"run","pid":2488398}}
+```
+
+# Container scan
+
+Seeker can scan images stored inside Docker(podman). Those searches for
+certificates and secrets exactly like filesystem scan do. Docker host can be
+specified via environment variable.
+
+The docker host can be specified via environment variable such as `${DOCKER_HOST}`.
+
+
+```yaml
+version: 0
+
+service:
+    mode: manual
+    verbose: false
+    log: stderr
+    dir: .
+
+containers:
+    -
+        enabled: false
+        host: ${DOCKER_HOST}
+        images:
+            - docker.io/library/alpine:3.22.1
+```
+
+```sh
+$ time ./seeker run --config seeker.yaml
+{"time":"2025-10-11T11:38:54.207199641+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2610219}}
+{"time":"2025-10-11T11:39:41.257456265+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-11-11-39-41.json","seeker":{"cmd":"run","pid":2610219}}
+
+real    0m47.083s
+user    1m33.919s
+sys     0m0.442s
+```
+
+# Port scan
+
+Port scan is performed via nmap, which must be installed on a target machine
+too. It tries to detect TLS and SSH.
+
+```yaml
+ports:
+    enabled: true
+    ipv4: true
+    ipv6: false
+```
+
+```sh
+$ time ./seeker run --config seeker.yaml
+{"time":"2025-10-11T11:46:39.889049897+02:00","level":"WARN","msg":"command has no timeout","path":"usr/bin/seeker","seeker":{"cmd":"run","pid":2614823}}
+{"time":"2025-10-11T11:46:57.244593739+02:00","level":"INFO","msg":"bom saved","path":"seeker-2025-10-11-11-46-57.json","seeker":{"cmd":"run","pid":2614823}}
+
+real    0m17.389s
+user    0m0.838s
+sys     0m2.538s
+```
+
+# File format specification
+
+See [docs/config.cue] for a specification and (manual-config.yaml)[docs/manual-config.yaml] for an example config.

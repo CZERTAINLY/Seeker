@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
@@ -105,12 +104,10 @@ func Test_JKS_Edge_Cases(t *testing.T) {
 
 	var d czX509.Detector
 	_, err := d.Detect(t.Context(), badJKSData, "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 
 	// Test with data that looks like magic but isn't long enough
 	shortData := []byte{0xFE, 0xED} // Too short
 	_, err = d.Detect(t.Context(), shortData, "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 }

@@ -56,7 +56,7 @@ func TestContextAttrs(t *testing.T) {
 					return a
 				},
 			})
-			ctxHandler := log.New(base)
+			ctxHandler := log.NewContextHandler(base)
 			logger := slog.New(ctxHandler)
 
 			ctx := log.ContextAttrs(t.Context(), tt.given...)
@@ -66,4 +66,10 @@ func TestContextAttrs(t *testing.T) {
 			require.JSONEq(t, tt.then, buf.String())
 		})
 	}
+}
+
+func TestNew(t *testing.T) {
+	t.Parallel()
+	require.NotNil(t, log.New(true))
+	require.NotNil(t, log.New(false))
 }

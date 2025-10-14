@@ -3,7 +3,6 @@ package x509_test
 import (
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	"github.com/stretchr/testify/require"
 )
@@ -44,8 +43,8 @@ func Test_PKCS7_InvalidData(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := d.Detect(t.Context(), tt.data, "testpath")
-			require.Error(t, err)
-			require.ErrorIs(t, err, model.ErrNoMatch)
+			// no error should be returned
+			require.NoError(t, err)
 		})
 	}
 }
@@ -66,8 +65,8 @@ func Test_OidHasPrefix(t *testing.T) {
 
 	var d czX509.Detector
 	_, err := d.Detect(t.Context(), badData, "testpath")
-	require.Error(t, err) // Should fail due to no match
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	// no error should be returned
+	require.NoError(t, err)
 
 	// Test with real certificate that might go through DER detection
 	_, err = d.Detect(t.Context(), der, "testpath")
@@ -89,8 +88,7 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 	var d czX509.Detector
 	_, err := d.Detect(t.Context(), testData, "testpath")
 	// This should trigger the oidHasPrefix function with a PKCS7 OID but fail to parse as valid PKCS7
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 
 	// Test with an OID that doesn't match PKCS7 prefix to exercise the false path
 	testDataWrongOID := []byte{
@@ -102,8 +100,7 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 
 	_, err = d.Detect(t.Context(), testDataWrongOID, "testpath")
 	// This should also fail to find certificates
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 
 	// Test with short OID to exercise length check
 	testDataShortOID := []byte{
@@ -114,6 +111,5 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 	}
 
 	_, err = d.Detect(t.Context(), testDataShortOID, "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 }

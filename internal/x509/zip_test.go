@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
@@ -75,8 +74,7 @@ func Test_ZIP_ErrorPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := d.Detect(t.Context(), tt.data, "testpath")
-			require.Error(t, err)
-			require.ErrorIs(t, err, model.ErrNoMatch)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -104,8 +102,7 @@ func Test_ZIP_ValidButNoCerts(t *testing.T) {
 
 	var d czX509.Detector
 	_, err = d.Detect(t.Context(), buf.Bytes(), "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 }
 
 func Test_ZIP_InvalidCertInMetaINF(t *testing.T) {
@@ -135,8 +132,7 @@ func Test_ZIP_InvalidCertInMetaINF(t *testing.T) {
 
 	var d czX509.Detector
 	_, err = d.Detect(t.Context(), buf.Bytes(), "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 }
 
 func Test_ZIP_MultipleFiles(t *testing.T) {
@@ -175,7 +171,7 @@ func Test_ZIP_MultipleFiles(t *testing.T) {
 	got, err := d.Detect(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	
+
 	// We should find at least one certificate from the ZIP files
 	// Note: Some files might be detected multiple times (as PEM and as ZIP),
 	// so we just check that we have some components

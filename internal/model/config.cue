@@ -19,22 +19,23 @@ service: #Service
 }
 
 // List of container daemon configurations to inspect (Docker/Podman).
-#Containers: [...#ContainerConfig]
+#Containers: {
+  enabled?: bool | *false
+  config: [...#ContainerConfig]
+}
 
 // Supported container daemon types.
-#ContainerDaemon: ("docker" | "podman")
+#ContainerDaemon: ("" | "docker" | "podman")
 
 // Configuration for a single container daemon integration.
-// enabled: when false this entry is ignored.
 // name: optional identifier (defaults to daemon type if absent).
-// type: daemon implementation.
-// socket: path or endpoint for the daemon (e.g. /var/run/docker.sock).
+// type: daemon implementation, defaults to docker.
+// host: path or endpoint for the daemon (e.g. unix:///var/run/docker.sock). Can be specified as environment variable, like ${DOCKER_HOST}
 // images: explicit image names/patterns to include (empty => discover all).
 #ContainerConfig: {
-  enabled?: bool | *false
   name?: string
-  type: #ContainerDaemon
-  socket: string
+  type?: #ContainerDaemon
+  host: string
   images?: [...string]
 }
 
@@ -51,21 +52,12 @@ service: #Service
   ipv6?: bool | *true
 }
 
-// Service mode manual or timer
-#Service: (#ServiceManual|#ServiceTimer)
-
 // Manual service execution configuration.
-#ServiceManual: {
+#Service: {
   #ServiceFields
-  mode: "manual"
-}
-
-// Timer service execution configuration.
-// Every is a time.Duration string saying how often scan should be scheduled
-#ServiceTimer: {
-  #ServiceFields
-  mode: "timer"
-  every: string
+  mode: *"manual" | "timer"
+  every?: string
+  if mode == "timer" { every: string & !="" }
 }
 
 // OutputFields specify common output for a scanner
@@ -83,18 +75,11 @@ service: #Service
 #Repository: {
   enabled?: bool | *false
   url: string
-  auth: (#AuthNone|#AuthStaticToken)
+  auth: #Auth
 }
 
-// No-authentication configuration (public / anonymous access).
-// Usually for development purposes only!
-#AuthNone: {
-  type: "none"
-}
-
-// Static token authentication configuration.
-// token: secret credential (bearer/API token) - can be environment variable
-#AuthStaticToken: {
-  type: "static_token"
-  token: string
+#Auth: {
+  type: *"" | "token"
+  token?: string
+  if type == "token" { token: string & !="" }
 }

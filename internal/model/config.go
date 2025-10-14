@@ -8,13 +8,17 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/log"
+
 	"cuelang.org/go/cue"
 	"cuelang.org/go/cue/cuecontext"
+	cuerrors "cuelang.org/go/cue/errors"
 	"cuelang.org/go/encoding/yaml"
-	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/docker/docker/client"
 
 	_ "embed"
@@ -36,50 +40,56 @@ const (
 )
 
 type Config struct {
-	Version    int               `json:"version"` // fixed 0 for now
-	Filesystem *Filesystem       `json:"filesystem,omitempty"`
-	Containers []ContainerConfig `json:"containers,omitempty"`
-	Ports      *Ports            `json:"ports,omitempty"`
-	Service    Service           `json:"service"`
+	Version    int        `json:"version"` // fixed 0 for now
+	Filesystem Filesystem `json:"filesystem"`
+	Containers Containers `json:"containers"`
+	Ports      Ports      `json:"ports"`
+	Service    Service    `json:"service"`
 }
 
 // Filesystem scanning settings.
 type Filesystem struct {
-	Enabled *bool    `json:"enabled,omitempty"`
+	Enabled bool     `json:"enabled"`
 	Paths   []string `json:"paths,omitempty"` // nil/empty => use CWD
 }
 
+type Containers struct {
+	Enabled bool `json:"enabled"`
+	Config  ContainersConfig
+}
+
+type ContainersConfig []ContainerConfig
+
 // Container daemon configuration list element.
 type ContainerConfig struct {
-	Enabled *bool    `json:"enabled,omitempty"`
-	Name    *string  `json:"name,omitempty"`
-	Type    string   `json:"type"`             // "docker" | "podman"
-	Socket  string   `json:"socket,omitempty"` // e.g. /var/run/docker.sock
-	Images  []string `json:"images,omitempty"` // explicit images (empty => discover)
+	Name   string   `json:"name,omitempty"`
+	Type   string   `json:"type"`             // "docker" | "podman"
+	Host   string   `json:"host,omitempty"`   // e.g. /var/run/docker.sock or ${DOCKER_HOST}
+	Images []string `json:"images,omitempty"` // explicit images (empty => discover)
 }
 
 // Local ports scanning module configuration.
 type Ports struct {
-	Enabled *bool   `json:"enabled,omitempty"`
-	Binary  *string `json:"binary,omitempty"` // path or name (e.g. nmap)
-	Ports   *string `json:"ports,omitempty"`  // "1-65535", "22,80,8000-8100", etc.
-	IPv4    *bool   `json:"ipv4,omitempty"`
-	IPv6    *bool   `json:"ipv6,omitempty"`
+	Enabled bool   `json:"enabled"`
+	Binary  string `json:"binary,omitempty"` // path or name (e.g. nmap)
+	Ports   string `json:"ports,omitempty"`  // "1-65535", "22,80,8000-8100", etc.
+	IPv4    bool   `json:"ipv4"`
+	IPv6    bool   `json:"ipv6"`
 }
 
 // Service (only manual supported now). Output fields are flattened.
 type Service struct {
-	Mode       string      `json:"mode"` // must be "manual" or "timer"
-	Verbose    *bool       `json:"verbose,omitempty"`
-	Log        *string     `json:"log,omitempty"`        // "stderr"|"stdout"|"discard"|path
-	Dir        *string     `json:"dir,omitempty"`        // output directory
-	Repository *Repository `json:"repository,omitempty"` // remote publication
-	Every      string      `json:"every,omitempty"`
+	Mode       string     `json:"mode"` // must be "manual" or "timer"
+	Verbose    bool       `json:"verbose,omitempty"`
+	Log        string     `json:"log,omitempty"`   // "stderr"|"stdout"|"discard"|path - defaults to stderr
+	Dir        string     `json:"dir,omitempty"`   // output directory
+	Repository Repository `json:"repository"`      // remote publication
+	Every      string     `json:"every,omitempty"` // only for mode timer
 }
 
 // Repository publication settings.
 type Repository struct {
-	Enabled *bool  `json:"enabled,omitempty"`
+	Enabled bool   `json:"enabled"`
 	URL     string `json:"url"`
 	Auth    Auth   `json:"auth"` // discriminated union by Auth.Type
 }
@@ -88,6 +98,67 @@ type Repository struct {
 type Auth struct {
 	Type  string `json:"type"`            // "none" | "static_token"
 	Token string `json:"token,omitempty"` // required when Type == "static_token"
+}
+
+func (c Config) IsZero() bool {
+	return c.Filesystem.IsZero() &&
+		c.Containers.Config.IsZero() &&
+		c.Ports.IsZero() &&
+		c.Service.IsZero()
+}
+
+func (c Filesystem) IsZero() bool {
+	return isZero(c)
+}
+func (c ContainersConfig) IsZero() bool {
+	return len(c) == 0
+}
+func (c Ports) IsZero() bool {
+	return isZero(c)
+}
+func (c Service) IsZero() bool {
+	return isZero(c)
+}
+
+func (c *Config) ExpandEnv() {
+	var kids = []interface{ ExpandEnv() }{
+		&c.Filesystem,
+		&c.Containers,
+		&c.Ports,
+		&c.Service,
+	}
+	for _, ee := range kids {
+		ee.ExpandEnv()
+	}
+}
+
+func (c *Filesystem) ExpandEnv() {
+	c.Paths = expandStrings(c.Paths)
+}
+
+func (c *Containers) ExpandEnv() {
+	for idx, cc := range c.Config {
+		cc.Name = os.ExpandEnv(cc.Name)
+		cc.Host = os.ExpandEnv(cc.Host)
+		cc.Images = expandStrings(cc.Images)
+		c.Config[idx] = cc
+	}
+}
+
+func (c *Ports) ExpandEnv() {
+	c.Binary = os.ExpandEnv(c.Binary)
+}
+
+func (c *Service) ExpandEnv() {
+	c.Dir = os.ExpandEnv(c.Dir)
+}
+
+func expandStrings(slice []string) []string {
+	ret := make([]string, len(slice))
+	for idx, s := range slice {
+		ret[idx] = os.ExpandEnv(s)
+	}
+	return ret
 }
 
 //go:embed config.cue
@@ -122,10 +193,12 @@ func init() {
 }
 
 // LoadConfig validates YAML from r against CUE schema and decodes to Config.
-func LoadConfig(r io.Reader) (*Config, error) {
+// NOT SAFE for multiple goroutines
+func LoadConfig(r io.Reader) (Config, error) {
+	var zero Config
 	yamlFile, err := yaml.Extract("config.yaml", r)
 	if err != nil {
-		return nil, err
+		return zero, err
 	}
 	yamlValue := cueCtx.BuildFile(yamlFile)
 
@@ -134,44 +207,60 @@ func LoadConfig(r io.Reader) (*Config, error) {
 		cue.All(),          // all constraints
 		cue.Concrete(true), // no incomplete values
 	); err != nil {
-		return nil, err
+		return zero, err
 	}
 
 	var out Config
 	if err := unified.Decode(&out); err != nil {
-		return nil, err
+		return zero, err
 	}
 
-	return &out, nil
+	out.ExpandEnv()
+	return out, nil
+}
+
+func CueErrDetails(err error) []string {
+	var details []string
+	for _, e := range cuerrors.Errors(err) {
+		details = append(details, cuerrors.Details(e, nil))
+	}
+	return details
 }
 
 // DefaultConfig returns a default configuration for seeker
 // It tries to discover and ping docker/podman sockets, so those
 // scans can be added to the list
+// NOT SAFE for multiple goroutines
 func DefaultConfig(ctx context.Context) Config {
+	var portsEnabled = true
+	nmap, err := exec.LookPath("nmap")
+	if err != nil {
+		portsEnabled = false
+		slog.WarnContext(ctx, "nmap binary not found")
+	}
+
 	var cfg = Config{
 		Version: 0,
-		Filesystem: &Filesystem{
-			Enabled: ptr(true),
-			Paths:   nil,
+		Filesystem: Filesystem{
+			Enabled: true,
+			Paths:   []string{},
 		},
-		Ports: &Ports{
-			Enabled: ptr(true),
-			Binary:  nil,
-			Ports:   ptr("1-65535"),
-			IPv4:    ptr(true),
-			IPv6:    ptr(true),
+		Ports: Ports{
+			Enabled: portsEnabled,
+			Binary:  nmap,
+			Ports:   "1-65535",
+			IPv4:    true,
+			IPv6:    true,
 		},
 		Service: Service{
-			Mode:       ServiceModeManual,
-			Verbose:    ptr(true),
-			Log:        ptr("stderr"),
-			Dir:        ptr("."),
-			Repository: nil,
-			Every:      "24h",
+			Mode:    ServiceModeManual,
+			Verbose: true,
+			Log:     "stderr",
+			Dir:     ".",
 		},
 	}
 
+	var containers ContainersConfig
 	slog.DebugContext(ctx, "probing docker/podman sockets")
 	// detect docker socket
 	for _, path := range []string{"${DOCKER_HOST}", "/run/docker.sock", "/var/run/docker.sock"} {
@@ -181,7 +270,7 @@ func DefaultConfig(ctx context.Context) Config {
 			slog.DebugContext(ctx, "probe failed", "error", err)
 			continue
 		}
-		cfg.Containers = append(cfg.Containers, cc)
+		containers = append(containers, cc)
 	}
 	// detect podman sockets
 	for _, path := range []string{"${PODMAN_SOCKET}", "/run/podman/podman.sock", "/var/run/podman/podman.sock"} {
@@ -191,35 +280,33 @@ func DefaultConfig(ctx context.Context) Config {
 			slog.DebugContext(ctx, "probe failed", "error", err)
 			continue
 		}
-		cfg.Containers = append(cfg.Containers, cc)
+		containers = append(containers, cc)
 	}
-	return cfg
-}
 
-// ptr returns a pointer to v. Useful for literals in composite literals.
-// Remove when Go 1.26 (not yet released) with new(value) will be the minimum supported compiler
-func ptr[T any](v T) *T {
-	return &v
+	if len(containers) > 0 {
+		cfg.Containers.Enabled = true
+		cfg.Containers.Config = containers
+	}
+
+	return cfg
 }
 
 func containerConfig(ctx context.Context, typ string, sockPath string) (ContainerConfig, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
+	sockPath = os.ExpandEnv(sockPath)
 	if err := probeDockerLikeSocket(ctx, sockPath); err != nil {
 		return ContainerConfig{}, err
 	}
 	return ContainerConfig{
-		Enabled: ptr(true),
-		Name:    ptr(typ + " " + sockPath),
-		Type:    typ,
-		Socket:  sockPath,
-		Images:  []string{},
+		Name:   typ,
+		Type:   typ,
+		Host:   sockPath,
+		Images: []string{},
 	}, nil
 }
 
 func probeDockerLikeSocket(ctx context.Context, sockPath string) error {
-	sockPath = os.ExpandEnv(sockPath)
-
 	// Build host URL
 	var host string
 	if !strings.Contains(sockPath, "://") {
@@ -247,4 +334,8 @@ func probeDockerLikeSocket(ctx context.Context, sockPath string) error {
 	}
 
 	return nil
+}
+
+func isZero[T any](v T) bool {
+	return reflect.ValueOf(v).IsZero()
 }
