@@ -194,6 +194,7 @@ func init() {
 
 // LoadConfig validates YAML from r against CUE schema and decodes to Config.
 // NOT SAFE for multiple goroutines
+// Return CueError in a case validation phase fails
 func LoadConfig(r io.Reader) (Config, error) {
 	var zero Config
 	yamlFile, err := yaml.Extract("config.yaml", r)
@@ -207,7 +208,7 @@ func LoadConfig(r io.Reader) (Config, error) {
 		cue.All(),          // all constraints
 		cue.Concrete(true), // no incomplete values
 	); err != nil {
-		return zero, err
+		return zero, CueError{raw: err, val: unified}
 	}
 
 	var out Config
@@ -219,12 +220,31 @@ func LoadConfig(r io.Reader) (Config, error) {
 	return out, nil
 }
 
-func CueErrDetails(err error) []string {
+type CueError struct {
+	raw error
+	val cue.Value
+}
+
+func (e CueError) Error() string {
+	return e.raw.Error()
+}
+
+func (e CueError) Unwrap() error {
+	return e.raw
+}
+
+// Raw prints the raw output from cuerrors.Detailt function
+func (e CueError) Raw() []string {
 	var details []string
-	for _, e := range cuerrors.Errors(err) {
+	for _, e := range cuerrors.Errors(e.raw) {
 		details = append(details, cuerrors.Details(e, nil))
 	}
 	return details
+}
+
+// Details provide human-friendlier error messages
+func (c CueError) Details() []CueErrorDetail {
+	return humanize(c.raw, c.val)
 }
 
 // DefaultConfig returns a default configuration for seeker

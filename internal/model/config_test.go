@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -25,11 +26,6 @@ service:
       token: ABC123
 `
 	cfg, err := model.LoadConfig(strings.NewReader(yml))
-	if err != nil {
-		for _, d := range model.CueErrDetails(err) {
-			t.Logf("%s\n", d)
-		}
-	}
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
@@ -45,7 +41,7 @@ func TestLoadConfig_Fail(t *testing.T) {
 	var testCases = []struct {
 		scenario string
 		given    string
-		then     string
+		then     []model.CueErrorDetail
 	}{
 		{
 			scenario: "Missing required auth.token for token auth type",
@@ -59,7 +55,50 @@ service:
     auth:
       type: token
 `,
-			then: `#Config.service.repository.auth.token: incomplete value !=""`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.auth.token",
+					Code:    "missing_required",
+					Message: "Field token is required and must be non-empty",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: "#Config.service.repository.auth.token: incomplete value !=\"\"",
+				},
+			},
+		},
+		{
+			scenario: "Additional field",
+			given: `
+version: 0
+service:
+  mode: manual
+  x: true
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.x",
+					Code:    "unknown_field",
+					Message: "Field x is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   3,
+					},
+					Raw: "#Config.service.x: field not allowed",
+				},
+			},
+		},
+		{
+			scenario: "wrong service.mode",
+			given: `
+version: 0
+service:
+  mode: automatic_gear
+`,
+			then: []model.CueErrorDetail{},
 		},
 	}
 
@@ -67,10 +106,14 @@ service:
 		t.Run(tc.scenario, func(t *testing.T) {
 			_, err := model.LoadConfig(strings.NewReader(tc.given))
 			require.Error(t, err)
-			for _, d := range model.CueErrDetails(err) {
-				t.Logf("%s", d)
+			var cuerr model.CueError
+			ok := errors.As(err, &cuerr)
+			require.True(t, ok)
+			for _, f := range cuerr.Details() {
+				t.Logf("%#+v", f)
 			}
-			require.EqualError(t, err, tc.then)
+			require.Equal(t, tc.then, cuerr.Details())
+			require.NotEmpty(t, cuerr.Details()[0].Attr("test"))
 		})
 	}
 }
@@ -86,8 +129,11 @@ func TestDefaultConfig(t *testing.T) {
 
 	cfg2, err := model.LoadConfig(&buf)
 	if err != nil {
-		for _, d := range model.CueErrDetails(err) {
-			t.Logf("%s", d)
+		var cuerr model.CueError
+		ok := errors.As(err, &cuerr)
+		require.True(t, ok)
+		for _, d := range cuerr.Details() {
+			t.Logf("%+v", d)
 		}
 	}
 	require.NoError(t, err)

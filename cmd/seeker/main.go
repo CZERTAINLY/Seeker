@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -226,8 +227,12 @@ func initSeeker(_ *cobra.Command, _ []string) error {
 		}()
 		config, err = model.LoadConfig(f)
 		if err != nil {
-			for _, d := range model.CueErrDetails(err) {
-				slog.Error(d)
+			var cuerr model.CueError
+			ok := errors.As(err, &cuerr)
+			if ok {
+				for _, d := range cuerr.Details() {
+					slog.Error("validation error", d.Attr("detail"))
+				}
 			}
 			return fmt.Errorf("parsing config: %w", err)
 		}

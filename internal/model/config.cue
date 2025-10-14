@@ -52,7 +52,7 @@ service: #Service
   ipv6?: bool | *true
 }
 
-// Manual service execution configuration.
+// Seeker service configuration.
 #Service: {
   #ServiceFields
   mode: *"manual" | "timer"
