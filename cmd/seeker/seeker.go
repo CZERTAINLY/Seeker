@@ -33,18 +33,12 @@ func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Conf
 
 	filesystems, err := filesystems(ctx, config.Filesystem)
 	if err != nil {
-		return Seeker{}, fmt.Errorf("initializing filesystem scan: %w", err)
+		slog.WarnContext(ctx, "initializing filesytem scan failed", "error", err)
+		filesystems = nil
 	}
 
-	containers, err := containers(ctx, config.Containers)
-	if err != nil {
-		return Seeker{}, fmt.Errorf("initializing containers scan: %w", err)
-	}
-
-	nmaps, ips, err := nmaps(ctx, config.Ports)
-	if err != nil {
-		return Seeker{}, fmt.Errorf("initializing port scan: %w", err)
-	}
+	containers := containers(ctx, config.Containers)
+	nmaps, ips := nmaps(ctx, config.Ports)
 
 	return Seeker{
 		detectors:   detectors,
@@ -147,7 +141,8 @@ func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entr
 	for _, path := range paths {
 		root, err := os.OpenRoot(path)
 		if err != nil {
-			return filesystems, fmt.Errorf("opening filesystem dir: %w", err)
+			slog.WarnContext(ctx, "can't open dir, skipping", "dir", path, "error", err)
+			continue
 		}
 		roots = append(roots, root)
 	}
@@ -155,29 +150,22 @@ func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entr
 	return ret, nil
 }
 
-func containers(ctx context.Context, configs model.ContainersConfig) (iter.Seq2[walk.Entry, error], error) {
-	var somethingEnabled = false
-	for _, cc := range configs {
-		if cc.Enabled {
-			somethingEnabled = true
-			break
-		}
+func containers(ctx context.Context, config model.Containers) iter.Seq2[walk.Entry, error] {
+	if config.Enabled {
+		return nil
 	}
-	if !somethingEnabled {
+
+	ret := walk.Images(ctx, config.Config)
+	return ret
+}
+
+func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr) {
+	if !cfg.Enabled {
 		return nil, nil
 	}
 
-	ret := walk.Images(ctx, configs)
-	return ret, nil
-}
-
-func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr, error) {
-	if !cfg.Enabled {
-		return nil, nil, nil
-	}
-
 	if !cfg.IPv4 && !cfg.IPv6 {
-		return nil, nil, nil
+		return nil, nil
 	}
 
 	var ips []netip.Addr
@@ -204,6 +192,5 @@ func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr, er
 		}
 	}
 
-	return scanners, ips, nil
-
+	return scanners, ips
 }

@@ -168,7 +168,8 @@ func doRun(cmd *cobra.Command, args []string) error {
 		slog.Int("pid", os.Getpid()),
 	)
 	ctx = log.ContextAttrs(ctx, attrs)
-	slog.DebugContext(ctx, "os:", "environ", os.Environ())
+	slog.DebugContext(ctx, "", "environ", os.Environ())
+	slog.DebugContext(ctx, "", "config", config)
 
 	supervisor, err := service.SupervisorFromConfig(ctx, config.Service, configPath)
 	if err != nil {

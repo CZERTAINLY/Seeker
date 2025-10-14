@@ -204,21 +204,22 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 			slog.SetDefault(log.New(true))
 		}
 		actual := make([]then, 0, 10)
-		cfg := model.ContainersConfig{
-			{
-				Enabled: true,
-				Host:    host,
-				Images:  []string{},
-			},
-			{
-				Enabled: true,
-				Host:    host,
-				Images: []string{
-					info.ID,
+		cfg := model.Containers{
+			Enabled: true,
+			Config: []model.ContainerConfig{
+				{
+					Host:   host,
+					Images: []string{},
+				},
+				{
+					Host: host,
+					Images: []string{
+						info.ID,
+					},
 				},
 			},
 		}
-		for entry, err := range walk.Images(t.Context(), cfg) {
+		for entry, err := range walk.Images(t.Context(), cfg.Config) {
 			if err != nil {
 				t.Logf("err=%+v", err)
 				continue
