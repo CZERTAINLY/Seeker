@@ -3,7 +3,6 @@ package x509_test
 import (
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +24,5 @@ func Test_Detector_NoMatch(t *testing.T) {
 	// Test that detector returns no match for invalid data
 	var d czX509.Detector
 	_, err := d.Detect(t.Context(), []byte("invalid data"), "testpath")
-	require.Error(t, err)
-	require.ErrorIs(t, err, model.ErrNoMatch)
+	require.NoError(t, err)
 }

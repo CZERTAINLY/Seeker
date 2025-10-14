@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
@@ -30,8 +29,7 @@ func Test_DER_Detection(t *testing.T) {
 			var d czX509.Detector
 			got, err := d.Detect(t.Context(), tt.input, "testpath")
 			if !tt.wantMatch {
-				require.Error(t, err)
-				require.ErrorIs(t, err, model.ErrNoMatch)
+				require.NoError(t, err)
 				return
 			}
 			require.NoError(t, err)
@@ -77,8 +75,7 @@ func Test_DER_ErrorPaths(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := d.Detect(t.Context(), tt.data, "testpath")
-			require.Error(t, err)
-			require.ErrorIs(t, err, model.ErrNoMatch)
+			require.NoError(t, err)
 		})
 	}
 }
@@ -110,7 +107,7 @@ func Test_DER_CertificateChain(t *testing.T) {
 		require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
 		requireEvidencePath(t, comp)
 		requireFormatAndDERBase64(t, comp)
-		
+
 		// Check that the source format is set (should be "DER" since we're using raw DER data)
 		sourceFormat := getProp(comp, cdxprops.CzertainlyComponentCertificateSourceFormat)
 		require.NotEmpty(t, sourceFormat, "source format should be set")

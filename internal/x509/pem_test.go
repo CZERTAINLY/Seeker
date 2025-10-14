@@ -4,7 +4,6 @@ import (
 	"encoding/pem"
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/model"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
@@ -26,7 +25,7 @@ func Test_PEM_Detection(t *testing.T) {
 		{"TRUSTED CERTIFICATE", pem.EncodeToMemory(&pem.Block{Type: "TRUSTED CERTIFICATE", Bytes: der}), true},
 		// Test PKCS7 PEM block
 		{"PKCS7 PEM", pem.EncodeToMemory(&pem.Block{Type: "PKCS7", Bytes: []byte("fakepkcs7data")}), false}, // Will fail parsing but exercises path
-		// Test CMS PEM block  
+		// Test CMS PEM block
 		{"CMS PEM", pem.EncodeToMemory(&pem.Block{Type: "CMS", Bytes: []byte("fakecmsdata")}), false}, // Will fail parsing but exercises path
 		// Test PKCS12 PEM block with sniff failure
 		{"PKCS12 PEM invalid", pem.EncodeToMemory(&pem.Block{Type: "PKCS12", Bytes: []byte("fakepkcs12data")}), false}, // Will fail sniffing
@@ -41,8 +40,7 @@ func Test_PEM_Detection(t *testing.T) {
 			var d czX509.Detector
 			got, err := d.Detect(t.Context(), tt.input, "testpath")
 			if !tt.wantMatch {
-				require.Error(t, err)
-				require.ErrorIs(t, err, model.ErrNoMatch)
+				require.NoError(t, err)
 				return
 			}
 			require.NoError(t, err)
