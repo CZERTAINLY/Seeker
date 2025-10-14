@@ -151,7 +151,7 @@ func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entr
 }
 
 func containers(ctx context.Context, config model.Containers) iter.Seq2[walk.Entry, error] {
-	if config.Enabled {
+	if !config.Enabled {
 		return nil
 	}
 

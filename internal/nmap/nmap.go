@@ -139,7 +139,7 @@ func scan(ctx context.Context, options []nmap.Option) (*nmap.Run, error) {
 
 	if len(scan.Hosts) == 0 {
 		slog.DebugContext(ctx, "scan found nothing")
-		return nil, model.ErrNoMatch
+		return nil, nil
 	}
 
 	slog.DebugContext(ctx, "scan finished", "elapsed", time.Since(now).String())

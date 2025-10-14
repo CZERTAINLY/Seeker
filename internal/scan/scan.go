@@ -123,7 +123,7 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 detectionEnd:
 
 	if len(res) == 0 {
-		return nil, model.ErrNoMatch
+		return nil, nil
 	} else if len(detectionErrors) > 0 {
 		return nil, errors.Join(detectionErrors...)
 	}

@@ -28,13 +28,11 @@ service: #Service
 #ContainerDaemon: ("" | "docker" | "podman")
 
 // Configuration for a single container daemon integration.
-// enabled: when false this entry is ignored.
 // name: optional identifier (defaults to daemon type if absent).
 // type: daemon implementation, defaults to docker.
-// host: path or endpoint for the daemon (e.g. /var/run/docker.sock). Can be specified as environment variable, like ${DOCKER_HOST}
+// host: path or endpoint for the daemon (e.g. unix:///var/run/docker.sock). Can be specified as environment variable, like ${DOCKER_HOST}
 // images: explicit image names/patterns to include (empty => discover all).
 #ContainerConfig: {
-  enabled?: bool | *false
   name?: string
   type?: #ContainerDaemon
   host: string

@@ -53,7 +53,7 @@ func (d *Detector) Detect(ctx context.Context, b []byte, path string) ([]model.D
 	}
 
 	if len(compos) == 0 {
-		return nil, model.ErrNoMatch
+		return nil, nil
 	}
 
 	return []model.Detection{

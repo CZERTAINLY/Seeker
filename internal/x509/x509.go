@@ -24,7 +24,7 @@ type Detector struct{}
 func (d Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
 	hits := findAllCerts(ctx, b)
 	if len(hits) == 0 {
-		return nil, model.ErrNoMatch
+		return nil, nil
 	}
 
 	components := make([]cdx.Component, 0, len(hits))
