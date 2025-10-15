@@ -11,10 +11,21 @@ import (
 	cueerrors "cuelang.org/go/cue/errors"
 )
 
+type CueErrorCode string
+
+const (
+	CodeUnknownField      CueErrorCode = "unknown_field"
+	CodeMissingRequired   CueErrorCode = "missing_required"
+	CodeConflictingValues CueErrorCode = "conflicting_values"
+	CodeInvalidEnum       CueErrorCode = "invalid_enum"
+	CodeTypeMismatch      CueErrorCode = "type_mismatch"
+	CodeValidationError   CueErrorCode = "validation_error"
+)
+
 type CueErrorDetail struct {
-	Path    string // service.repository.auth.token
-	Code    string // missing_required | empty_required | unknown_field | type_mismatch | conflict | invalid_enum ...
-	Message string // Human text
+	Path    string
+	Code    CueErrorCode
+	Message string
 	Pos     CueErrorPosition
 	Raw     string // original message
 }
@@ -22,7 +33,7 @@ type CueErrorDetail struct {
 func (c CueErrorDetail) Attr(name string) slog.Attr {
 	return slog.GroupAttrs(
 		name,
-		slog.String("code", c.Code),
+		slog.String("code", string(c.Code)),
 		slog.String("path", c.Path),
 		slog.String("message", c.Message),
 		slog.String("file", c.Pos.Filename),
@@ -38,14 +49,15 @@ type CueErrorPosition struct {
 }
 
 var (
-	reIncomplete  = regexp.MustCompile(`(?i)incomplete value`)
-	reNotAllowed  = regexp.MustCompile(`(?i)not allowed|unknown field`)
-	reConflict    = regexp.MustCompile(`(?i)conflicting values|cannot unify|incompatible`)
-	reExpectedGot = regexp.MustCompile(`(?i)expected .* got .*`)
-	reEnum        = regexp.MustCompile(`(?i)must be one of|expected one of`)
+	reIncomplete         = regexp.MustCompile(`(?i)incomplete value`)
+	reNotAllowed         = regexp.MustCompile(`(?i)not allowed|unknown field`)
+	reConflict           = regexp.MustCompile(`(?i)conflicting values|cannot unify|incompatible`)
+	reExpectedGot        = regexp.MustCompile(`(?i)expected .* got .*`)
+	reEnum               = regexp.MustCompile(`(?i)must be one of|expected one of`)
+	reInvalidValueBounds = regexp.MustCompile(`(?i)invalid value %v \(out of bound %s`)
 )
 
-func humanize(err error, root cue.Value) []CueErrorDetail {
+func humanize(err error, config cue.Value) []CueErrorDetail {
 	if err == nil {
 		return nil
 	}
@@ -53,27 +65,18 @@ func humanize(err error, root cue.Value) []CueErrorDetail {
 	seen := make(map[CueErrorPosition]struct{})
 
 	var out []CueErrorDetail
-	for _, e := range cueerrors.Errors(err) {
-		raw, _ := e.Msg()
+	cuerrs := cueerrors.Errors(err)
+	for _, e := range cuerrs {
+		raw, args := e.Msg()
 		path := normalizePath(e.Path())
-		code, msg := classify(raw, path, root)
+		code, msg := classify(raw, args, path, config)
 
 		pos := position(e)
-		if pos.Filename == "" {
+		if pos.Filename == "" && len(cuerrs) > 1 {
 			continue
 		}
 		if _, ok := seen[pos]; ok {
 			continue
-		}
-
-		if path == "service.mode" {
-			serviceMode := schema.LookupPath(cue.ParsePath("service.mode"))
-			values, dflt := enumStrings(serviceMode)
-			msg += fmt.Sprintf(": possible values (%s)", strings.Join(values, ","))
-			if dflt != nil {
-				msg += fmt.Sprintf(" (default %s)", *dflt)
-			}
-			msg += ": got " + valueToString(serviceMode)
 		}
 
 		out = append(out, CueErrorDetail{
@@ -88,7 +91,58 @@ func humanize(err error, root cue.Value) []CueErrorDetail {
 	return out
 }
 
+func lookup(schema cue.Value, path string) cue.Value {
+	// Traverse a dotted path resolving optional/definition fields at every segment.
+	if path == "" {
+		return schema
+	}
+
+	parent, label := splitPath(path)
+
+	// Resolve the parent chain first (ensures optional ancestors are reached via iteration).
+	base := schema
+	if parent != "" {
+		base = lookup(schema, parent)
+	}
+	if !base.Exists() || base.Err() != nil {
+		return base
+	}
+
+	// First try direct lookup (works if field is concrete / already materialized).
+	if direct := base.LookupPath(cue.ParsePath(label)); direct.Exists() && direct.Err() == nil {
+		return direct
+	}
+
+	// Fallback: iterate including optional and definition fields.
+	it, _ := base.Fields(cue.Optional(true), cue.Definitions(true), cue.Hidden(true))
+	for it.Next() {
+		if it.Selector().Unquoted() == label {
+			return it.Value()
+		}
+	}
+
+	// Return (possibly non-existent) direct result for consistent bottom signaling.
+	return base.LookupPath(cue.ParsePath(label))
+}
+
+func splitPath(p string) (parent, last string) {
+	if p == "" {
+		return "", ""
+	}
+	i := strings.LastIndexByte(p, '.')
+	if i < 0 {
+		return "", p
+	}
+	return p[:i], p[i+1:]
+}
+
 func valueToString(v cue.Value) string {
+	if !v.Exists() {
+		return "<non-existent>"
+	}
+	if v.Err() != nil {
+		return "<invalid>"
+	}
 	s, err := valueToStringE(v)
 	if err != nil {
 		return "E: " + err.Error()
@@ -128,33 +182,25 @@ func valueToStringE(v cue.Value) (string, error) {
 	}
 }
 
-func enumStrings(v cue.Value) (values []string, def *string) {
+func enumerate(v cue.Value) (values []string, def *string) {
 	// Get default (if any)
 	if d, ok := v.Default(); ok {
-		if s, err := d.String(); err == nil {
-			ss := s
-			def = &ss
-		}
+		s := valueToString(d)
+		def = &s
 	}
 	// Detect disjunction
 	if op, args := v.Expr(); op == cue.OrOp {
 		seen := map[string]struct{}{}
 		for _, a := range args {
-			if a.Kind() != cue.StringKind {
-				continue
-			}
-			if s, err := a.String(); err == nil {
-				if _, ok := seen[s]; !ok {
-					seen[s] = struct{}{}
-					values = append(values, s)
-				}
+			s := valueToString(a)
+			if _, ok := seen[s]; !ok {
+				seen[s] = struct{}{}
+				values = append(values, s)
 			}
 		}
-	} else if v.Kind() == cue.StringKind {
-		// Single fixed value
-		if s, err := v.String(); err == nil {
-			values = append(values, s)
-		}
+	} else {
+		s := valueToString(v)
+		values = append(values, s)
 	}
 	return
 }
@@ -186,25 +232,75 @@ func normalizePath(p []string) string {
 	return strings.Join(p, ".")
 }
 
-func classify(raw, path string, root cue.Value) (code, msg string) {
+func classify(raw string, args []any, path string, config cue.Value) (code CueErrorCode, msg string) {
 	switch {
 	case reNotAllowed.MatchString(raw):
-		return "unknown_field", fmt.Sprintf("Field %s is not allowed", last(path))
+		return CodeUnknownField, fmt.Sprintf("Field %s is not allowed", last(path))
 	case reIncomplete.MatchString(raw):
 		// Determine if conditional required + non-empty
-		if looksNonEmptyConditional(path, root) {
-			return "missing_required", fmt.Sprintf("Field %s is required and must be non-empty", last(path))
+		if looksNonEmptyConditional(path, config) {
+			return CodeMissingRequired, fmt.Sprintf("Field %s is required and must be non-empty", last(path))
 		}
-		return "missing_required", fmt.Sprintf("Field %s is required", last(path))
+		return CodeMissingRequired, fmt.Sprintf("Field %s is required", last(path))
 	case reConflict.MatchString(raw):
-		return "conflicting_values", fmt.Sprintf("Conflicting values for %s", last(path))
+		return furtherClassify(CodeConflictingValues, raw, args, path, config)
 	case reEnum.MatchString(raw):
-		return "invalid_enum", fmt.Sprintf("Field %s has invalid value", last(path))
+		return CodeInvalidEnum, fmt.Sprintf("Field %s has invalid value", last(path))
 	case reExpectedGot.MatchString(raw):
-		return "type_mismatch", fmt.Sprintf("Field %s has wrong type/value", last(path))
+		return CodeTypeMismatch, fmt.Sprintf("Field %s has wrong type/value", last(path))
+	case reInvalidValueBounds.MatchString(raw):
+		return furtherClassify(CodeValidationError, raw, args, path, config)
 	default:
-		return "validation_error", raw
+		return CodeValidationError, raw
 	}
+}
+
+func furtherClassify(in CueErrorCode, raw string, args []any, path string, config cue.Value) (code CueErrorCode, msg string) {
+	asStr := func(x any) string {
+		return fmt.Sprintf("%s", x)
+	}
+	code = in
+	msg = fmt.Sprintf(raw, args...)
+	validMsg := false
+	switch len(args) {
+	case 2:
+		s1, s2 := asStr(args[0]), asStr(args[1])
+		switch {
+		case s1 == `""` && s2 == `!=""`:
+			msg = "value must not be empty"
+			validMsg = true
+		case s2 == `=~"^https?://.+"`:
+			msg = "value must be a valid http(s) URL"
+			validMsg = true
+		}
+	case 4:
+		s3, s4 := asStr(args[2]), asStr(args[3])
+		if strings.Contains(raw, "mismatched types") {
+			msg = fmt.Sprintf("expected type %s: got %s", s4, s3)
+			validMsg = true
+		}
+	}
+	switch code {
+	case CodeValidationError:
+		msg = fmt.Sprintf("Field %s is invalid: %s", last(path), msg)
+	case CodeConflictingValues:
+		if !validMsg {
+			msg = enumPossibilitiesOnConflict(path, config)
+		}
+		msg = fmt.Sprintf("Conflicting values for %s: %s", last(path), msg)
+	}
+	return
+}
+
+func enumPossibilitiesOnConflict(path string, config cue.Value) (msg string) {
+	cueValue := lookup(schema, path)
+	values, dflt := enumerate(cueValue)
+	msg = fmt.Sprintf("possible values (%s)", strings.Join(values, ","))
+	if dflt != nil {
+		msg += fmt.Sprintf(" (default %s)", *dflt)
+	}
+	msg += ": got " + valueToString(config.LookupPath(cue.ParsePath(path)))
+	return
 }
 
 func looksNonEmptyConditional(path string, root cue.Value) bool {
@@ -212,24 +308,7 @@ func looksNonEmptyConditional(path string, root cue.Value) bool {
 		return false
 	}
 	v := lookup(root, path)
-	if !v.Exists() {
-		return false
-	}
-	// Inspect definition text (rough heuristic; CUE API doesn’t expose full constraint list easily)
-	// If you can obtain source, you could parse; here we just check if & !="" appears in error chain.
-	//for i := 0; i < v.Len(); i++ {
-	// skip; simple heuristic removed for brevity
-	//}
-	// Instead rely on raw path presence; refine if needed.
-	return true
-}
-
-func lookup(root cue.Value, path string) cue.Value {
-	if path == "" {
-		return root
-	}
-	pp := cue.ParsePath(path)
-	return root.LookupPath(pp)
+	return v.Exists()
 }
 
 func last(p string) string {
