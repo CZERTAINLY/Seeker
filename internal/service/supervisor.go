@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	uc "github.com/CZERTAINLY/Seeker/internal/uploader"
 )
 
 type Supervisor struct {
@@ -132,7 +133,7 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 	return errors.Join(errs...)
 }
 
-func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error) {
+func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
 	if cfg.Dir == "" && !cfg.Repository.Enabled {
 		return []model.Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
@@ -145,7 +146,11 @@ func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error)
 		uploaders = append(uploaders, u)
 	}
 	if cfg.Repository.Enabled {
-		slog.WarnContext(ctx, "repository support is not yet implemented")
+		u, err := uc.New(cfg.Repository.URL)
+		if err != nil {
+			return nil, err
+		}
+		uploaders = append(uploaders, u)
 	}
 	return uploaders, nil
 }
