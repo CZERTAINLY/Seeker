@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	uc "github.com/CZERTAINLY/Seeker/internal/uploader"
 )
 
 type Supervisor struct {
@@ -146,7 +145,7 @@ func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
 		uploaders = append(uploaders, u)
 	}
 	if cfg.Repository.Enabled {
-		u, err := uc.New(cfg.Repository.URL)
+		u, err := NewBOMRepoUploader(cfg.Repository.URL)
 		if err != nil {
 			return nil, err
 		}

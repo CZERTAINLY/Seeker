@@ -1,4 +1,4 @@
-package uploader
+package service
 
 import (
 	"bytes"
@@ -19,12 +19,12 @@ const (
 	contentType = "application/vnd.cyclonedx+json; version = 1.6"
 )
 
-type Client struct {
+type BOMRepoUploader struct {
 	requestURL *url.URL
 	client     *http.Client
 }
 
-func New(serverURL string) (*Client, error) {
+func NewBOMRepoUploader(serverURL string) (*BOMRepoUploader, error) {
 	parsedURL, err := url.Parse(serverURL)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func New(serverURL string) (*Client, error) {
 	q := parsedURL.Query()
 	parsedURL.RawQuery = q.Encode()
 
-	c := &Client{
+	c := &BOMRepoUploader{
 		requestURL: parsedURL,
 		client:     &http.Client{},
 	}
@@ -47,7 +47,7 @@ func New(serverURL string) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Upload(ctx context.Context, raw []byte) error {
+func (c *BOMRepoUploader) Upload(ctx context.Context, raw []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.requestURL.String(), bytes.NewReader(raw))
 	if err != nil {
 		return err
@@ -81,7 +81,7 @@ type BOMCreateResponse struct {
 	Version      int    `json:"version"`
 }
 
-func (c *Client) decodeUploadResponse(resp *http.Response) (BOMCreateResponse, error) {
+func (c *BOMRepoUploader) decodeUploadResponse(resp *http.Response) (BOMCreateResponse, error) {
 	contentType, _, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if err != nil {
 		return BOMCreateResponse{}, fmt.Errorf("failed to parse response content type header: %w", err)
@@ -95,6 +95,9 @@ func (c *Client) decodeUploadResponse(resp *http.Response) (BOMCreateResponse, e
 		var bc BOMCreateResponse
 		if err := json.NewDecoder(resp.Body).Decode(&bc); err != nil {
 			return BOMCreateResponse{}, fmt.Errorf("decoding json response failed: %w", err)
+		}
+		if bc.SerialNumber == "" || bc.Version == 0 {
+			return BOMCreateResponse{}, errors.New("received unexpected body")
 		}
 		return bc, nil
 
