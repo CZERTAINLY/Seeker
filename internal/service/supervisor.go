@@ -133,7 +133,7 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 }
 
 func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error) {
-	if cfg.Dir == "" && !cfg.Repository.Enabled {
+	if cfg.Dir == "" && (cfg.Repository == nil || !cfg.Repository.Enabled) {
 		return []model.Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
 	var uploaders []model.Uploader
@@ -144,7 +144,7 @@ func uploaders(ctx context.Context, cfg model.Service) ([]model.Uploader, error)
 		}
 		uploaders = append(uploaders, u)
 	}
-	if cfg.Repository.Enabled {
+	if cfg.Repository != nil && cfg.Repository.Enabled {
 		slog.WarnContext(ctx, "repository support is not yet implemented")
 	}
 	return uploaders, nil

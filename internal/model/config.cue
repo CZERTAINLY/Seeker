@@ -52,7 +52,7 @@ service: #Service
   ipv6?: bool | *true
 }
 
-// Manual service execution configuration.
+// Seeker service configuration.
 #Service: {
   #ServiceFields
   mode: *"manual" | "timer"
@@ -74,12 +74,12 @@ service: #Service
 
 #Repository: {
   enabled?: bool | *false
-  url: string
-  auth: #Auth
+  url: string & =~"^https?://.+"
+  auth?: #Auth
 }
 
 #Auth: {
-  type: *"" | "token"
+  type: "token"
   token?: string
   if type == "token" { token: string & !="" }
 }
