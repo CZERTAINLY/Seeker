@@ -123,7 +123,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -143,7 +143,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -176,7 +176,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -196,7 +196,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -229,7 +229,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -249,7 +249,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 					Detail: "some detail",
 				})
 				if err != nil {
-					t.Fatalf("`json.Marhsal()` failed: %s", err)
+					t.Fatalf("`json.Marshal()` failed: %s", err)
 				}
 
 				resp := &http.Response{
@@ -388,7 +388,7 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 						Detail: "some detail",
 					})
 					if err != nil {
-						t.Fatalf("`json.Marhsal()` failed: %s", err)
+						t.Fatalf("`json.Marshal()` failed: %s", err)
 					}
 					w.Header().Set("Content-Type", "plain/text")
 					w.WriteHeader(http.StatusBadRequest)
@@ -430,7 +430,7 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 						Detail: "some detail",
 					})
 					if err != nil {
-						t.Fatalf("`json.Marhsal()` failed: %s", err)
+						t.Fatalf("`json.Marshal()` failed: %s", err)
 					}
 					w.Header().Set("Content-Type", "plain/text")
 					w.WriteHeader(http.StatusConflict)
@@ -472,7 +472,7 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 						Detail: "some detail",
 					})
 					if err != nil {
-						t.Fatalf("`json.Marhsal()` failed: %s", err)
+						t.Fatalf("`json.Marshal()` failed: %s", err)
 					}
 					w.Header().Set("Content-Type", "plain/text")
 					w.WriteHeader(http.StatusUnsupportedMediaType)
