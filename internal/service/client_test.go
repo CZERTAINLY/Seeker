@@ -35,7 +35,7 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 		"fail http path set":                      {serverURL: "http://some-server.com/some/path", wantErr: true},
 		"fail http port path set":                 {serverURL: "http://some-server.com:8080/some/path", wantErr: true},
 		"faail https path set":                    {serverURL: "https://some-server.com/some/path", wantErr: true},
-		"fail httos port path set":                {serverURL: "https://some-server.com:8080/some/path", wantErr: true},
+		"fail https port path set":                {serverURL: "https://some-server.com:8080/some/path", wantErr: true},
 	}
 
 	for name, tc := range testCases {
