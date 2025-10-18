@@ -274,7 +274,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		"unpexpected status code": {
+		"unexpected status code": {
 			resp: func() *http.Response {
 				resp := &http.Response{
 					StatusCode: http.StatusTeapot,
