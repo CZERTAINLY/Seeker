@@ -104,7 +104,7 @@ func main() {
 }
 
 func doVersion(cmd *cobra.Command, args []string) error {
-	if err := initSeeker(cmd, args); err != nil {
+	if err := initSeeker(cmd, args, true); err != nil {
 		return err
 	}
 
@@ -134,7 +134,7 @@ func doVersion(cmd *cobra.Command, args []string) error {
 }
 
 func doScan(cmd *cobra.Command, args []string) error {
-	if err := initSeeker(cmd, args); err != nil {
+	if err := initSeeker(cmd, args, false); err != nil {
 		return err
 	}
 
@@ -155,7 +155,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unsupported arguments: %s", strings.Join(args, ", "))
 	}
-	if err := initSeeker(cmd, args); err != nil {
+	if err := initSeeker(cmd, args, false); err != nil {
 		return err
 	}
 
@@ -180,7 +180,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	return supervisor.Do(ctx)
 }
 
-func initSeeker(_ *cobra.Command, _ []string) error {
+func initSeeker(_ *cobra.Command, _ []string, skipDebug bool) error {
 	if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
 		configPath = envConfig
 	} else if flagConfigFilePath != "" {
@@ -246,8 +246,10 @@ func initSeeker(_ *cobra.Command, _ []string) error {
 	// initialize logging
 	slog.SetDefault(log.New(config.Service.Verbose))
 
-	slog.Debug("seeker run", "configPath", configPath)
-	slog.Debug("seeker run", "config", config)
+	if !skipDebug {
+		slog.Debug("seeker run", "configPath", configPath)
+		slog.Debug("seeker run", "config", config)
+	}
 	return nil
 }
 

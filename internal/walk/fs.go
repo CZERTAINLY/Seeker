@@ -28,7 +28,8 @@ func Roots(ctx context.Context, roots ...*os.Root) iter.Seq2[Entry, error] {
 // path to the file. It does not follow symlinks.
 func FS(ctx context.Context, root fs.FS, name string) iter.Seq2[Entry, error] {
 	if root == nil {
-		panic("root is nil")
+		slog.WarnContext(ctx, "root is nil: not iterating")
+		return nil
 	}
 
 	return func(yield func(Entry, error) bool) {
