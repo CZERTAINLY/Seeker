@@ -133,7 +133,7 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 }
 
 func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
-	if cfg.Dir == "" && !cfg.Repository.Enabled {
+	if cfg.Dir == "" && (cfg.Repository == nil || !cfg.Repository.Enabled) {
 		return []model.Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
 	var uploaders []model.Uploader
@@ -144,7 +144,8 @@ func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
 		}
 		uploaders = append(uploaders, u)
 	}
-	if cfg.Repository.Enabled {
+
+	if cfg.Repository != nil && cfg.Repository.Enabled {
 		u, err := NewBOMRepoUploader(cfg.Repository.URL)
 		if err != nil {
 			return nil, err

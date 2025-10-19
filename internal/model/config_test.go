@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -25,11 +26,6 @@ service:
       token: ABC123
 `
 	cfg, err := model.LoadConfig(strings.NewReader(yml))
-	if err != nil {
-		for _, d := range model.CueErrDetails(err) {
-			t.Logf("%s\n", d)
-		}
-	}
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
@@ -45,21 +41,494 @@ func TestLoadConfig_Fail(t *testing.T) {
 	var testCases = []struct {
 		scenario string
 		given    string
-		then     string
+		then     []model.CueErrorDetail
 	}{
 		{
-			scenario: "Missing required auth.token for token auth type",
+			scenario: "extra",
+			given: `
+version: 0
+service:
+  mode: manual
+extra: true
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "extra",
+					Code:    model.CodeUnknownField,
+					Message: "Field extra is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   1,
+					},
+					Raw: "#Config.extra: field not allowed",
+				},
+			},
+		},
+		{
+			scenario: "Additional field",
+			given: `
+version: 0
+service:
+  mode: manual
+  x: true
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.x",
+					Code:    model.CodeUnknownField,
+					Message: "Field x is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   3,
+					},
+					Raw: "#Config.service.x: field not allowed",
+				},
+			},
+		},
+		{
+			scenario: "service.mode missing",
+			given: `
+version: 0
+service:
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for service: expected type struct: got null",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     3,
+						Column:   9,
+					},
+					Raw: "#Config.service: conflicting values null and {verbose?:(bool|*false),log?:(*\"stderr\"|\"stdout\"|\"discard\"|string),dir?:string,repository?:#Repository} (mismatched types null and struct)",
+				},
+			},
+		},
+		{
+			scenario: "version 1",
+			given: `
+version: 1
+service:
+  mode: manual
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "version",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for version: possible values (0): got 1",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     2,
+						Column:   10,
+					},
+					Raw: "#Config.version: conflicting values 1 and 0",
+				},
+			},
+		},
+		{
+			scenario: "service.dir wrong type",
+			given: `
+version: 0
+service:
+  mode: manual
+  dir: 123
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.dir",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for dir: expected type string: got int",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   8,
+					},
+					Raw: `#Config.service.dir: conflicting values 123 and string (mismatched types int and string)`,
+				},
+			},
+		},
+		{
+			scenario: "service.mode",
+			given: `
+version: 0
+service:
+  mode: automatic_gear
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.mode",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for mode: possible values (manual,timer) (default manual): got automatic_gear",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     4,
+						Column:   9,
+					},
+					Raw: "#Config.service.mode: 2 errors in empty disjunction: (and 2 more errors)",
+				},
+			},
+		},
+		{
+			scenario: "service.verbose",
+			given: `
+version: 0
+service:
+  mode: manual
+  verbose: "yes"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.verbose",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for verbose: expected type bool: got string",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   12,
+					},
+					Raw: `#Config.service.verbose: 2 errors in empty disjunction: (and 2 more errors)`,
+				},
+			},
+		},
+		{
+			scenario: "service.verbose type",
+			given: `
+version: 0
+service:
+  mode: manual
+  verbose: "true"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.verbose",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for verbose: expected type bool: got string",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   12,
+					},
+					Raw: `#Config.service.verbose: 2 errors in empty disjunction: (and 2 more errors)`,
+				},
+			},
+		},
+		{
+			scenario: "service.mode timer and missing every",
+			given: `
+version: 0
+service:
+  mode: timer
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.every",
+					Code:    model.CodeMissingRequired,
+					Message: "Field every is required",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: `#Config.service.every: incomplete value !=""`,
+				},
+			},
+		},
+		{
+			scenario: "service.mode timer and empty every",
+			given: `
+version: 0
+service:
+  mode: timer
+  every: ""
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.every",
+					Code:    model.CodeValidationError,
+					Message: "Field every is invalid: value must not be empty",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   10,
+					},
+					Raw: "#Config.service.every: invalid value \"\" (out of bound !=\"\")",
+				},
+			},
+		},
+		{
+			scenario: "service.mode timer and empty every",
+			given: `
+version: 0
+service:
+  mode: timer
+  every: ""
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.every",
+					Code:    model.CodeValidationError,
+					Message: "Field every is invalid: value must not be empty",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     5,
+						Column:   10,
+					},
+					Raw: `#Config.service.every: invalid value "" (out of bound !="")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository url is missing",
 			given: `
 version: 0
 service:
   mode: manual
   repository:
     enabled: true
-    url: https://example.com/repo
-    auth:
-      type: token
 `,
-			then: `#Config.service.repository.auth.token: incomplete value !=""`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.url",
+					Code:    model.CodeMissingRequired,
+					Message: "Field url is required",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: `#Config.service.repository.url: incomplete value =~"^https?://.+"`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.url not url",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: ""
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.url",
+					Code:    model.CodeValidationError,
+					Message: "Field url is invalid: value must be a valid http(s) URL",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   10,
+					},
+					Raw: `#Config.service.repository.url: invalid value "" (out of bound =~"^https?://.+")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.url is ftp",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: "ftp://example.com"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.url",
+					Code:    model.CodeValidationError,
+					Message: "Field url is invalid: value must be a valid http(s) URL",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   10,
+					},
+					Raw: `#Config.service.repository.url: invalid value "ftp://example.com" (out of bound =~"^https?://.+")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.url is prefix only",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: "https://"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.url",
+					Code:    model.CodeValidationError,
+					Message: "Field url is invalid: value must be a valid http(s) URL",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   10,
+					},
+					Raw: `#Config.service.repository.url: invalid value "https://" (out of bound =~"^https?://.+")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.auth.type token missing",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: "https://example.com"
+    auth:
+      type: "token"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.auth.token",
+					Code:    model.CodeMissingRequired,
+					Message: "Field token is required",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: `#Config.service.repository.auth.token: incomplete value !=""`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.auth.type token empty",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: "https://example.com"
+    auth:
+      type: "token"
+      token: ""
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.auth.token",
+					Code:    model.CodeValidationError,
+					Message: "Field token is invalid: value must not be empty",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     10,
+						Column:   14,
+					},
+					Raw: `#Config.service.repository.auth.token: invalid value "" (out of bound !="")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.auth.type invalid",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    enabled: true
+    url: "https://example.com"
+    auth:
+      type: "invalid"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.auth.type",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for type: possible values (token): got invalid",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     9,
+						Column:   13,
+					},
+					Raw: `#Config.service.repository.auth.type: conflicting values "token" and "invalid"`,
+				},
+			},
+		},
+		{
+			scenario: "containers.config wrong yaml",
+			// this is funny case - the config is recognized as
+			// "config": {"-name" : "c1"}} by YAML parser
+			given: `
+version: 0
+service:
+  mode: manual
+containers:
+  enabled: true
+  config:
+    -name: c1
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "containers.config",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for config: expected type struct: got list",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: `#Config.containers.config: conflicting values [...#ContainerConfig] and {"-name":"c1"} (mismatched types list and struct)`,
+				},
+			},
+		},
+		{
+			scenario: "containers.config no host",
+			given: `
+version: 0
+service:
+  mode: manual
+containers:
+  enabled: true
+  config:
+    -
+      name: c1
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "containers.config.0.host",
+					Code:    model.CodeMissingRequired,
+					Message: "Field host is required",
+					Pos: model.CueErrorPosition{
+						Filename: "",
+						Line:     0,
+						Column:   0,
+					},
+					Raw: `#Config.containers.config.0.host: incomplete value string`,
+				},
+			},
+		},
+		{
+			scenario: "ports.ports number",
+			given: `
+version: 0
+service:
+  mode: manual
+ports:
+  ports: 8080
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "ports.ports",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for ports: expected type string: got int",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     6,
+						Column:   10,
+					},
+					Raw: `#Config.ports.ports: 2 errors in empty disjunction: (and 2 more errors)`,
+				},
+			},
 		},
 	}
 
@@ -67,10 +536,14 @@ service:
 		t.Run(tc.scenario, func(t *testing.T) {
 			_, err := model.LoadConfig(strings.NewReader(tc.given))
 			require.Error(t, err)
-			for _, d := range model.CueErrDetails(err) {
-				t.Logf("%s", d)
+			var cuerr model.CueError
+			ok := errors.As(err, &cuerr)
+			require.Truef(t, ok, "%+v is not model.CueError", err)
+			for _, f := range cuerr.Details() {
+				t.Logf("%#+v", f)
 			}
-			require.EqualError(t, err, tc.then)
+			require.Equal(t, tc.then, cuerr.Details())
+			require.NotEmpty(t, cuerr.Details()[0].Attr("test"))
 		})
 	}
 }
@@ -86,8 +559,11 @@ func TestDefaultConfig(t *testing.T) {
 
 	cfg2, err := model.LoadConfig(&buf)
 	if err != nil {
-		for _, d := range model.CueErrDetails(err) {
-			t.Logf("%s", d)
+		var cuerr model.CueError
+		ok := errors.As(err, &cuerr)
+		require.True(t, ok)
+		for _, d := range cuerr.Details() {
+			t.Logf("%+v", d)
 		}
 	}
 	require.NoError(t, err)
