@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/netip"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,11 +17,6 @@ import (
 
 func TestScanner(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	rawPath := filepath.Join(dir, "nmap.tls.json")
-	rawPath6 := filepath.Join(dir, "nmap.tls6.json")
-	rawPathSSH := filepath.Join(dir, "nmap.ssh.json")
-
 	nmapPath, err := exec.LookPath("nmap")
 	require.NoError(t, err, "nmap binary is missing in PATH, please install it first")
 
@@ -35,7 +28,6 @@ func TestScanner(t *testing.T) {
 	type given struct {
 		addrPort netip.AddrPort
 		scanner  cznmap.Scanner
-		rawPath  string
 	}
 
 	var testCases = []struct {
@@ -47,7 +39,6 @@ func TestScanner(t *testing.T) {
 			given: given{
 				addrPort: http4,
 				scanner:  scanner,
-				rawPath:  rawPath,
 			},
 		},
 		{
@@ -55,7 +46,6 @@ func TestScanner(t *testing.T) {
 			given: given{
 				addrPort: http6,
 				scanner:  scanner,
-				rawPath:  rawPath6,
 			},
 		},
 		{
@@ -63,7 +53,6 @@ func TestScanner(t *testing.T) {
 			given: given{
 				addrPort: ssh4,
 				scanner:  sshScanner,
-				rawPath:  rawPathSSH,
 			},
 		},
 	}
@@ -75,7 +64,6 @@ func TestScanner(t *testing.T) {
 			addr := tc.given.addrPort.Addr()
 
 			tcScanner := tc.given.scanner.WithPorts(strconv.Itoa(int(port)))
-			tcScanner = tcScanner.WithRawPath(tc.given.rawPath)
 			detections, err := tcScanner.Detect(t.Context(), addr)
 			require.NoError(t, err)
 			require.NotEmpty(t, detections)
@@ -83,10 +71,6 @@ func TestScanner(t *testing.T) {
 			for _, d := range detections {
 				t.Logf("%+v", d)
 			}
-
-			info, err := os.Stat(tc.given.rawPath)
-			require.NoError(t, err)
-			require.NotZero(t, info)
 		})
 	}
 }
