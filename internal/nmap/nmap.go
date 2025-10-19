@@ -2,12 +2,10 @@ package nmap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 
@@ -100,22 +98,9 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
-	if s.rawPath != "" {
-		raw, err := os.Create(s.rawPath)
-		if err != nil {
-			return nil, fmt.Errorf("saving raw nmap output: %w", err)
-		}
-		defer func() { _ = raw.Close() }()
-		enc := json.NewEncoder(raw)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(run)
-		if err != nil {
-			return nil, fmt.Errorf("encoding raw nmap output: %w", err)
-		}
-	}
-
-	if len(run.Hosts) == 0 {
-		return nil, fmt.Errorf("nmap scan: no hosts results, use --raw to save raw nmap results")
+	if run == nil || len(run.Hosts) == 0 {
+		slog.WarnContext(ctx, "nmap scan: no hosts results")
+		return nil, nil
 	}
 
 	return []model.Detection{
@@ -137,7 +122,7 @@ func scan(ctx context.Context, options []nmap.Option) (*nmap.Run, error) {
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
-	if len(scan.Hosts) == 0 {
+	if scan == nil || len(scan.Hosts) == 0 {
 		slog.DebugContext(ctx, "scan found nothing")
 		return nil, nil
 	}

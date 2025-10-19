@@ -109,8 +109,8 @@ func doVersion(cmd *cobra.Command, args []string) error {
 	}
 
 	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		fmt.Println("seeker: version info not available")
+	if !ok || info == nil {
+		return fmt.Errorf("seeker: version info not available")
 	}
 
 	if configPath != "" {
