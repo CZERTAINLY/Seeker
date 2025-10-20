@@ -113,8 +113,6 @@ service:
 
 The following setup is needed to upload to a [CBOM-Repository](https://github.com/CZERTAINLY/CBOM-Repository): Currently, Seeker does not support making authenticated requests.
 
-
-
 ```yaml
 service:
     mode: manual
