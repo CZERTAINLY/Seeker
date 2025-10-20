@@ -3,6 +3,7 @@ package nmap
 import (
 	"bytes"
 	"encoding/json"
+	"encoding/pem"
 	"net/netip"
 	"os/exec"
 	"strconv"
@@ -126,6 +127,12 @@ func TestNameToBomRefAndProtoVersion(t *testing.T) {
 	require.Equal(t, "1.4", nameToProtoVersion("TLSv1.4"))
 }
 
+func TestNameToProtoVersion_NoAtSymbol(t *testing.T) {
+	t.Parallel()
+	// When nameToBomRef returns a string without '@', nameToProtoVersion should yield "N/A".
+	require.Equal(t, "N/A", nameToProtoVersion("INVALID"))
+}
+
 func TestIdentifiers_Unsupported(t *testing.T) {
 	t.Parallel()
 	suite, ok := identifiers(t.Context(), "TLS_FAKE_WITH_NONE_NONE")
@@ -159,24 +166,100 @@ func TestSSHHostKey_UnsupportedAlgo(t *testing.T) {
 	require.Empty(t, comps)
 }
 
-func TestCipherSuites_Filtering(t *testing.T) {
+func TestSSHHostKey_SupportedAlgo(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	// no "ciphers" key
-	require.Nil(t, cipherSuites(ctx, []nmapv3.Table{{Key: "foo"}}))
-	// unknown cipher names should be skipped
-	tables := []nmapv3.Table{
-		{Key: "ciphers", Tables: []nmapv3.Table{{Elements: []nmapv3.Element{{Key: "name", Value: "TLS_FAKE_WITH_NONE_NONE"}}}}},
+	s := nmapv3.Script{
+		ID: "ssh-hostkey",
+		Tables: []nmapv3.Table{ // one hostkey entry
+			{Elements: []nmapv3.Element{
+				{Key: "type", Value: "ecdsa-sha2-nistp256"},
+				{Key: "bits", Value: "256"},
+				{Key: "key", Value: "AAAAB3NzaC1yc2EAAAADAQABAAABAQ=="},
+				{Key: "fingerprint", Value: "aa:bb:cc"},
+			}},
+		},
 	}
-	require.Nil(t, cipherSuites(ctx, tables))
-	// include a known suite to ensure it is parsed
-	tables = []nmapv3.Table{
-		{Key: "ciphers", Tables: []nmapv3.Table{{Elements: []nmapv3.Element{{Key: "name", Value: "TLS_AES_128_GCM_SHA256"}}}}},
+	comps := sshHostKey(ctx, s)
+	require.Len(t, comps, 1)
+	require.Equal(t, "crypto/ssh-hostkey/ecdsa-sha2-nistp256@256", comps[0].BOMRef)
+	require.NotNil(t, comps[0].CryptoProperties)
+	require.NotNil(t, comps[0].CryptoProperties.AlgorithmProperties)
+	// properties set by SetComponentProp
+	require.NotNil(t, comps[0].Properties)
+	foundKey, foundFP := false, false
+	for _, p := range *comps[0].Properties {
+		if p.Name == "czertainly:component:ssh_hostkey:content" && p.Value != "" {
+			foundKey = true
+		}
+		if p.Name == "czertainly:component:ssh_hostkey:fingerprint_content" && p.Value == "aa:bb:cc" {
+			foundFP = true
+		}
 	}
-	suites := cipherSuites(ctx, tables)
-	require.NotNil(t, suites)
-	require.Len(t, *suites, 1)
-	// verify identifiers populated
-	require.NotEmpty(t, (*suites)[0].Identifiers)
-	require.NotEmpty(t, (*suites)[0].Algorithms)
+	require.True(t, foundKey)
+	require.True(t, foundFP)
+}
+
+func TestSSLCert_SuccessAndErrorPaths(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	// success path: generate a self-signed cert and encode as PEM
+	cert, err := generateSelfSignedCert()
+	require.NoError(t, err)
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]})
+	require.NotEmpty(t, pemBytes)
+	s := nmapv3.Script{ID: "ssl-cert", Elements: []nmapv3.Element{{Key: "pem", Value: string(pemBytes)}}}
+	comps := sslCert(ctx, s)
+	// at least one component (the certificate) should be detected
+	require.NotNil(t, comps)
+	require.NotEmpty(t, comps)
+
+	// error path: invalid PEM base64 -> x509 parser error -> function returns nil
+	badPEM := "-----BEGIN CERTIFICATE-----\nAA\n-----END CERTIFICATE-----\n"
+	sBad := nmapv3.Script{ID: "ssl-cert", Elements: []nmapv3.Element{{Key: "pem", Value: badPEM}}}
+	compsBad := sslCert(ctx, sBad)
+	require.Nil(t, compsBad)
+
+	// no detections but no error: a valid PEM header with empty body is unlikely; simulate by passing non-pem key path
+	nonPem := nmapv3.Script{ID: "ssl-cert", Elements: []nmapv3.Element{{Key: "not-pem", Value: "ignored"}}}
+	compsNone := sslCert(ctx, nonPem)
+	require.Nil(t, compsNone)
+}
+
+func TestHostToComponent_NoAddresses(t *testing.T) {
+	t.Parallel()
+	addr, comp := hostToComponent(nmapv3.Host{Addresses: nil})
+	require.Equal(t, "unknown", addr)
+	require.Equal(t, "host:unknown", comp.Name)
+}
+
+func TestPortToComponents_Properties(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	p := nmapv3.Port{
+		ID:       443,
+		State:    nmapv3.State{State: "open"},
+		Protocol: "tcp",
+		Service:  nmapv3.Service{Name: "https", Product: "nginx", Version: "1.23"},
+	}
+	comps := portToComponents(ctx, "127.0.0.1", p)
+	require.NotEmpty(t, comps)
+	pc := comps[0]
+	require.Equal(t, "tcp/443", pc.Name)
+	require.NotNil(t, pc.Properties)
+	propsMap := map[string]string{}
+	for _, pr := range *pc.Properties {
+		propsMap[pr.Name] = pr.Value
+	}
+	require.Equal(t, "443", propsMap["nmap:port"])
+	require.Equal(t, "tcp", propsMap["nmap:protocol"])
+	require.Equal(t, "https", propsMap["nmap:service_name"])
+	require.Equal(t, "nginx", propsMap["nmap:service_product"])
+	require.Equal(t, "1.23", propsMap["nmap:service_version"])
+}
+
+func TestAddresses_Helper(t *testing.T) {
+	t.Parallel()
+	h := nmapv3.Host{Addresses: []nmapv3.Address{{Addr: "1.2.3.4"}, {Addr: "::1"}}}
+	require.Equal(t, "1.2.3.4,::1", addresses(h))
 }

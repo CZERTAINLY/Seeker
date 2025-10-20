@@ -43,6 +43,14 @@ func NewDetector() (*Detector, error) {
 // Detect uses github.com/zricethezav/gitleaks/v8 to detect possible leaked files
 // This method is SAFE to be called from multiple goroutines
 func (d *Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	// Check for context cancellation early to respect caller deadlines and
+	// to avoid unnecessary work; this also makes ctx a used parameter.
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	detector := d.pool.Get().(*detect.Detector)
 	defer d.pool.Put(detector)
 

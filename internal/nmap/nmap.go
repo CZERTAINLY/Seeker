@@ -129,7 +129,7 @@ func scan(ctx context.Context, options []nmap.Option) (*nmap.Run, error) {
 
 	slog.DebugContext(ctx, "scan finished", "elapsed", time.Since(now).String())
 
-	if *warningsp != nil {
+	if warningsp != nil && *warningsp != nil {
 		for _, warn := range *warningsp {
 			slog.WarnContext(ctx, "scan", "warning", warn)
 		}
@@ -195,14 +195,14 @@ func portToComponents(ctx context.Context, primaryAddr string, port nmap.Port) [
 	// Collect script outputs (e.g. ssl-enum-ciphers, ssl-cert)
 	scriptProps, compos := parseScripts(ctx, port.Scripts)
 
-	props := []cdx.Property{
+	portProps := []cdx.Property{
 		{Name: "nmap:port", Value: fmt.Sprintf("%d", port.ID)},
 		{Name: "nmap:protocol", Value: port.Protocol},
 		{Name: "nmap:service_name", Value: port.Service.Name},
 		{Name: "nmap:service_product", Value: port.Service.Product},
 		{Name: "nmap:service_version", Value: port.Service.Version},
 	}
-	props = append(props, scriptProps...)
+	portProps = append(portProps, scriptProps...)
 
 	portCompo := cdx.Component{
 		BOMRef:     ref,
@@ -210,7 +210,7 @@ func portToComponents(ctx context.Context, primaryAddr string, port nmap.Port) [
 		Name:       fmt.Sprintf("%s/%d", port.Protocol, port.ID),
 		Version:    "", // no version for port
 		PackageURL: "",
-		Properties: &props,
+		Properties: &portProps,
 	}
 
 	return append([]cdx.Component{portCompo}, compos...)
@@ -347,7 +347,7 @@ func sslCert(ctx context.Context, s nmap.Script) []cdx.Component {
 	for _, row := range s.Elements {
 		if row.Key == "pem" {
 			val := html.UnescapeString(row.Value)
-			detections, err := x509.Detector{}.Detect(context.TODO(), []byte(val), "nmap")
+			detections, err := x509.Detector{}.Detect(ctx, []byte(val), "nmap")
 			if err != nil {
 				slog.ErrorContext(ctx, "parsing certificate from nmap ssl-cert", "error", err)
 				return nil
