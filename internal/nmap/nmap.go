@@ -281,9 +281,7 @@ func nameToBomRef(name string) string {
 	case "TLSv1.3":
 		return "crypto/protocol/tls@1.3"
 	default:
-		name = strings.ToLower(name)
-		name = strings.Replace(name, "v", "@", 1)
-		return "crypto/protocol/" + name
+		return "invalid/" + name
 	}
 }
 

@@ -123,14 +123,8 @@ func TestNameToBomRefAndProtoVersion(t *testing.T) {
 	require.Equal(t, "crypto/protocol/tls@1.3", nameToBomRef("TLSv1.3"))
 	require.Equal(t, "1.3", nameToProtoVersion("TLSv1.3"))
 	// unknown mapping hits default branch
-	require.Equal(t, "crypto/protocol/tls@1.4", nameToBomRef("TLSv1.4"))
-	require.Equal(t, "1.4", nameToProtoVersion("TLSv1.4"))
-}
-
-func TestNameToProtoVersion_NoAtSymbol(t *testing.T) {
-	t.Parallel()
-	// When nameToBomRef returns a string without '@', nameToProtoVersion should yield "N/A".
-	require.Equal(t, "N/A", nameToProtoVersion("INVALID"))
+	require.Equal(t, "invalid/TLSv1.4", nameToBomRef("TLSv1.4"))
+	require.Equal(t, "N/A", nameToProtoVersion("TLSv1.4"))
 }
 
 func TestIdentifiers_Unsupported(t *testing.T) {
