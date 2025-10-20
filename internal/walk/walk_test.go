@@ -208,13 +208,9 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 			Enabled: true,
 			Config: []model.ContainerConfig{
 				{
-					Host:   host,
-					Images: []string{},
-				},
-				{
 					Host: host,
 					Images: []string{
-						info.ID,
+						info.Image,
 					},
 				},
 			},

@@ -1,4 +1,4 @@
-package nmap_test
+package nmap
 
 import (
 	"crypto/rand"
