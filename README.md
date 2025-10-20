@@ -9,7 +9,9 @@ Generates BOM in CycloneDX format.
 
 # Usage
 
-Generate X509 certificate to have something to scan
+You may want to generate a X509 certificate in order to have a cryptographic
+material in a current directory.
+
 ```sh
 $ openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -sha256 -days 3650 -nodes -subj "/C=XX/ST=StateName/L=CityName/O=CompanyName/OU=CompanySectionName/CN=CommonNameOrHostname"
 ```
@@ -95,6 +97,42 @@ $ time ./seeker run --config seeker.yaml
 real    0m17.389s
 user    0m0.838s
 sys     0m2.538s
+```
+
+# Save and upload the result
+
+By default, seeker prints the BOM to standard output. The `dir` directive
+changes this behavior, saving the files as `seeker-$date.json` in the specified
+directory. The `.` means the current working directory.
+
+```yaml
+service:
+    mode: manual
+    dir: .
+```
+
+The following setup is needed to upload to a [CBOM-Repository](https://github.com/CZERTAINLY/CBOM-Repository): Currently, Seeker does not support making authenticated requests.
+
+
+
+```yaml
+service:
+    mode: manual
+    repository:
+      enabled: true
+      url: "http://localhost:8080"
+```
+
+Both the `dir` and the `repository` can be combined in a single configuration
+file. Seeker will attempt both methods and log an error if either one fails.
+
+```yaml
+service:
+    mode: manual
+    dir: .
+    repository:
+      enabled: true
+      url: "http://localhost:8080"
 ```
 
 # File format specification

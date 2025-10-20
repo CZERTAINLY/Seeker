@@ -69,7 +69,7 @@ func (c *BOMRepoUploader) Upload(ctx context.Context, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	slog.DebugContext(ctx, "BOM uploaded successfully.",
+	slog.InfoContext(ctx, "BOM uploaded successfully.",
 		slog.String("urn", createResp.SerialNumber),
 		slog.Int("version", createResp.Version))
 
