@@ -29,7 +29,13 @@ type Builder struct {
 }
 
 func NewBuilder() *Builder {
-	return &Builder{}
+	return &Builder{
+		// those MUST be initialized as cyclone-dx JSON schema do not allow items to be null
+		authors:      []cdx.OrganizationalContact{},
+		components:   []cdx.Component{},
+		dependencies: []cdx.Dependency{},
+		properties:   []cdx.Property{},
+	}
 }
 
 func (b *Builder) AppendAuthors(authors ...cdx.OrganizationalContact) *Builder {
