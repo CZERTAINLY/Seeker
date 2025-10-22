@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	gocron "github.com/go-co-op/gocron/v2"
+
 	"github.com/CZERTAINLY/Seeker/internal/model"
 )
 
@@ -18,6 +20,7 @@ type Supervisor struct {
 	start     chan struct{}
 	uploaders []model.Uploader
 	oneshot   bool
+	scheduler gocron.Scheduler
 }
 
 func NewSupervisor(cmd Command, uploaders ...model.Uploader) *Supervisor {
@@ -50,6 +53,16 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 	if cfg.Verbose {
 		args = append(args, "--verbose")
 	}
+
+	var supervisor = &Supervisor{}
+	var scheduler gocron.Scheduler
+	if cfg.Mode == "timer" {
+		var err error
+		scheduler, err = newScheduler(ctx, cfg, supervisor.Start)
+		if err != nil {
+			return nil, fmt.Errorf("timer mode failed: %w", err)
+		}
+	}
 	cmd := Command{
 		Path: seeker,
 		Args: args,
@@ -61,12 +74,13 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 		Timeout: 0,
 	}
 
-	return &Supervisor{
-		cmd:       cmd,
-		start:     make(chan struct{}, 1),
-		uploaders: uploaders,
-		oneshot:   cfg.Mode == model.ServiceModeManual,
-	}, nil
+	supervisor.cmd = cmd
+	supervisor.start = make(chan struct{}, 1)
+	supervisor.uploaders = uploaders
+	supervisor.oneshot = (cfg.Mode == model.ServiceModeManual)
+	supervisor.scheduler = scheduler
+
+	return supervisor, nil
 }
 
 // Do performs in two different modes
@@ -81,6 +95,27 @@ func (s *Supervisor) Do(ctx context.Context) error {
 		slog.DebugContext(ctx, "starting oneshot job")
 		s.Start()
 	}
+
+	if s.scheduler != nil {
+		s.scheduler.Start()
+		defer func() {
+			err := s.scheduler.Shutdown()
+			if err != nil {
+				slog.ErrorContext(ctx, "shutting down the gocron have failed", "error", err)
+			}
+		}()
+	}
+
+	defer func() {
+		for _, uploader := range s.uploaders {
+			if closer, ok := uploader.(model.UploadCloser); ok {
+				err := closer.Close()
+				if err != nil {
+					slog.ErrorContext(ctx, "closing uploader have failed", "error", err)
+				}
+			}
+		}
+	}()
 
 	for {
 		select {
@@ -130,6 +165,27 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func newScheduler(ctx context.Context, cfg model.Service, startFunc func()) (gocron.Scheduler, error) {
+	fields, err := ParseFlexible(cfg.Every)
+	if err != nil {
+		return nil, fmt.Errorf("service.every has a wrong format: %w", err)
+	}
+	slog.DebugContext(ctx, "detected contab", "fields", fields)
+
+	s, err := gocron.NewScheduler()
+	if err != nil {
+		return nil, fmt.Errorf("initializing gocron scheduler: %w", err)
+	}
+	_, err = s.NewJob(
+		gocron.CronJob(cfg.Every, fields == 6),
+		gocron.NewTask(startFunc),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("initializing gocron job: %w", err)
+	}
+	return s, nil
 }
 
 func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
@@ -202,11 +258,15 @@ func (u *OSRootUploader) Upload(ctx context.Context, b []byte) error {
 	if err != nil {
 		return fmt.Errorf("closing seeker result: %w", err)
 	}
-	err = u.root.Close()
-	if err != nil {
-		return fmt.Errorf("closing seeker result's dir: %w", err)
-	}
 	slog.InfoContext(ctx, "bom saved", "path", path)
-	u.root = nil
 	return nil
+}
+
+func (u *OSRootUploader) Close() error {
+	if u.root == nil {
+		return errors.New("root already closed")
+	}
+	err := u.root.Close()
+	u.root = nil
+	return err
 }

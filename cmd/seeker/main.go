@@ -160,9 +160,6 @@ func doRun(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	if config.Service.Mode != model.ServiceModeManual {
-		return fmt.Errorf("only manual mode is supported now")
-	}
 
 	attrs := slog.Group("seeker",
 		slog.String("cmd", "run"),
