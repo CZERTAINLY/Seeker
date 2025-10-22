@@ -28,10 +28,23 @@ func TestSupervisor(t *testing.T) {
 		Timeout: 90 * time.Millisecond,
 	}
 
-	t.Run("service", func(t *testing.T) {
+	t.Run("timer", func(t *testing.T) {
+		const config = `
+version: 0
+
+service:
+    mode: timer
+    every: "* * * * * *"
+`
+		cfg, err := model.LoadConfig(strings.NewReader(config))
+		require.NoError(t, err)
 		var buf bytes.Buffer
-		supervisor := service.NewSupervisor(cmd, service.NewWriteUploader(&buf))
-		ctx, cancel := context.WithCancel(t.Context())
+		u := service.NewWriteUploader(&buf)
+		supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
+		require.NoError(t, err)
+		supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		t.Cleanup(cancel)
 
 		var g sync.WaitGroup
@@ -40,12 +53,6 @@ func TestSupervisor(t *testing.T) {
 			require.NoError(t, err)
 		})
 
-		for range 5 {
-			supervisor.Start()
-			time.Sleep(100 * time.Millisecond)
-		}
-
-		cancel()
 		g.Wait()
 		stdout := buf.String()
 		require.NotEmpty(t, stdout)
@@ -53,9 +60,20 @@ func TestSupervisor(t *testing.T) {
 	})
 
 	t.Run("oneshot", func(t *testing.T) {
+		const config = `
+version: 0
+
+service:
+    mode: manual
+`
+		cfg, err := model.LoadConfig(strings.NewReader(config))
+		require.NoError(t, err)
 		var buf bytes.Buffer
-		supervisor := service.NewSupervisor(cmd, service.NewWriteUploader(&buf)).SetOneshot(true)
-		err := supervisor.Do(t.Context())
+		u := service.NewWriteUploader(&buf)
+		supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
+		require.NoError(t, err)
+		supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
+		err = supervisor.Do(t.Context())
 		require.NoError(t, err)
 		stdout := buf.String()
 		require.NotEmpty(t, stdout)
@@ -69,7 +87,7 @@ func TestSupervisorFromConfig(t *testing.T) {
 			Verbose: true,
 		},
 	}
-	supervisor, err := service.SupervisorFromConfig(t.Context(), cfg.Service, "seeker.yaml")
+	supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, "seeker.yaml")
 	require.NoError(t, err)
 	require.NotEmpty(t, supervisor)
 }

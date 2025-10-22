@@ -169,7 +169,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "", "environ", os.Environ())
 	slog.DebugContext(ctx, "", "config", config)
 
-	supervisor, err := service.SupervisorFromConfig(ctx, config.Service, configPath)
+	supervisor, err := service.NewSupervisor(ctx, config.Service, configPath)
 	if err != nil {
 		return err
 	}

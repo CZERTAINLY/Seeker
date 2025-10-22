@@ -23,20 +23,7 @@ type Supervisor struct {
 	scheduler gocron.Scheduler
 }
 
-func NewSupervisor(cmd Command, uploaders ...model.Uploader) *Supervisor {
-	return &Supervisor{
-		cmd:       cmd,
-		start:     make(chan struct{}, 1),
-		uploaders: uploaders,
-	}
-}
-
-func (s *Supervisor) SetOneshot(oneshot bool) *Supervisor {
-	s.oneshot = oneshot
-	return s
-}
-
-func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
+func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
 	uploaders, err := uploaders(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing uploaders: %w", err)
@@ -83,6 +70,26 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 	return supervisor, nil
 }
 
+// WithCmdUploaders changes a command and uploaders for a initialized Supervisor.
+// This method exists for a unit testing only.
+func (s *Supervisor) WithCmdUploaders(ctx context.Context, cmd Command, uploaders ...model.Uploader) *Supervisor {
+	s.closeUploaders(ctx)
+	s.uploaders = uploaders
+	s.cmd = cmd
+	return s
+}
+
+func (s *Supervisor) closeUploaders(ctx context.Context) {
+	for _, uploader := range s.uploaders {
+		if closer, ok := uploader.(model.UploadCloser); ok {
+			err := closer.Close()
+			if err != nil {
+				slog.ErrorContext(ctx, "closing uploader have failed", "error", err)
+			}
+		}
+	}
+}
+
 // Do performs in two different modes
 // "manual" aka oneshot - in this case scan and upload is executed once and its error is returned
 // others: errors are only logged and never returned
@@ -107,14 +114,7 @@ func (s *Supervisor) Do(ctx context.Context) error {
 	}
 
 	defer func() {
-		for _, uploader := range s.uploaders {
-			if closer, ok := uploader.(model.UploadCloser); ok {
-				err := closer.Close()
-				if err != nil {
-					slog.ErrorContext(ctx, "closing uploader have failed", "error", err)
-				}
-			}
-		}
+		s.closeUploaders(ctx)
 	}()
 
 	for {
