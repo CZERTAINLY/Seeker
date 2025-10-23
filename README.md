@@ -149,7 +149,7 @@ service:
 ## Timer
 
 More advanced is a timer mode. It uses a standard `cron` 5 field syntax, but it
-do recognize the 6 field one too. In this case the initial field is for
+does recognize the 6 field one too. In this case the initial field is for
 seconds. All interpretation and scheduling is done in the machine's local time
 zone (time.Local).
 
