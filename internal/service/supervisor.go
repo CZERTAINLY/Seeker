@@ -172,7 +172,7 @@ func newScheduler(ctx context.Context, cfg model.Service, startFunc func()) (goc
 	if err != nil {
 		return nil, fmt.Errorf("service.every has a wrong format: %w", err)
 	}
-	slog.DebugContext(ctx, "detected contab", "fields", fields)
+	slog.DebugContext(ctx, "detected crontab", "fields", fields)
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
