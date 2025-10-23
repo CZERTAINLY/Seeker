@@ -16,29 +16,41 @@ import (
 
 type Detector struct {
 	pool sync.Pool
+	mx   sync.Mutex
 }
 
 func NewDetector() (*Detector, error) {
-	_, err := detect.NewDetectorDefaultConfig()
+	first, err := detect.NewDetectorDefaultConfig()
 	if err != nil {
 		return nil, fmt.Errorf("creating new gitleaks detector: %w", err)
 	}
-	return &Detector{
-		pool: sync.Pool{
-			New: func() any {
-				detector, err := detect.NewDetectorDefaultConfig()
-				if err != nil {
-					panic(err)
-				}
-				return detector
-			},
+	d := &Detector{}
+	d.pool = sync.Pool{
+		New: func() any {
+			d.mx.Lock()
+			defer d.mx.Unlock()
+			detector, err := detect.NewDetectorDefaultConfig()
+			if err != nil {
+				panic(err)
+			}
+			return detector
 		},
-	}, nil
+	}
+	d.pool.Put(first)
+	return d, nil
 }
 
 // Detect uses github.com/zricethezav/gitleaks/v8 to detect possible leaked files
 // This method is SAFE to be called from multiple goroutines
 func (d *Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	// Check for context cancellation early to respect caller deadlines and
+	// to avoid unnecessary work; this also makes ctx a used parameter.
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
 	detector := d.pool.Get().(*detect.Detector)
 	defer d.pool.Put(detector)
 

@@ -5,6 +5,10 @@ issues:
 
 output:
   formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
     checkstyle:
       path: golangci-lint-report.xml
   sort-order:

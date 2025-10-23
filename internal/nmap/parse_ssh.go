@@ -11,6 +11,8 @@ var algoMap = map[string]cdx.CryptoAlgorithmProperties{
 	},
 }
 
+// ParseSSHAlgorithm returns CycloneDX crypto algorithm properties for a known SSH
+// host key algorithm string. It reports ok=false if the algorithm is unsupported.
 func ParseSSHAlgorithm(algo string) (cdx.CryptoAlgorithmProperties, bool) {
 	p, ok := algoMap[algo]
 	return p, ok

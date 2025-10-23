@@ -2,12 +2,10 @@ package nmap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"html"
 	"log/slog"
 	"net/netip"
-	"os"
 	"strings"
 	"time"
 
@@ -100,22 +98,9 @@ func (s Scanner) Detect(ctx context.Context, addr netip.Addr) ([]model.Detection
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
-	if s.rawPath != "" {
-		raw, err := os.Create(s.rawPath)
-		if err != nil {
-			return nil, fmt.Errorf("saving raw nmap output: %w", err)
-		}
-		defer func() { _ = raw.Close() }()
-		enc := json.NewEncoder(raw)
-		enc.SetIndent("", "  ")
-		err = enc.Encode(run)
-		if err != nil {
-			return nil, fmt.Errorf("encoding raw nmap output: %w", err)
-		}
-	}
-
-	if len(run.Hosts) == 0 {
-		return nil, fmt.Errorf("nmap scan: no hosts results, use --raw to save raw nmap results")
+	if run == nil || len(run.Hosts) == 0 {
+		slog.WarnContext(ctx, "nmap scan: no hosts results")
+		return nil, nil
 	}
 
 	return []model.Detection{
@@ -137,14 +122,14 @@ func scan(ctx context.Context, options []nmap.Option) (*nmap.Run, error) {
 		return nil, fmt.Errorf("nmap scan: %w", err)
 	}
 
-	if len(scan.Hosts) == 0 {
+	if scan == nil || len(scan.Hosts) == 0 {
 		slog.DebugContext(ctx, "scan found nothing")
 		return nil, nil
 	}
 
 	slog.DebugContext(ctx, "scan finished", "elapsed", time.Since(now).String())
 
-	if *warningsp != nil {
+	if warningsp != nil && *warningsp != nil {
 		for _, warn := range *warningsp {
 			slog.WarnContext(ctx, "scan", "warning", warn)
 		}
@@ -210,14 +195,14 @@ func portToComponents(ctx context.Context, primaryAddr string, port nmap.Port) [
 	// Collect script outputs (e.g. ssl-enum-ciphers, ssl-cert)
 	scriptProps, compos := parseScripts(ctx, port.Scripts)
 
-	props := []cdx.Property{
+	portProps := []cdx.Property{
 		{Name: "nmap:port", Value: fmt.Sprintf("%d", port.ID)},
 		{Name: "nmap:protocol", Value: port.Protocol},
 		{Name: "nmap:service_name", Value: port.Service.Name},
 		{Name: "nmap:service_product", Value: port.Service.Product},
 		{Name: "nmap:service_version", Value: port.Service.Version},
 	}
-	props = append(props, scriptProps...)
+	portProps = append(portProps, scriptProps...)
 
 	portCompo := cdx.Component{
 		BOMRef:     ref,
@@ -225,7 +210,7 @@ func portToComponents(ctx context.Context, primaryAddr string, port nmap.Port) [
 		Name:       fmt.Sprintf("%s/%d", port.Protocol, port.ID),
 		Version:    "", // no version for port
 		PackageURL: "",
-		Properties: &props,
+		Properties: &portProps,
 	}
 
 	return append([]cdx.Component{portCompo}, compos...)
@@ -296,9 +281,7 @@ func nameToBomRef(name string) string {
 	case "TLSv1.3":
 		return "crypto/protocol/tls@1.3"
 	default:
-		name = strings.ToLower(name)
-		name = strings.Replace(name, "v", "@", 1)
-		return "crypto/protocol/" + name
+		return "invalid/" + name
 	}
 }
 
@@ -362,7 +345,7 @@ func sslCert(ctx context.Context, s nmap.Script) []cdx.Component {
 	for _, row := range s.Elements {
 		if row.Key == "pem" {
 			val := html.UnescapeString(row.Value)
-			detections, err := x509.Detector{}.Detect(context.TODO(), []byte(val), "nmap")
+			detections, err := x509.Detector{}.Detect(ctx, []byte(val), "nmap")
 			if err != nil {
 				slog.ErrorContext(ctx, "parsing certificate from nmap ssl-cert", "error", err)
 				return nil

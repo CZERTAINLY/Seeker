@@ -35,6 +35,10 @@ jobs:
         run: go vet ./...
       - name: Run tests
         run: go test -v -race -vet=off -coverprofile=coverage.out ./...
+      - name: Build seeker
+        run: go build github.com/CZERTAINLY/Seeker/cmd/seeker
+      - name: Run seeker version
+        run: ./seeker version
 
       # Package up PR context for downstream workflow_run
       - name: Prepare PR context artifact
