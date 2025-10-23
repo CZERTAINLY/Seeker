@@ -14,7 +14,7 @@ const (
 
 // Set (or upsert) a CycloneDX component property.
 func SetComponentProp(c *cdx.Component, name, value string) {
-	if value == "" {
+	if value == "" || c == nil {
 		return
 	}
 	if c.Properties == nil {
@@ -35,7 +35,7 @@ func SetComponentProp(c *cdx.Component, name, value string) {
 
 // Add (append) an evidence.occurrence location if non-empty.
 func AddEvidenceLocation(c *cdx.Component, loc string) {
-	if loc == "" {
+	if loc == "" || c == nil {
 		return
 	}
 	occ := cdx.EvidenceOccurrence{Location: loc}
