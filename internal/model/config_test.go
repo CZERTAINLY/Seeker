@@ -216,7 +216,7 @@ service:
 			},
 		},
 		{
-			scenario: "service.mode timer and missing every",
+			scenario: "service.mode timer and missing schedule",
 			given: `
 version: 0
 service:
