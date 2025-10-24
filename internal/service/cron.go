@@ -1,52 +1,83 @@
 package service
 
 import (
+	"errors"
 	"fmt"
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/robfig/cron/v3"
 )
 
-// ParseFlexible parses a cron expression that may have 5 or 6 time fields (seconds optional).
-// Returns the compiled cron.Schedule, number of time fields used (5 or 6), or error.
-// Supports macros (@every, @hourly, etc.).
-func ParseFlexible(expr string) (int, error) {
+// ParseCron parses a cron expression that have 5 fields
+// return error if it fails
+func ParseCron(expr string) error {
 	e := strings.TrimSpace(expr)
 	if e == "" {
-		return 0, fmt.Errorf("empty cron expression")
+		return fmt.Errorf("empty cron expression")
 	}
 
 	// Macros / @every handled by ParseStandard (it also supports plain 5-field specs).
 	if strings.HasPrefix(e, "@") {
 		_, err := cron.ParseStandard(e)
-		if err != nil {
-			return 0, err
-		}
-		// Macro: treat as 5-field style for reporting (doesn't really have fields).
-		return 5, nil
+		return err
 	}
 
-	fields := strings.Fields(e)
-	if len(fields) < 5 || len(fields) > 6 {
-		return 0, fmt.Errorf("invalid field count: got %d (want 5 or 6)", len(fields))
-	}
-
-	parser6 := cron.NewParser(cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 	parser5 := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
 
-	// If exactly 6 fields, try 6-field parser first.
-	if len(fields) == 6 {
-		if _, err := parser6.Parse(e); err == nil {
-			return 6, nil
-		} else {
-			return 0, err
-		}
-	}
-
 	// len == 5
-	if _, err := parser5.Parse(e); err == nil {
-		return 5, nil
-	} else {
-		return 0, err
+	_, err := parser5.Parse(e)
+	return err
+}
+
+var cueDurationRx = regexp.MustCompile(`^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$`)
+
+// ParseCueDuration parses strings matching ^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$ into time.Duration.
+// Supports ordered day/hour/minute/second segments. Empty string rejected.
+func ParseCueDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, errors.New("empty duration")
 	}
+	m := cueDurationRx.FindStringSubmatch(s)
+	if m == nil {
+		return 0, errors.New("invalid duration format")
+	}
+	var total time.Duration
+	for i, seg := range m[1:] { // groups 1..4
+		if seg == "" {
+			continue
+		}
+		// seg like "12d"
+		numStr := seg[:len(seg)-1]
+		val, err := strconv.ParseInt(numStr, 10, 64)
+		if err != nil {
+			return 0, errors.New("invalid number in " + seg)
+		}
+		var add time.Duration
+		switch last := seg[len(seg)-1]; last {
+		case 'd':
+			add = time.Hour * 24 * time.Duration(val)
+		case 'h':
+			add = time.Hour * time.Duration(val)
+		case 'm':
+			add = time.Minute * time.Duration(val)
+		case 's':
+			add = time.Second * time.Duration(val)
+		default:
+			return 0, errors.New("unknown unit in " + seg)
+		}
+		// overflow check
+		if (add > 0 && total > time.Duration(math.MaxInt64)-add) ||
+			(add < 0 && total < time.Duration(math.MinInt64)-add) {
+			return 0, errors.New("duration overflow")
+		}
+		total += add
+
+		// Optional: enforce no skipped ordering violations (regex already does).
+		_ = i
+	}
+	return total, nil
 }

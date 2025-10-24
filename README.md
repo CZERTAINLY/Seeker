@@ -148,15 +148,14 @@ service:
 
 ## Timer
 
-More advanced is a timer mode. It uses a standard `cron` 5 field syntax, but it
-does recognize the 6 field one too. In this case the initial field is for
-seconds. All interpretation and scheduling is done in the machine's local time
-zone (time.Local).
+More advanced is a timer mode. It uses a standard `cron` 5 field syntax. All interpretation and scheduling is done in the machine's local time zone (`time.Local`).
 
 ```yaml
+version: 0
 service:
     mode: timer
-    every: "* * * * *"
+    schedule:
+      cron: "* * * * *"
 ```
 
 [github.com/robfig/cron/](https://pkg.go.dev/github.com/robfig/cron/) library
@@ -241,6 +240,18 @@ For example, "@every 1h30m10s" would indicate a schedule that activates after
 Note: The interval does not take the job runtime into account.  For example,
 if a job takes 3 minutes to run, and it is scheduled to run every 5 minutes,
 it will have only 2 minutes of idle time between each run.
+
+### Duration
+
+It is possible to specify the duration in days/hours/minutes/second format.
+
+```yaml
+version: 0
+service:
+    mode: timer
+    schedule:
+      duration: "1d2h3m4s"
+```
 
 # Config file format specification
 

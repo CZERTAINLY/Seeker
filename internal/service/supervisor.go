@@ -45,7 +45,7 @@ func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*
 	var scheduler gocron.Scheduler
 	if cfg.Mode == "timer" {
 		var err error
-		scheduler, err = newScheduler(ctx, cfg, supervisor.Start)
+		scheduler, err = newScheduler(ctx, cfg.Schedule, supervisor.Start)
 		if err != nil {
 			return nil, fmt.Errorf("timer mode failed: %w", err)
 		}
@@ -167,19 +167,38 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 	return errors.Join(errs...)
 }
 
-func newScheduler(ctx context.Context, cfg model.Service, startFunc func()) (gocron.Scheduler, error) {
-	fields, err := ParseFlexible(cfg.Every)
-	if err != nil {
-		return nil, fmt.Errorf("service.every has a wrong format: %w", err)
+func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func()) (gocron.Scheduler, error) {
+	if cfgp == nil {
+		return nil, fmt.Errorf("service.schedule is nil")
 	}
-	slog.DebugContext(ctx, "detected crontab", "fields", fields)
+	cfg := *cfgp
+	var job gocron.JobDefinition
+	switch {
+	case cfg.Cron != "":
+		err := ParseCron(cfg.Cron)
+		if err != nil {
+			return nil, fmt.Errorf("parsing service.scheduler.cron: %w", err)
+		}
+		job = gocron.CronJob(cfg.Cron, false)
+		slog.DebugContext(ctx, "successfully parsed", "cron", cfg.Cron, "job", job)
+	case cfg.Duration != "":
+		d, err := ParseCueDuration(cfg.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
+		}
+		slog.DebugContext(ctx, "successfully parsed", "duration", d.String(), "job", job)
+		job = gocron.DurationJob(d)
+	default:
+		return nil, errors.New("both cron and duration are empty")
+	}
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		return nil, fmt.Errorf("initializing gocron scheduler: %w", err)
 	}
+	slog.WarnContext(ctx, "creating cronjob", "job", job)
 	_, err = s.NewJob(
-		gocron.CronJob(cfg.Every, fields == 6),
+		job,
 		gocron.NewTask(startFunc),
 	)
 	if err != nil {

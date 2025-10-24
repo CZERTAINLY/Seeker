@@ -34,7 +34,8 @@ version: 0
 
 service:
     mode: timer
-    every: "* * * * * *"
+    schedule:
+       cron: "@every 1s"
 `
 		cfg, err := model.LoadConfig(strings.NewReader(config))
 		require.NoError(t, err)

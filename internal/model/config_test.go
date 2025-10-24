@@ -224,62 +224,90 @@ service:
 `,
 			then: []model.CueErrorDetail{
 				{
-					Path:    "service.every",
+					Path:    "service.schedule",
 					Code:    model.CodeMissingRequired,
-					Message: "Field every is required",
+					Message: "Field schedule is required",
 					Pos: model.CueErrorPosition{
 						Filename: "",
 						Line:     0,
 						Column:   0,
 					},
-					Raw: `#Config.service.every: incomplete value !=""`,
+					Raw: "#Config.service.schedule: incomplete value {cron:=~\"^(@(yearly|anually|monthly|weekly|daily|midnigth|hourly)|(?:\\\\S+\\\\s+){4}\\\\S+)|(@every.*)$\"} | {duration:=~\"^(\\\\d+d)?(\\\\d+h)?(\\\\d+m)?(\\\\d+s)?$\" & !=\"\"}",
 				},
 			},
 		},
 		{
-			scenario: "service.mode timer and empty every",
+			scenario: "service.mode timer and empty schedule",
 			given: `
 version: 0
 service:
   mode: timer
-  every: ""
+  schedule:
 `,
 			then: []model.CueErrorDetail{
 				{
-					Path:    "service.every",
-					Code:    model.CodeValidationError,
-					Message: "Field every is invalid: value must not be empty",
+					Path:    "service.schedule",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for schedule: expected type struct: got null",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
 						Line:     5,
-						Column:   10,
+						Column:   12,
 					},
-					Raw: "#Config.service.every: invalid value \"\" (out of bound !=\"\")",
+					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
 				},
 			},
 		},
 		{
-			scenario: "service.mode timer and empty every",
+			scenario: "service.mode timer and empty schedule values",
 			given: `
 version: 0
 service:
   mode: timer
-  every: ""
+  schedule:
+    cron: ""
+    duration: ""
 `,
 			then: []model.CueErrorDetail{
 				{
-					Path:    "service.every",
+					Path:    "service.schedule.cron",
 					Code:    model.CodeValidationError,
-					Message: "Field every is invalid: value must not be empty",
+					Message: "Field cron is invalid: invalid value \"\" (out of bound =~\"^(@(yearly|anually|monthly|weekly|daily|midnigth|hourly)|(?:\\\\S+\\\\s+){4}\\\\S+)|(@every.*)$\")",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
-						Line:     5,
-						Column:   10,
+						Line:     6,
+						Column:   11,
 					},
-					Raw: `#Config.service.every: invalid value "" (out of bound !="")`,
+					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
+				},
+				{
+					Path:    "service.schedule.duration",
+					Code:    model.CodeValidationError,
+					Message: "Field duration is invalid: value must not be empty",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   15,
+					},
+					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
 				},
 			},
 		},
+		// FIXME: fix the test
+		/*
+					{
+						scenario: "service.mode timer and both schedule values",
+						given: `
+			version: 0
+			service:
+			  mode: timer
+			  schedule:
+			    cron: "@hourly"
+			    duration: "1d2h3m4s"
+			`,
+						then: []model.CueErrorDetail{},
+					},
+		*/
 		{
 			scenario: "service.repository url is missing",
 			given: `
@@ -538,7 +566,7 @@ ports:
 			require.Error(t, err)
 			var cuerr model.CueError
 			ok := errors.As(err, &cuerr)
-			require.Truef(t, ok, "%+v is not model.CueError", err)
+			require.Truef(t, ok, "%q is not model.CueError", err)
 			for _, f := range cuerr.Details() {
 				t.Logf("%#+v", f)
 			}
