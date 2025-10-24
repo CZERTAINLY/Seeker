@@ -196,7 +196,6 @@ func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func
 	if err != nil {
 		return nil, fmt.Errorf("initializing gocron scheduler: %w", err)
 	}
-	slog.WarnContext(ctx, "creating cronjob", "job", job)
 	_, err = s.NewJob(
 		job,
 		gocron.NewTask(startFunc),
