@@ -76,14 +76,20 @@ type Ports struct {
 	IPv6    bool   `json:"ipv6"`
 }
 
-// Service (only manual supported now). Output fields are flattened.
+// Service configuration
 type Service struct {
-	Mode       string      `json:"mode"` // must be "manual" or "timer"
-	Verbose    bool        `json:"verbose,omitempty"`
-	Log        string      `json:"log,omitempty"`                                    // "stderr"|"stdout"|"discard"|path - defaults to stderr
-	Dir        string      `json:"dir,omitempty"`                                    // output directory
-	Repository *Repository `json:"repository,omitempty" yaml:"repository,omitempty"` // remote publication
-	Every      string      `json:"every,omitempty"`                                  // only for mode timer
+	Mode       string         `json:"mode"` // must be "manual" or "timer"
+	Verbose    bool           `json:"verbose,omitempty"`
+	Log        string         `json:"log,omitempty"`                                    // "stderr"|"stdout"|"discard"|path - defaults to stderr
+	Dir        string         `json:"dir,omitempty"`                                    // output directory
+	Repository *Repository    `json:"repository,omitempty" yaml:"repository,omitempty"` // remote publication
+	Schedule   *TimerSchedule `json:"schedule,omitempty"`                               // only for mode timer
+}
+
+// TimerSchedule defines the duration for a timer mode
+type TimerSchedule struct {
+	Cron     string `json:"cron,omitempty"`
+	Duration string `json:"duration,omitempty"`
 }
 
 // Repository publication settings.

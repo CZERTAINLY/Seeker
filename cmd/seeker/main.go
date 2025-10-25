@@ -160,9 +160,6 @@ func doRun(cmd *cobra.Command, args []string) error {
 	}
 
 	ctx := cmd.Context()
-	if config.Service.Mode != model.ServiceModeManual {
-		return fmt.Errorf("only manual mode is supported now")
-	}
 
 	attrs := slog.Group("seeker",
 		slog.String("cmd", "run"),
@@ -172,7 +169,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "", "environ", os.Environ())
 	slog.DebugContext(ctx, "", "config", config)
 
-	supervisor, err := service.SupervisorFromConfig(ctx, config.Service, configPath)
+	supervisor, err := service.NewSupervisor(ctx, config.Service, configPath)
 	if err != nil {
 		return err
 	}

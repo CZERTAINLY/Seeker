@@ -200,6 +200,9 @@ RUN echo "this is a new layer, longer content is 42" > /a/c/c.txt
 		host = "unix:///var/run/docker.sock"
 	}
 	t.Run("walk.Images", func(t *testing.T) {
+		if testing.Short() {
+			t.Skipf("%s is skipped via -short", t.Name())
+		}
 		if testing.Verbose() {
 			slog.SetDefault(log.New(true))
 		}

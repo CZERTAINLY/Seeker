@@ -16,6 +16,9 @@ import (
 )
 
 func TestScanner(t *testing.T) {
+	if testing.Short() {
+		t.Skipf("%s is skipped via -short", t.Name())
+	}
 	t.Parallel()
 	nmapPath, err := exec.LookPath("nmap")
 	require.NoError(t, err, "nmap binary is missing in PATH, please install it first")
@@ -76,6 +79,9 @@ func TestScanner(t *testing.T) {
 }
 
 func TestParseTLS(t *testing.T) {
+	if testing.Short() {
+		t.Skipf("%s is skipped via -short", t.Name())
+	}
 	t.Parallel()
 	rawJSON, err := testdata.ReadFile("testdata/raw.json")
 	require.NoError(t, err)
