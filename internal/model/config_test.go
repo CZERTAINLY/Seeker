@@ -232,7 +232,7 @@ service:
 						Line:     0,
 						Column:   0,
 					},
-					Raw: "#Config.service.schedule: incomplete value {cron:=~\"^(@(yearly|anually|monthly|weekly|daily|midnigth|hourly)|(?:\\\\S+\\\\s+){4}\\\\S+)|(@every.*)$\"} | {duration:=~\"^(\\\\d+d)?(\\\\d+h)?(\\\\d+m)?(\\\\d+s)?$\" & !=\"\"}",
+					Raw: "#Config.service.schedule: incomplete value {cron?:=~\"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\\\S+\\\\s+){4}\\\\S+)$\"} | {iso?:=~\"^P(?:\\\\d+W|(?:\\\\d+Y)?(?:\\\\d+M)?(?:\\\\d+D)?(?:T(?:\\\\d+H)?(?:\\\\d+M)?(?:\\\\d+S)?)?)$\"}",
 				},
 			},
 		},
@@ -271,43 +271,74 @@ service:
 			then: []model.CueErrorDetail{
 				{
 					Path:    "service.schedule.cron",
-					Code:    model.CodeValidationError,
-					Message: "Field cron is invalid: invalid value \"\" (out of bound =~\"^(@(yearly|anually|monthly|weekly|daily|midnigth|hourly)|(?:\\\\S+\\\\s+){4}\\\\S+)|(@every.*)$\")",
+					Code:    model.CodeUnknownField,
+					Message: "Field cron is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     6,
+						Column:   5,
+					},
+					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
+				},
+				{
+					Path:    "service.schedule.duration",
+					Code:    model.CodeUnknownField,
+					Message: "Field duration is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   5,
+					},
+					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
+				},
+				{
+					Path:    "service.schedule.cron",
+					Code:    "validation_error",
+					Message: "Field cron is invalid: invalid value \"\" (out of bound =~\"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\\\S+\\\\s+){4}\\\\S+)$\")",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
 						Line:     6,
 						Column:   11,
 					},
+					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
+				},
+			},
+		},
+		{
+			scenario: "service.mode timer and both schedule values",
+			given: `
+version: 0
+service:
+  mode: timer
+  schedule:
+    cron: "@hourly"
+    duration: "1d2h3m4s"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.schedule.cron",
+					Code:    model.CodeUnknownField,
+					Message: "Field cron is not allowed",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     6,
+						Column:   5,
+					},
 					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
 				},
 				{
 					Path:    "service.schedule.duration",
-					Code:    model.CodeValidationError,
-					Message: "Field duration is invalid: value must not be empty",
+					Code:    "unknown_field",
+					Message: "Field duration is not allowed",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
 						Line:     7,
-						Column:   15,
+						Column:   5,
 					},
 					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
 				},
 			},
 		},
-		// FIXME: fix the test
-		/*
-					{
-						scenario: "service.mode timer and both schedule values",
-						given: `
-			version: 0
-			service:
-			  mode: timer
-			  schedule:
-			    cron: "@hourly"
-			    duration: "1d2h3m4s"
-			`,
-						then: []model.CueErrorDetail{},
-					},
-		*/
 		{
 			scenario: "service.repository url is missing",
 			given: `

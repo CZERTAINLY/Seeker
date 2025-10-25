@@ -43,59 +43,89 @@ func TestParseCron(t *testing.T) {
 	}
 }
 
-func TestParseCueDuration_Success(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		in   string
-		want time.Duration
+func TestParseISODuration(t *testing.T) {
+	expected := map[string]time.Duration{
+		"PT20.345S":              20*time.Second + 345*time.Millisecond,
+		"PT15M":                  15 * time.Minute,
+		"PT10H":                  10 * time.Hour,
+		"P2D":                    48 * time.Hour,
+		"P2DT3H4M":               48*time.Hour + 3*time.Hour + 4*time.Minute,
+		"P-6H3M":                 (-6 * time.Hour) + (3 * time.Minute),
+		"PT5S":                   5 * time.Second,
+		"PT1.5S":                 1*time.Second + 500*time.Millisecond,
+		"PT0.250S":               250 * time.Millisecond,
+		"PT1,25S":                1*time.Second + 250*time.Millisecond,
+		"PT100H":                 100 * time.Hour,
+		"P1DT1H":                 24*time.Hour + time.Hour,
+		"PT0.000000001S":         time.Nanosecond,
+		"PT123456789.123456789S": 123456789*time.Second + 123456789*time.Nanosecond,
+		"-PT2H":                  -2 * time.Hour,
+		"PT-2H":                  -2 * time.Hour,
+		"PT+2H":                  2 * time.Hour,
+		"PT-1M":                  -1 * time.Minute,
+		"PT1M":                   1 * time.Minute,
+		"P3DT-4H":                72*time.Hour - 4*time.Hour,
+		"P3DT4H":                 72*time.Hour + 4*time.Hour,
+		"PT-20.345S":             -(20*time.Second + 345*time.Millisecond),
+	}
+
+	errInvalid := errors.New("invalid ISO-8601 duration")
+
+	cases := []struct {
+		scenario string
+		given    string
+		then     error
 	}{
-		{"1d", 24 * time.Hour},
-		{"2h", 2 * time.Hour},
-		{"3m", 3 * time.Minute},
-		{"4s", 4 * time.Second},
-		{"1d2h3m4s", 24*time.Hour + 2*time.Hour + 3*time.Minute + 4*time.Second},
-		{"5d10m", 5*24*time.Hour + 10*time.Minute},
-		{"7h8s", 7*time.Hour + 8*time.Second},
-		{"9m", 9 * time.Minute},
-		{"10d", 10 * 24 * time.Hour},
-		// Skipping groups allowed (regex permits omission)
-		{"1d3m", 24*time.Hour + 3*time.Minute},
-		{"1d4s", 24*time.Hour + 4*time.Second},
-		{"2h5m", 2*time.Hour + 5*time.Minute},
+		// Success cases
+		{"fractional seconds", "PT20.345S", nil},
+		{"minutes", "PT15M", nil},
+		{"hours", "PT10H", nil},
+		{"days", "P2D", nil},
+		{"days time combo", "P2DT3H4M", nil},
+		{"mixed signs no T (hours/minutes)", "P-6H3M", nil},
+		{"simple seconds", "PT5S", nil},
+		{"fraction dot", "PT1.5S", nil},
+		{"fraction padding", "PT0.250S", nil},
+		{"fraction comma", "PT1,25S", nil},
+		{"large hours", "PT100H", nil},
+		{"day hour", "P1DT1H", nil},
+		{"nanos min", "PT0.000000001S", nil},
+		{"big with fraction", "PT123456789.123456789S", nil},
+		{"component negative hours", "PT-2H", nil},
+		{"component positive hours", "PT+2H", nil},
+		{"component negative minutes", "PT-1M", nil},
+		{"component positive minutes", "PT1M", nil},
+		{"day with negative hour", "P3DT-4H", nil},
+		{"day with hour", "P3DT4H", nil},
+		{"negative fractional seconds component", "PT-20.345S", nil},
+		{"empty", "", errInvalid},
+		{"just P", "P", errInvalid},
+		{"just PT", "PT", errInvalid},
+		{"unsupported years", "P1Y", errInvalid},
+		{"unsupported months", "P2M", errInvalid},
+		{"unsupported weeks", "P3W", errInvalid},
+		{"bad fraction too long", "PT1.1234567891S", errInvalid},
+		{"missing unit letter", "PT20.345", errInvalid},
+		{"no P prefix", "T10H", errInvalid},
+		{"letters only", "PTXS", errInvalid},
+		{"double sign overall", "--PT1S", errInvalid},
+		{"sign after P wrong place", "P+-1H", errInvalid},
+		{"negative days and time sign conflict", "-P-1D-2H", errInvalid},
+		{"time designator without components", "P2DT", errInvalid},
+		{"seconds without S", "PT20", errInvalid},
+		{"invalid separator space", "PT20 S", errInvalid},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.in, func(t *testing.T) {
-			got, err := service.ParseCueDuration(tc.in)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.want {
-				t.Fatalf("ParseCueDuration(%q) = %v want %v", tc.in, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestParseCueDuration_Error(t *testing.T) {
-	t.Parallel()
-	tests := []string{
-		"",            // empty
-		"abc",         // invalid chars
-		"1x",          // bad unit
-		"1d2h3",       // missing final unit char
-		"1h1d",        // wrong order (day must come first if present)
-		"1d2h3m4s5ms", // unsupported extra unit
-		"1d-2h",       // minus sign not allowed
-		"1d 2h",       // spaces not allowed
-		"1d2m1h",      // wrong order: hour after minute
-	}
-
-	for _, in := range tests {
-		t.Run(in, func(t *testing.T) {
-			got, err := service.ParseCueDuration(in)
-			if err == nil {
-				t.Fatalf("expected error for %q, got duration %v", in, got)
+	for _, tc := range cases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			dur, err := service.ParseISODuration(tc.given)
+			if tc.then == nil {
+				require.NoError(t, err)
+				exp, ok := expected[tc.given]
+				require.True(t, ok)
+				require.Equal(t, exp, dur)
+			} else {
+				require.Error(t, err, "expected error for %q", tc.given)
 			}
 		})
 	}

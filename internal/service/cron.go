@@ -33,51 +33,90 @@ func ParseCron(expr string) error {
 	return err
 }
 
-var cueDurationRx = regexp.MustCompile(`^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$`)
+var isoDurationRx = regexp.MustCompile(`^P((?P<day>\d+)D)?(T?(?:(?P<hour>[+-]?\d+)H)?(?:(?P<minute>[+-]?\d+)M)?(?:(?P<second>[+-]?\d+(?:[.,]\d+)?)S)?)?$`)
 
-// ParseCueDuration parses strings matching ^(\d+d)?(\d+h)?(\d+m)?(\d+s)?$ into time.Duration.
-// Supports ordered day/hour/minute/second segments. Empty string rejected.
-func ParseCueDuration(s string) (time.Duration, error) {
-	if s == "" {
-		return 0, errors.New("empty duration")
+var ErrISOFormat error = errors.New("not ISO8601 format")
+
+func ParseISODuration(dur string) (time.Duration, error) {
+	if dur == "" || dur == "P" || dur == "PT" || !isoDurationRx.MatchString(dur) {
+		return 0, ErrISOFormat
 	}
-	m := cueDurationRx.FindStringSubmatch(s)
-	if m == nil {
-		return 0, errors.New("invalid duration format")
-	}
-	var total time.Duration
-	for i, seg := range m[1:] { // groups 1..4
-		if seg == "" {
+	match := isoDurationRx.FindStringSubmatch(dur)
+
+	// without T components P2M is ambigious according ISO
+	hasT := strings.Contains(dur, "T")
+	var hasHMS = false
+
+	var ret time.Duration
+
+	for i, name := range isoDurationRx.SubexpNames() {
+		part := match[i]
+		if i == 0 || name == "" || part == "" {
 			continue
 		}
-		// seg like "12d"
-		numStr := seg[:len(seg)-1]
-		val, err := strconv.ParseInt(numStr, 10, 64)
-		if err != nil {
-			return 0, errors.New("invalid number in " + seg)
-		}
-		var add time.Duration
-		switch last := seg[len(seg)-1]; last {
-		case 'd':
-			add = time.Hour * 24 * time.Duration(val)
-		case 'h':
-			add = time.Hour * time.Duration(val)
-		case 'm':
-			add = time.Minute * time.Duration(val)
-		case 's':
-			add = time.Second * time.Duration(val)
-		default:
-			return 0, errors.New("unknown unit in " + seg)
-		}
-		// overflow check
-		if (add > 0 && total > time.Duration(math.MaxInt64)-add) ||
-			(add < 0 && total < time.Duration(math.MinInt64)-add) {
-			return 0, errors.New("duration overflow")
-		}
-		total += add
 
-		// Optional: enforce no skipped ordering violations (regex already does).
-		_ = i
+		num, frac, err := parse(part)
+		if err != nil {
+			return 0, err
+		}
+		var d time.Duration
+		switch name {
+		case "day":
+			d = 24 * time.Hour
+		case "hour":
+			hasHMS = true
+			// But T without hour not
+			hasT = true
+			d = 1 * time.Hour
+		case "minute":
+			hasHMS = true
+			if !hasT {
+				return 0, ErrISOFormat
+			}
+			d = 1 * time.Minute
+		case "second":
+			hasHMS = true
+			d = 1 * time.Second
+		default:
+			return 0, fmt.Errorf("unknown component %s", name)
+		}
+		ret += time.Duration(num) * d
+		if num >= 0 {
+			ret += time.Duration(frac * float64(d))
+		} else {
+			ret -= time.Duration(frac * float64(d))
+		}
 	}
-	return total, nil
+
+	// eg P2DT - this is overly compliant, but well
+	if hasT && !hasHMS {
+		return 0, ErrISOFormat
+	}
+
+	return ret, nil
+}
+
+func parse(s string) (num int, frac float64, err error) {
+	s = strings.Replace(s, ",", ".", 1)
+	a, b, ok := strings.Cut(s, ".")
+	if ok {
+		if len(b) > 9 {
+			return 0, 0.0, ErrISOFormat
+		}
+		var f int
+		f, err = strconv.Atoi(b)
+		if err != nil {
+			err = fmt.Errorf("parsing fraction: %w", err)
+			return
+		}
+		if f == 0 {
+			return
+		}
+		frac = float64(f) / math.Pow10(len(b))
+	}
+	num, err = strconv.Atoi(a)
+	if err != nil {
+		err = fmt.Errorf("parsing number: %w", err)
+	}
+	return
 }

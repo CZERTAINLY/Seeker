@@ -1,6 +1,6 @@
 # Seeker
 
-CLI tool, which scans actual filesystem, containers and ports and detects
+CLI tool, which scans actual filesystem, containers and open ports and detects
 
  * certificates
  * secrets
@@ -241,18 +241,34 @@ Note: The interval does not take the job runtime into account.  For example,
 if a job takes 3 minutes to run, and it is scheduled to run every 5 minutes,
 it will have only 2 minutes of idle time between each run.
 
-### Duration
+### ISO 8601 Duration
 
-It is possible to specify the duration in days/hours/minutes/second format.
+It is possible to specify the syntax based on ISO-8601 durationand
+[java.time.Duration](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Duration.html#parse(java.lang.CharSequence)).
+
+Format is `PnDTnHnMn` and day is exactly 24 hours. Fraction numbers are allowed
+`P0.5D` and decimal point can be point of comma. Fractional part can be up to 9
+digits long. Negative numbers are possible too `PT1H-7M`.
 
 ```yaml
 version: 0
 service:
     mode: timer
     schedule:
-      duration: "1d2h3m4s"
+      # 1 day 2 hours 3 minutes 4 s
+      duration: "P1DT2H3M4S"
 ```
 
 # Config file format specification
 
 See [docs/config.cue] for a specification and (manual-config.yaml)[docs/manual-config.yaml] for an example config.
+
+# Fast unit test execution
+
+Some tests like nmap scan or a walk.Images, which inspect all docker images
+found can run too long when executed.
+
+It is advised to run unit tests with `-short` parameter in order to get the
+result as fast as possible for a developer. Github actions runs a full suite
+on every PR.
+

@@ -53,13 +53,14 @@ service: #Service
 }
 
 #CronExpr: string & =~"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\S+\\s+){4}\\S+)$" & !=""
-#Duration: string & =~"^(\\d+d)?(\\d+h)?(\\d+m)?(\\d+s)?$" & !=""
+#ISODuration: string &
+    =~"^P(?:\\d+W|(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?)$" & !=""
 
 // Schedule can be a cron 5 fields format, or macro like @yearly or a @every <duration>, which is string accepted by https://golang.org/pkg/time/#ParseDuration
-// or Prometheus/Grafana style duration 2d4h5m6s
+// or duration in ISO 8601 format
 #Schedule:
   { cron?:  #CronExpr } |
-  { duration?: #Duration }
+  { iso?: #ISODuration }
 
 // Seeker service configuration.
 #Service: {

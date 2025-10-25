@@ -182,7 +182,7 @@ func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func
 		job = gocron.CronJob(cfg.Cron, false)
 		slog.DebugContext(ctx, "successfully parsed", "cron", cfg.Cron, "job", job)
 	case cfg.Duration != "":
-		d, err := ParseCueDuration(cfg.Duration)
+		d, err := ParseISODuration(cfg.Duration)
 		if err != nil {
 			return nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
 		}
