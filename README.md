@@ -1,15 +1,15 @@
 # Seeker
 
-CLI tool, which scans actual filesystem, containers and ports and detects
+CLI tool, which scans a filesystem, containers and open ports and detects
 
  * certificates
  * secrets
 
-Generates BOM in CycloneDX format.
+Generates BOM in CycloneDX 1.6 JSON format.
 
 # Usage
 
-You may want to generate a X509 certificate in order to have a cryptographic
+You may want to generate a X509 certificate in order to have some cryptography
 material in a current directory.
 
 ```sh
@@ -133,6 +133,141 @@ service:
       url: "http://localhost:8080"
 ```
 
-# File format specification
+# Modes of operation
+
+## Manual
+
+This particular mode is the simplest one. Simply run `seeker run` and the
+command will run the scan, upload results and finish. Use it in case
+scans are going to be orchestrated by other system.
+
+```yaml
+service:
+    mode: manual
+```
+
+## Timer
+
+More advanced is a timer mode. It uses a standard `cron` 5 field syntax. All interpretation and scheduling is done in the machine's local time zone (`time.Local`).
+
+```yaml
+version: 0
+service:
+    mode: timer
+    schedule:
+      cron: "* * * * *"
+```
+
+[github.com/robfig/cron/](https://pkg.go.dev/github.com/robfig/cron/) library
+is used under the hood, so the format supported is defined by this library.
+
+### CRON Expression Format
+
+A cron expression represents a set of times, using 5 space-separated fields.
+
+	Field name   | Mandatory? | Allowed values  | Allowed special characters
+	----------   | ---------- | --------------  | --------------------------
+	Minutes      | Yes        | 0-59            | * / , -
+	Hours        | Yes        | 0-23            | * / , -
+	Day of month | Yes        | 1-31            | * / , - ?
+	Month        | Yes        | 1-12 or JAN-DEC | * / , -
+	Day of week  | Yes        | 0-6 or SUN-SAT  | * / , - ?
+
+Month and Day-of-week field values are case insensitive.  "SUN", "Sun", and
+"sun" are equally accepted.
+
+The specific interpretation of the format is based on the Cron Wikipedia page:
+[https://en.wikipedia.org/wiki/Cron](https://en.wikipedia.org/wiki/Cron)
+
+### Special Characters
+
+#### Asterisk ( * )
+
+The asterisk indicates that the cron expression will match for all values of the
+field; e.g., using an asterisk in the 5th field (month) would indicate every
+month.
+
+#### Slash ( / )
+
+Slashes are used to describe increments of ranges. For example 3-59/15 in the
+1st field (minutes) would indicate the 3rd minute of the hour and every 15
+minutes thereafter. The form "*\/..." is equivalent to the form "first-last/...",
+that is, an increment over the largest possible range of the field.  The form
+"N/..." is accepted as meaning "N-MAX/...", that is, starting at N, use the
+increment until the end of that specific range.  It does not wrap around.
+
+#### Comma ( , )
+
+Commas are used to separate items of a list. For example, using "MON,WED,FRI" in
+the 5th field (day of week) would mean Mondays, Wednesdays and Fridays.
+
+#### Hyphen ( - )
+
+Hyphens are used to define ranges. For example, 9-17 would indicate every
+hour between 9am and 5pm inclusive.
+
+#### Question mark ( ? )
+
+Question mark may be used instead of '*' for leaving either day-of-month or
+day-of-week blank.
+
+#### Predefined schedules
+
+You may use one of several pre-defined schedules in place of a cron expression.
+
+	Entry                  | Description                                | Equivalent To
+	-----                  | -----------                                | -------------
+	@yearly (or @annually) | Run once a year, midnight, Jan. 1st        | 0 0 1 1 *
+	@monthly               | Run once a month, midnight, first of month | 0 0 1 * *
+	@weekly                | Run once a week, midnight between Sat/Sun  | 0 0 * * 0
+	@daily (or @midnight)  | Run once a day, midnight                   | 0 0 * * *
+	@hourly                | Run once an hour, beginning of hour        | 0 * * * *
+
+#### Intervals
+
+You may also schedule a job to execute at fixed intervals, starting at the time it's added
+or cron is run. This is supported by formatting the cron spec like this:
+
+    @every <duration>
+
+where "duration" is a string accepted by time.ParseDuration
+(http://golang.org/pkg/time/#ParseDuration).
+
+For example, "@every 1h30m10s" would indicate a schedule that activates after
+1 hour, 30 minutes, 10 seconds, and then every interval after that.
+
+Note: The interval does not take the job runtime into account.  For example,
+if a job takes 3 minutes to run, and it is scheduled to run every 5 minutes,
+it will have only 2 minutes of idle time between each run.
+
+### ISO 8601 Duration
+
+It is possible to specify the syntax based on ISO-8601 duration and
+[java.time.Duration](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Duration.html#parse(java.lang.CharSequence)).
+
+Format is `PnDTnHnMn` and day is exactly 24 hours. Fraction numbers are allowed
+`P0.5D` and decimal point can be a point or comma. Fractional part can be up to 9
+digits long. Negative numbers are possible too `PT1H-7M`.
+
+```yaml
+version: 0
+service:
+    mode: timer
+    schedule:
+      # 1 day 2 hours 3 minutes 4 s
+      duration: "P1DT2H3M4S"
+```
+
+# Config file format specification
 
 See [docs/config.cue] for a specification and (manual-config.yaml)[docs/manual-config.yaml] for an example config.
+
+# Fast unit test execution
+
+Some tests like nmap scan or a walk.Images, which inspect all docker images
+found can run too long when executed.
+
+It is advised to run unit tests with `-short` parameter in order to get the
+result as fast as possible for a developer. Github actions runs a full suite
+on every PR.
+

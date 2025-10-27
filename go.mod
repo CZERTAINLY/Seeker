@@ -9,6 +9,7 @@ require (
 	github.com/anchore/stereoscope v0.1.10
 	github.com/docker/docker v28.4.0+incompatible
 	github.com/gliderlabs/ssh v0.3.8
+	github.com/go-co-op/gocron/v2 v2.17.0
 	github.com/google/uuid v1.6.0
 	github.com/kodeart/go-problem/v2 v2.0.3
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
@@ -93,6 +94,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
@@ -133,6 +135,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/protocolbuffers/txtpbfmt v0.0.0-20250627152318-f293424e46b5 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e // indirect

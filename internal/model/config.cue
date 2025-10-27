@@ -52,12 +52,22 @@ service: #Service
   ipv6?: bool | *true
 }
 
+#CronExpr: string & =~"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\S+\\s+){4}\\S+)$" & !=""
+#ISODuration: string &
+    =~"^P(?:\\d+W|(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?)$" & !=""
+
+// Schedule can be a cron 5 fields format, or macro like @yearly or a @every <duration>, which is string accepted by https://golang.org/pkg/time/#ParseDuration
+// or duration in ISO 8601 format
+#Schedule:
+  { cron?:  #CronExpr } |
+  { duration?: #ISODuration }
+
 // Seeker service configuration.
 #Service: {
   #ServiceFields
   mode: *"manual" | "timer"
-  every?: string
-  if mode == "timer" { every: string & !="" }
+  schedule?: null | #Schedule
+  if mode == "timer" { schedule: #Schedule }
 }
 
 // OutputFields specify common output for a scanner

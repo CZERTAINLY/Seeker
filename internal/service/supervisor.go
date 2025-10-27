@@ -10,6 +10,8 @@ import (
 	"os"
 	"time"
 
+	gocron "github.com/go-co-op/gocron/v2"
+
 	"github.com/CZERTAINLY/Seeker/internal/model"
 )
 
@@ -18,22 +20,10 @@ type Supervisor struct {
 	start     chan struct{}
 	uploaders []model.Uploader
 	oneshot   bool
+	scheduler gocron.Scheduler
 }
 
-func NewSupervisor(cmd Command, uploaders ...model.Uploader) *Supervisor {
-	return &Supervisor{
-		cmd:       cmd,
-		start:     make(chan struct{}, 1),
-		uploaders: uploaders,
-	}
-}
-
-func (s *Supervisor) SetOneshot(oneshot bool) *Supervisor {
-	s.oneshot = oneshot
-	return s
-}
-
-func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
+func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
 	uploaders, err := uploaders(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing uploaders: %w", err)
@@ -50,6 +40,16 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 	if cfg.Verbose {
 		args = append(args, "--verbose")
 	}
+
+	var supervisor = &Supervisor{}
+	var scheduler gocron.Scheduler
+	if cfg.Mode == "timer" {
+		var err error
+		scheduler, err = newScheduler(ctx, cfg.Schedule, supervisor.Start)
+		if err != nil {
+			return nil, fmt.Errorf("timer mode failed: %w", err)
+		}
+	}
 	cmd := Command{
 		Path: seeker,
 		Args: args,
@@ -61,12 +61,33 @@ func SupervisorFromConfig(ctx context.Context, cfg model.Service, configPath str
 		Timeout: 0,
 	}
 
-	return &Supervisor{
-		cmd:       cmd,
-		start:     make(chan struct{}, 1),
-		uploaders: uploaders,
-		oneshot:   cfg.Mode == model.ServiceModeManual,
-	}, nil
+	supervisor.cmd = cmd
+	supervisor.start = make(chan struct{}, 1)
+	supervisor.uploaders = uploaders
+	supervisor.oneshot = (cfg.Mode == model.ServiceModeManual)
+	supervisor.scheduler = scheduler
+
+	return supervisor, nil
+}
+
+// WithCmdUploaders changes a command and uploaders for a initialized Supervisor.
+// This method exists for a unit testing only.
+func (s *Supervisor) WithCmdUploaders(ctx context.Context, cmd Command, uploaders ...model.Uploader) *Supervisor {
+	s.closeUploaders(ctx)
+	s.uploaders = uploaders
+	s.cmd = cmd
+	return s
+}
+
+func (s *Supervisor) closeUploaders(ctx context.Context) {
+	for _, uploader := range s.uploaders {
+		if closer, ok := uploader.(model.UploadCloser); ok {
+			err := closer.Close()
+			if err != nil {
+				slog.ErrorContext(ctx, "closing uploader have failed", "error", err)
+			}
+		}
+	}
 }
 
 // Do performs in two different modes
@@ -81,6 +102,20 @@ func (s *Supervisor) Do(ctx context.Context) error {
 		slog.DebugContext(ctx, "starting oneshot job")
 		s.Start()
 	}
+
+	if s.scheduler != nil {
+		s.scheduler.Start()
+		defer func() {
+			err := s.scheduler.Shutdown()
+			if err != nil {
+				slog.ErrorContext(ctx, "shutting down gocron has failed", "error", err)
+			}
+		}()
+	}
+
+	defer func() {
+		s.closeUploaders(ctx)
+	}()
 
 	for {
 		select {
@@ -130,6 +165,45 @@ func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func()) (gocron.Scheduler, error) {
+	if cfgp == nil {
+		return nil, fmt.Errorf("service.schedule is nil")
+	}
+	cfg := *cfgp
+	var job gocron.JobDefinition
+	switch {
+	case cfg.Cron != "":
+		err := ParseCron(cfg.Cron)
+		if err != nil {
+			return nil, fmt.Errorf("parsing service.scheduler.cron: %w", err)
+		}
+		job = gocron.CronJob(cfg.Cron, false)
+		slog.DebugContext(ctx, "successfully parsed", "cron", cfg.Cron, "job", job)
+	case cfg.Duration != "":
+		d, err := ParseISODuration(cfg.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
+		}
+		slog.DebugContext(ctx, "successfully parsed", "duration", d.String(), "job", job)
+		job = gocron.DurationJob(d)
+	default:
+		return nil, errors.New("both cron and duration are empty")
+	}
+
+	s, err := gocron.NewScheduler()
+	if err != nil {
+		return nil, fmt.Errorf("initializing gocron scheduler: %w", err)
+	}
+	_, err = s.NewJob(
+		job,
+		gocron.NewTask(startFunc),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("initializing gocron job: %w", err)
+	}
+	return s, nil
 }
 
 func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
@@ -202,11 +276,15 @@ func (u *OSRootUploader) Upload(ctx context.Context, b []byte) error {
 	if err != nil {
 		return fmt.Errorf("closing seeker result: %w", err)
 	}
-	err = u.root.Close()
-	if err != nil {
-		return fmt.Errorf("closing seeker result's dir: %w", err)
-	}
 	slog.InfoContext(ctx, "bom saved", "path", path)
-	u.root = nil
 	return nil
+}
+
+func (u *OSRootUploader) Close() error {
+	if u.root == nil {
+		return errors.New("uploader already closed")
+	}
+	err := u.root.Close()
+	u.root = nil
+	return err
 }
