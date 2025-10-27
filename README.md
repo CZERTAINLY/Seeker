@@ -243,7 +243,7 @@ it will have only 2 minutes of idle time between each run.
 
 ### ISO 8601 Duration
 
-It is possible to specify the syntax based on ISO-8601 durationand
+It is possible to specify the syntax based on ISO-8601 duration and
 [java.time.Duration](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Duration.html#parse(java.lang.CharSequence)).
 
 Format is `PnDTnHnMn` and day is exactly 24 hours. Fraction numbers are allowed
