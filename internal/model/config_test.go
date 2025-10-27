@@ -232,7 +232,7 @@ service:
 						Line:     0,
 						Column:   0,
 					},
-					Raw: "#Config.service.schedule: incomplete value {cron?:=~\"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\\\S+\\\\s+){4}\\\\S+)$\"} | {iso?:=~\"^P(?:\\\\d+W|(?:\\\\d+Y)?(?:\\\\d+M)?(?:\\\\d+D)?(?:T(?:\\\\d+H)?(?:\\\\d+M)?(?:\\\\d+S)?)?)$\"}",
+					Raw: "#Config.service.schedule: incomplete value {cron?:=~\"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\\\S+\\\\s+){4}\\\\S+)$\"} | {duration?:=~\"^P(?:\\\\d+W|(?:\\\\d+Y)?(?:\\\\d+M)?(?:\\\\d+D)?(?:T(?:\\\\d+H)?(?:\\\\d+M)?(?:\\\\d+S)?)?)$\"}",
 				},
 			},
 		},
@@ -271,28 +271,6 @@ service:
 			then: []model.CueErrorDetail{
 				{
 					Path:    "service.schedule.cron",
-					Code:    model.CodeUnknownField,
-					Message: "Field cron is not allowed",
-					Pos: model.CueErrorPosition{
-						Filename: "config.yaml",
-						Line:     6,
-						Column:   5,
-					},
-					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
-				},
-				{
-					Path:    "service.schedule.duration",
-					Code:    model.CodeUnknownField,
-					Message: "Field duration is not allowed",
-					Pos: model.CueErrorPosition{
-						Filename: "config.yaml",
-						Line:     7,
-						Column:   5,
-					},
-					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
-				},
-				{
-					Path:    "service.schedule.cron",
 					Code:    "validation_error",
 					Message: "Field cron is invalid: invalid value \"\" (out of bound =~\"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\\\S+\\\\s+){4}\\\\S+)$\")",
 					Pos: model.CueErrorPosition{
@@ -300,7 +278,18 @@ service:
 						Line:     6,
 						Column:   11,
 					},
-					Raw: "#Config.service.schedule: 3 errors in empty disjunction: (and 3 more errors)",
+					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
+				},
+				{
+					Path:    "service.schedule.duration",
+					Code:    "validation_error",
+					Message: "Field duration is invalid: invalid value \"\" (out of bound =~\"^P(?:\\\\d+W|(?:\\\\d+Y)?(?:\\\\d+M)?(?:\\\\d+D)?(?:T(?:\\\\d+H)?(?:\\\\d+M)?(?:\\\\d+S)?)?)$\")",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     7,
+						Column:   15,
+					},
+					Raw: "#Config.service.schedule: 2 errors in empty disjunction: (and 2 more errors)",
 				},
 			},
 		},
@@ -312,7 +301,7 @@ service:
   mode: timer
   schedule:
     cron: "@hourly"
-    duration: "1d2h3m4s"
+    duration: "PT1S"
 `,
 			then: []model.CueErrorDetail{
 				{
