@@ -1,11 +1,11 @@
 # Seeker
 
-CLI tool, which scans actual filesystem, containers and open ports and detects
+CLI tool, which scans a filesystem, containers and open ports and detects
 
  * certificates
  * secrets
 
-Generates BOM in CycloneDX format.
+Generates BOM in CycloneDX 1.6 JSON format.
 
 # Usage
 
