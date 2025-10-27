@@ -247,7 +247,7 @@ It is possible to specify the syntax based on ISO-8601 duration and
 [java.time.Duration](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/time/Duration.html#parse(java.lang.CharSequence)).
 
 Format is `PnDTnHnMn` and day is exactly 24 hours. Fraction numbers are allowed
-`P0.5D` and decimal point can be point of comma. Fractional part can be up to 9
+`P0.5D` and decimal point can be a point or comma. Fractional part can be up to 9
 digits long. Negative numbers are possible too `PT1H-7M`.
 
 ```yaml
