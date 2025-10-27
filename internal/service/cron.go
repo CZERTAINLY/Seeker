@@ -43,7 +43,7 @@ func ParseISODuration(dur string) (time.Duration, error) {
 	}
 	match := isoDurationRx.FindStringSubmatch(dur)
 
-	// without T components P2M is ambigious according ISO
+	// without T components P2M is ambiguous according ISO
 	hasT := strings.Contains(dur, "T")
 	var hasHMS = false
 
