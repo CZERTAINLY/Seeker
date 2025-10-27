@@ -108,7 +108,7 @@ func (s *Supervisor) Do(ctx context.Context) error {
 		defer func() {
 			err := s.scheduler.Shutdown()
 			if err != nil {
-				slog.ErrorContext(ctx, "shutting down the gocron have failed", "error", err)
+				slog.ErrorContext(ctx, "shutting down gocron has failed", "error", err)
 			}
 		}()
 	}
