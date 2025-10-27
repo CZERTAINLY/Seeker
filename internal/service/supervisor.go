@@ -282,7 +282,7 @@ func (u *OSRootUploader) Upload(ctx context.Context, b []byte) error {
 
 func (u *OSRootUploader) Close() error {
 	if u.root == nil {
-		return errors.New("root already closed")
+		return errors.New("uploader already closed")
 	}
 	err := u.root.Close()
 	u.root = nil
