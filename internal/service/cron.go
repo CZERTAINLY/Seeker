@@ -109,10 +109,9 @@ func parse(s string) (num int, frac float64, err error) {
 			err = fmt.Errorf("parsing fraction: %w", err)
 			return
 		}
-		if f == 0 {
-			return
+		if f != 0 {
+			frac = float64(f) / math.Pow10(len(b))
 		}
-		frac = float64(f) / math.Pow10(len(b))
 	}
 	num, err = strconv.Atoi(a)
 	if err != nil {
