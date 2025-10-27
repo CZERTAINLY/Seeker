@@ -60,7 +60,7 @@ service: #Service
 // or duration in ISO 8601 format
 #Schedule:
   { cron?:  #CronExpr } |
-  { iso?: #ISODuration }
+  { duration?: #ISODuration }
 
 // Seeker service configuration.
 #Service: {

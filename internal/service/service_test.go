@@ -29,35 +29,59 @@ func TestSupervisor(t *testing.T) {
 	}
 
 	t.Run("timer", func(t *testing.T) {
-		const config = `
+		var testCases = []struct {
+			scenario string
+			given    string
+		}{
+			{
+				scenario: "cron",
+				given: `
 version: 0
 
 service:
     mode: timer
     schedule:
        cron: "@every 1s"
-`
-		cfg, err := model.LoadConfig(strings.NewReader(config))
-		require.NoError(t, err)
-		var buf bytes.Buffer
-		u := service.NewWriteUploader(&buf)
-		supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
-		require.NoError(t, err)
-		supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
+`,
+			},
+			{
+				scenario: "duration",
+				given: `
+version: 0
 
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		t.Cleanup(cancel)
+service:
+    mode: timer
+    schedule:
+       duration: "PT1S"
+`,
+			},
+		}
 
-		var g sync.WaitGroup
-		g.Go(func() {
-			err := supervisor.Do(ctx)
-			require.NoError(t, err)
-		})
+		for _, tc := range testCases {
+			t.Run(tc.scenario, func(t *testing.T) {
+				cfg, err := model.LoadConfig(strings.NewReader(tc.given))
+				require.NoError(t, err)
+				var buf bytes.Buffer
+				u := service.NewWriteUploader(&buf)
+				supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
+				require.NoError(t, err)
+				supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
 
-		g.Wait()
-		stdout := buf.String()
-		require.NotEmpty(t, stdout)
-		require.True(t, strings.HasPrefix(stdout, "stdout\nstdout\n"))
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				t.Cleanup(cancel)
+
+				var g sync.WaitGroup
+				g.Go(func() {
+					err := supervisor.Do(ctx)
+					require.NoError(t, err)
+				})
+
+				g.Wait()
+				stdout := buf.String()
+				require.NotEmpty(t, stdout)
+				require.True(t, strings.HasPrefix(stdout, "stdout\nstdout\n"))
+			})
+		}
 	})
 
 	t.Run("oneshot", func(t *testing.T) {
