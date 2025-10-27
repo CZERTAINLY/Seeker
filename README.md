@@ -163,11 +163,10 @@ is used under the hood, so the format supported is defined by this library.
 
 ### CRON Expression Format
 
-A cron expression represents a set of times, using 5 or 6 space-separated fields.
+A cron expression represents a set of times, using 5 space-separated fields.
 
 	Field name   | Mandatory? | Allowed values  | Allowed special characters
 	----------   | ---------- | --------------  | --------------------------
-	Seconds      | No         | 0-59            | * / , -
 	Minutes      | Yes        | 0-59            | * / , -
 	Hours        | Yes        | 0-23            | * / , -
 	Day of month | Yes        | 1-31            | * / , - ?
