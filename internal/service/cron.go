@@ -35,7 +35,7 @@ func ParseCron(expr string) error {
 
 var isoDurationRx = regexp.MustCompile(`^P((?P<day>\d+)D)?(T?(?:(?P<hour>[+-]?\d+)H)?(?:(?P<minute>[+-]?\d+)M)?(?:(?P<second>[+-]?\d+(?:[.,]\d+)?)S)?)?$`)
 
-var ErrISOFormat error = errors.New("not ISO8601 format")
+var ErrISOFormat error = errors.New("invalid ISO8601 duration")
 
 func ParseISODuration(dur string) (time.Duration, error) {
 	if dur == "" || dur == "P" || dur == "PT" || !isoDurationRx.MatchString(dur) {
