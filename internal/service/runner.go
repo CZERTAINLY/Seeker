@@ -90,6 +90,7 @@ type Command struct {
 	Args    []string
 	Env     []string
 	Timeout time.Duration
+	Stdin   []byte
 }
 
 type Result struct {
@@ -147,6 +148,10 @@ func (r *Runner) Start(ctx context.Context, proto Command) error {
 	r.result.Stdout = &buf
 	r.cmd.Stdout = &buf
 
+	if proto.Stdin != nil {
+		r.cmd.Stdin = bytes.NewReader(proto.Stdin)
+	}
+
 	r.result.Started = time.Now().UTC()
 	if err := r.cmd.Start(); err != nil {
 		r.result.Stopped = time.Now().UTC()
@@ -158,6 +163,7 @@ func (r *Runner) Start(ctx context.Context, proto Command) error {
 	if r.stderrFunc != nil {
 		go r.processStderr(ctx, stderr)
 	}
+
 	go r.wait(r.cmd)
 	return nil
 }

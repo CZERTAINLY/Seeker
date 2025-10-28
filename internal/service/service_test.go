@@ -63,7 +63,7 @@ service:
 				require.NoError(t, err)
 				var buf bytes.Buffer
 				u := service.NewWriteUploader(&buf)
-				supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
+				supervisor, err := service.NewSupervisor(t.Context(), cfg)
 				require.NoError(t, err)
 				supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
 
@@ -95,7 +95,7 @@ service:
 		require.NoError(t, err)
 		var buf bytes.Buffer
 		u := service.NewWriteUploader(&buf)
-		supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, t.Name()+".yaml")
+		supervisor, err := service.NewSupervisor(t.Context(), cfg)
 		require.NoError(t, err)
 		supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
 		err = supervisor.Do(t.Context())
@@ -109,10 +109,12 @@ service:
 func TestSupervisorFromConfig(t *testing.T) {
 	cfg := model.Config{
 		Service: model.Service{
-			Verbose: true,
+			ServiceFields: model.ServiceFields{
+				Verbose: true,
+			},
 		},
 	}
-	supervisor, err := service.NewSupervisor(t.Context(), cfg.Service, "seeker.yaml")
+	supervisor, err := service.NewSupervisor(t.Context(), cfg)
 	require.NoError(t, err)
 	require.NotEmpty(t, supervisor)
 }

@@ -11,6 +11,15 @@ ports?: #Ports
 service: #Service
 }
 
+// ScanConfig is a subset of a top level configuration which will be passed in a discovery mode by core.
+#ScanConfig: {
+version: 0
+filesystem?: #Filesystem
+containers?: #Containers
+ports?: #Ports
+service?: #ServiceFields
+}
+
 // Set of filesystem scanning settings; when disabled no filesystem paths are processed.
 // If paths unset, current working directory is assumed.
 #Filesystem: {
@@ -68,6 +77,8 @@ service: #Service
   mode: *"manual" | "timer"
   schedule?: null | #Schedule
   if mode == "timer" { schedule: #Schedule }
+  dir?: string
+  repository?: #Repository
 }
 
 // OutputFields specify common output for a scanner
@@ -78,8 +89,6 @@ service: #Service
 #ServiceFields: {
   verbose?: bool | *false
   log?: *"stderr" | "stdout" | "discard" | string
-  dir?: string
-  repository?: #Repository
 }
 
 #Repository: {

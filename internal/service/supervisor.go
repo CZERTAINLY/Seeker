@@ -8,9 +8,11 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	gocron "github.com/go-co-op/gocron/v2"
+	"gopkg.in/yaml.v3"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 )
@@ -21,10 +23,13 @@ type Supervisor struct {
 	uploaders []model.Uploader
 	oneshot   bool
 	scheduler gocron.Scheduler
+	cfgMx     sync.Mutex
+	config    model.Scan
 }
 
-func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*Supervisor, error) {
-	uploaders, err := uploaders(ctx, cfg)
+func NewSupervisor(ctx context.Context, cfg model.Config) (*Supervisor, error) {
+	svcCfg := cfg.Service
+	uploaders, err := uploaders(ctx, svcCfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing uploaders: %w", err)
 	}
@@ -35,17 +40,17 @@ func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*
 	args := []string{
 		"_scan",
 		"--config",
-		configPath,
+		"-",
 	}
-	if cfg.Verbose {
+	if svcCfg.Verbose {
 		args = append(args, "--verbose")
 	}
 
 	var supervisor = &Supervisor{}
 	var scheduler gocron.Scheduler
-	if cfg.Mode == "timer" {
+	if svcCfg.Mode == "timer" {
 		var err error
-		scheduler, err = newScheduler(ctx, cfg.Schedule, supervisor.Start)
+		scheduler, err = newScheduler(ctx, svcCfg.Schedule, supervisor.Start)
 		if err != nil {
 			return nil, fmt.Errorf("timer mode failed: %w", err)
 		}
@@ -64,8 +69,14 @@ func NewSupervisor(ctx context.Context, cfg model.Service, configPath string) (*
 	supervisor.cmd = cmd
 	supervisor.start = make(chan struct{}, 1)
 	supervisor.uploaders = uploaders
-	supervisor.oneshot = (cfg.Mode == model.ServiceModeManual)
+	supervisor.oneshot = (svcCfg.Mode == model.ServiceModeManual)
 	supervisor.scheduler = scheduler
+	supervisor.config = model.Scan{
+		Containers: cfg.Containers,
+		Filesystem: cfg.Filesystem,
+		Ports:      cfg.Ports,
+		Service:    cfg.Service.ServiceFields,
+	}
 
 	return supervisor, nil
 }
@@ -148,11 +159,30 @@ func (s *Supervisor) Do(ctx context.Context) error {
 	}
 }
 
+// Start tells supervisor to start a new scan - this hints as a signal, so this ends immediately and without any error.
 func (s *Supervisor) Start() {
 	s.start <- struct{}{}
 }
 
+func (s *Supervisor) MergeConfigs(newCfg model.Scan) {
+	s.cfgMx.Lock()
+	defer s.cfgMx.Unlock()
+	s.config.Merge(newCfg)
+	s.cmd.Stdin = nil
+}
+
 func (s *Supervisor) callStart(ctx context.Context, runner *Runner) error {
+	s.cfgMx.Lock()
+	defer s.cfgMx.Unlock()
+	if s.cmd.Stdin == nil {
+		var buf bytes.Buffer
+		enc := yaml.NewEncoder(&buf)
+		err := enc.Encode(s.config)
+		if err != nil {
+			return fmt.Errorf("encoding configuration for scan: %w", err)
+		}
+		s.cmd.Stdin = append([]byte{}, buf.Bytes()...)
+	}
 	return runner.Start(ctx, s.cmd)
 }
 

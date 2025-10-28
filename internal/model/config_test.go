@@ -3,11 +3,14 @@ package model_test
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
+
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -25,16 +28,149 @@ service:
       type: token
       token: ABC123
 `
-	cfg, err := model.LoadConfig(strings.NewReader(yml))
+	abspath := saveYaml(t, yml)
+
+	var testCases = []struct {
+		scenario string
+		then     func() (model.Config, error)
+	}{
+		{
+			scenario: "reader",
+			then: func() (model.Config, error) {
+				return model.LoadConfig(strings.NewReader(yml))
+			},
+		},
+		{
+			scenario: "path",
+			then: func() (model.Config, error) {
+				return model.LoadConfigFromPath(abspath)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			cfg, err := tc.then()
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
+			require.Equal(t, model.LogStderr, cfg.Service.Log)
+			require.NotNil(t, cfg.Service.Repository)
+			require.True(t, cfg.Service.Repository.Enabled)
+			require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
+			require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
+			require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
+		})
+	}
+
+}
+
+func TestLoadScanConfig_Minimal(t *testing.T) {
+	yml := `
+version: 0
+`
+	sc, err := model.LoadScanConfig(strings.NewReader(yml))
 	require.NoError(t, err)
-	require.NotNil(t, cfg)
-	require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
-	require.Equal(t, model.LogStderr, cfg.Service.Log)
-	require.NotNil(t, cfg.Service.Repository)
-	require.True(t, cfg.Service.Repository.Enabled)
-	require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
-	require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
-	require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
+	require.Equal(t, 0, sc.Version)
+	// If Filesystem defaulting logic exists, assert it here, e.g.:
+	// require.Nil(t, sc.Filesystem) or require.False(t, sc.Filesystem.Enabled)
+}
+
+func TestLoadScanConfig_WithFilesystem(t *testing.T) {
+	yml := `
+version: 0
+filesystem:
+  enabled: true
+  paths:
+    - /tmp
+    - /var/log
+`
+
+	abspath := saveYaml(t, yml)
+	var testCases = []struct {
+		scenario string
+		then     func() (model.Config, error)
+	}{
+		{
+			scenario: "reader",
+			then: func() (model.Config, error) {
+				return model.LoadConfig(strings.NewReader(yml))
+			},
+		},
+		{
+			scenario: "path",
+			then: func() (model.Config, error) {
+				return model.LoadConfigFromPath(abspath)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			sc, err := tc.then()
+			require.NoError(t, err)
+			require.Equal(t, 0, sc.Version)
+			require.NotNil(t, sc.Filesystem)
+			require.True(t, sc.Filesystem.Enabled)
+			require.Equal(t, []string{"/tmp", "/var/log"}, sc.Filesystem.Paths)
+		})
+	}
+}
+
+func TestLoadScanConfig_Full(t *testing.T) {
+	yml := `
+version: 0
+filesystem:
+  enabled: true
+  paths: [/opt/app]
+containers:
+  enabled: true
+  config:
+    - name: docker
+      type: docker
+      host: host
+      images: ["alpine:latest","ubuntu:22.04"]
+ports:
+  enabled: true
+  ports: 22,443
+`
+	sc, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.NoError(t, err)
+	require.Equal(t, 0, sc.Version)
+
+	require.True(t, sc.Filesystem.Enabled)
+	require.Equal(t, []string{"/opt/app"}, sc.Filesystem.Paths)
+
+	require.True(t, sc.Containers.Enabled)
+	require.Len(t, sc.Containers.Config, 1)
+	cc := sc.Containers.Config[0]
+	require.Equal(t, "docker", cc.Name)
+	require.Equal(t, "docker", cc.Type)
+	require.Equal(t, "host", cc.Host)
+	require.Equal(t, []string{"alpine:latest", "ubuntu:22.04"}, cc.Images)
+
+	require.True(t, sc.Ports.Enabled)
+	require.Equal(t, "22,443", sc.Ports.Ports)
+}
+
+func TestLoadScanConfig_InvalidYAML(t *testing.T) {
+	yml := `
+version: 0
+ports: foo
+`
+	_, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.Error(t, err)
+
+	path := saveYaml(t, yml)
+	slog.Warn("Following like will log ERROR validation error, this is expected and confirm test is working")
+	_, err = model.LoadConfigFromPath(path)
+	require.Error(t, err)
+}
+
+func TestLoadScanConfig_Empty(t *testing.T) {
+	const yml = ``
+	_, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.NoError(t, err)
 }
 
 func TestLoadConfig_Fail(t *testing.T) {
@@ -103,7 +239,7 @@ service:
 						Line:     3,
 						Column:   9,
 					},
-					Raw: "#Config.service: conflicting values null and {verbose?:(bool|*false),log?:(*\"stderr\"|\"stdout\"|\"discard\"|string),dir?:string,repository?:#Repository} (mismatched types null and struct)",
+					Raw: "#Config.service: conflicting values null and {verbose?:(bool|*false),log?:(*\"stderr\"|\"stdout\"|\"discard\"|string)} (mismatched types null and struct)",
 				},
 			},
 		},
@@ -693,4 +829,21 @@ ports:
 
 	require.Equal(t, "test_ee_nmap_binary", cfg.Ports.Binary)
 
+}
+
+func saveYaml(t *testing.T, yml string) (abspath string) {
+	t.Helper()
+	root, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, root.Close())
+	})
+	path := t.Name() + ".yaml"
+	f, err := root.Create(path)
+	require.NoError(t, err)
+	_, err = f.WriteString(yml)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	abspath = filepath.Join(root.Name(), path)
+	return
 }

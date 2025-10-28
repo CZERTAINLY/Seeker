@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -16,9 +15,9 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/service"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
-	"gopkg.in/yaml.v3"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -26,7 +25,6 @@ var (
 
 	userConfigPath string // /default/config/path/seeker on given OS
 	configPath     string // actual config file used (if loaded)
-	config         model.Config
 
 	flagConfigFilePath string // value of --config flag
 	flagVerbose        bool   //valur if --verbose flag
@@ -104,10 +102,6 @@ func main() {
 }
 
 func doVersion(cmd *cobra.Command, args []string) error {
-	if err := initSeeker(cmd, args, true); err != nil {
-		return err
-	}
-
 	info, ok := debug.ReadBuildInfo()
 	if !ok || info == nil {
 		return fmt.Errorf("seeker: version info not available")
@@ -134,16 +128,34 @@ func doVersion(cmd *cobra.Command, args []string) error {
 }
 
 func doScan(cmd *cobra.Command, args []string) error {
-	if err := initSeeker(cmd, args, false); err != nil {
+	if flagConfigFilePath == "" {
+		return fmt.Errorf("--config is mandatory flag for this command")
+	}
+	configPath = flagConfigFilePath
+	ctx := cmd.Context()
+
+	if flagVerbose {
+		// initialize logging
+		ctx = initDoScanLog(ctx, flagVerbose)
+	}
+
+	config, err := model.LoadScanConfigFromPath(configPath)
+	if err != nil {
 		return err
 	}
 
-	ctx := cmd.Context()
-	attrs := slog.Group("seeker",
-		slog.String("cmd", "_scan"),
-		slog.Int("pid", os.Getpid()),
-	)
-	ctx = log.ContextAttrs(ctx, attrs)
+	// --verbose has a precedence over config file
+	if flagVerbose {
+		config.Service.Verbose = true
+	} else if !flagVerbose && config.Service.Verbose {
+		ctx = initDoScanLog(ctx, true)
+	} else {
+		ctx = initDoScanLog(ctx, false)
+	}
+
+	slog.DebugContext(ctx, "_scan", "configPath", configPath)
+	slog.DebugContext(ctx, "_scan", "config", config)
+
 	seeker, err := NewSeeker(ctx, detectors, config)
 	if err != nil {
 		return err
@@ -151,11 +163,21 @@ func doScan(cmd *cobra.Command, args []string) error {
 	return seeker.Do(ctx, os.Stdout)
 }
 
+func initDoScanLog(ctx context.Context, verbose bool) context.Context {
+	slog.SetDefault(log.New(verbose))
+	attrs := slog.Group("seeker",
+		slog.String("cmd", "_scan"),
+		slog.Int("pid", os.Getpid()),
+	)
+	return log.ContextAttrs(ctx, attrs)
+}
+
 func doRun(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unsupported arguments: %s", strings.Join(args, ", "))
 	}
-	if err := initSeeker(cmd, args, false); err != nil {
+	config, err := loadConfig(cmd, args, false)
+	if err != nil {
 		return err
 	}
 
@@ -169,7 +191,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "", "environ", os.Environ())
 	slog.DebugContext(ctx, "", "config", config)
 
-	supervisor, err := service.NewSupervisor(ctx, config.Service, configPath)
+	supervisor, err := service.NewSupervisor(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -177,7 +199,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	return supervisor.Do(ctx)
 }
 
-func initSeeker(_ *cobra.Command, _ []string, skipDebug bool) error {
+func loadConfig(_ *cobra.Command, _ []string, skipDebug bool) (model.Config, error) {
 	if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
 		configPath = envConfig
 	} else if flagConfigFilePath != "" {
@@ -192,18 +214,20 @@ func initSeeker(_ *cobra.Command, _ []string, skipDebug bool) error {
 		}
 	}
 
+	var config model.Config
+
 	// store default configuration
 	if configPath == "" {
 		config = model.DefaultConfig(context.Background())
 		configPath = filepath.Join(userConfigPath, "seeker.yaml")
 		err := os.MkdirAll(filepath.Dir(configPath), 0755)
 		if err != nil {
-			return fmt.Errorf("creating directory %s: %w", filepath.Dir(configPath), err)
+			return config, fmt.Errorf("creating directory %s: %w", filepath.Dir(configPath), err)
 		}
 
 		f, err := os.Create(configPath)
 		if err != nil {
-			return fmt.Errorf("creating file %s: %w", configPath, err)
+			return config, fmt.Errorf("creating file %s: %w", configPath, err)
 		}
 		defer func() {
 			_ = f.Close()
@@ -211,27 +235,13 @@ func initSeeker(_ *cobra.Command, _ []string, skipDebug bool) error {
 		enc := yaml.NewEncoder(f)
 		err = enc.Encode(config)
 		if err != nil {
-			return fmt.Errorf("storing configuration: %w", err)
+			return config, fmt.Errorf("storing configuration: %w", err)
 		}
 	} else {
 		var err error
-		f, err := os.Open(configPath)
+		config, err = model.LoadConfigFromPath(configPath)
 		if err != nil {
-			return fmt.Errorf("storing opening config file: %w", err)
-		}
-		defer func() {
-			_ = f.Close()
-		}()
-		config, err = model.LoadConfig(f)
-		if err != nil {
-			var cuerr model.CueError
-			ok := errors.As(err, &cuerr)
-			if ok {
-				for _, d := range cuerr.Details() {
-					slog.Error("validation error", d.Attr("detail"))
-				}
-			}
-			return fmt.Errorf("parsing config: %w", err)
+			return config, err
 		}
 	}
 
@@ -243,11 +253,9 @@ func initSeeker(_ *cobra.Command, _ []string, skipDebug bool) error {
 	// initialize logging
 	slog.SetDefault(log.New(config.Service.Verbose))
 
-	if !skipDebug {
-		slog.Debug("seeker run", "configPath", configPath)
-		slog.Debug("seeker run", "config", config)
-	}
-	return nil
+	slog.Debug("seeker run", "configPath", configPath)
+	slog.Debug("seeker run", "config", config)
+	return config, nil
 }
 
 func exists(path string) bool {
