@@ -128,6 +128,8 @@ service:
 		supervisor.AddJob(t.Context(), t.Name(), model.Scan{}, "stdout")
 		require.NoError(t, err)
 		supervisor.Start("**")
+		supervisor.ConfigureJob(t.Context(), t.Name(), model.Scan{})
+		supervisor.ConfigureJob(t.Context(), "not"+t.Name(), model.Scan{})
 
 		wg.Wait()
 		// Job should complete well before the 10s service timeout since it only prints to stdout.

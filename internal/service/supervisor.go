@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -31,11 +32,14 @@ type jobOp int
 
 const (
 	jobOpAdd jobOp = iota
+	jobOpConfigure
 )
 
 type job struct {
-	op  jobOp
-	job *Job
+	op     jobOp
+	name   string
+	job    *Job
+	config *model.Scan
 }
 
 func NewSupervisor(ctx context.Context, cfg model.Config) (*Supervisor, error) {
@@ -81,7 +85,6 @@ func (s *Supervisor) WithUploaders(ctx context.Context, uploaders ...model.Uploa
 // not for production use.
 func (s *Supervisor) AddJob(ctx context.Context, name string, cfg model.Scan, testData ...string) {
 	j, err := NewJob(name, s.oneshot, cfg, s.results)
-
 	// internal test harness protocol
 	if len(testData) == 1 {
 		j.WithTestData(testData[0], "")
@@ -93,20 +96,12 @@ func (s *Supervisor) AddJob(ctx context.Context, name string, cfg model.Scan, te
 		slog.ErrorContext(ctx, "job can't be created: ignoring", "job_name", name, "error", err)
 		return
 	}
-	s.jobsChan <- job{jobOpAdd, j}
+	s.jobsChan <- job{op: jobOpAdd, name: name, job: j}
 }
 
 // ConfigureJob allows added job to change its configuration
-// returns not found error if job was not added
-func (s *Supervisor) ConfigureJob(ctx context.Context, name string, cfg model.Scan) error {
-	s.jobsMx.Lock()
-	defer s.jobsMx.Unlock()
-	if job, ok := s.jobs[name]; !ok {
-		return fmt.Errorf("job %q not found", name)
-	} else {
-		job.MergeConfig(cfg)
-	}
-	return nil
+func (s *Supervisor) ConfigureJob(_ context.Context, name string, cfg model.Scan) {
+	s.jobsChan <- job{op: jobOpConfigure, name: name, config: &cfg}
 }
 
 // Start tells supervisor to start a new scan - this hints as a signal, so this
@@ -172,8 +167,17 @@ func (s *Supervisor) Do(ctx context.Context) error {
 				slog.ErrorContext(ctx, "start returned", "error", err)
 			}
 		case result := <-s.results:
-			if result.State == nil || result.State.ExitCode() != 0 || result.Err != nil {
-				slog.ErrorContext(ctx, "scan have failed", "result", result)
+			var reason string
+			switch {
+			case result.Err != nil:
+				reason = "err: " + result.Err.Error()
+			case result.State == nil:
+				reason = "state is nil"
+			case result.State.ExitCode() != 0:
+				reason = "exit code " + strconv.Itoa(result.State.ExitCode())
+			}
+			if reason != "" {
+				slog.ErrorContext(ctx, "scan have failed", "reason", reason, "result", result)
 				continue
 			}
 			slog.DebugContext(ctx, "scan succeeded: uploading")
@@ -211,13 +215,27 @@ func (s *Supervisor) closeJobs() {
 }
 
 func (s *Supervisor) handleJob(ctx context.Context, j job) {
-	if j.op != jobOpAdd {
+	switch j.op {
+	case jobOpAdd:
+		if j.job == nil {
+			slog.WarnContext(ctx, "job add nil: ignoring add", "job_name", j.name)
+			return
+		}
+		s.handleJobAdd(ctx, j)
+	case jobOpConfigure:
+		if j.config == nil {
+			slog.WarnContext(ctx, "job config nil: ignoring configure", "job_name", j.name)
+			return
+		}
+		s.handleJobConfigure(ctx, j.name, *j.config)
+	default:
 		slog.WarnContext(ctx, "job operation not supported: ignoring", "op", j.op)
-		return
 	}
+}
+
+func (s *Supervisor) handleJobAdd(ctx context.Context, j job) {
 	s.jobsMx.Lock()
 	defer s.jobsMx.Unlock()
-
 	job := j.job
 	if _, ok := s.jobs[job.Name()]; ok {
 		slog.WarnContext(ctx, "job already added: ignoring", "job_name", job.Name())
@@ -232,6 +250,17 @@ func (s *Supervisor) handleJob(ctx context.Context, j job) {
 		}
 	})
 	s.jobs[job.Name()] = job
+}
+
+func (s *Supervisor) handleJobConfigure(ctx context.Context, name string, config model.Scan) {
+	s.jobsMx.Lock()
+	defer s.jobsMx.Unlock()
+	if jobp, ok := s.jobs[name]; !ok {
+		slog.WarnContext(ctx, "job not added: ignoring configure", "job_name", name)
+		return
+	} else {
+		jobp.MergeConfig(config)
+	}
 }
 
 func (s *Supervisor) callStart(ctx context.Context, name string) error {
