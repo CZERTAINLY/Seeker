@@ -260,7 +260,7 @@ service:
 
 # Developers
 
-Following section is intended for a developers
+Following section is intended for developers
 
 ## Architecture
 
