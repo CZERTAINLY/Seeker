@@ -150,6 +150,5 @@ func (j *Job) callStart(ctx context.Context) error {
 		return fmt.Errorf("encoding configuration for scan: %w", err)
 	}
 	j.cmd.Stdin = append([]byte{}, buf.Bytes()...)
-	err := j.runner.Start(ctx, j.cmd)
-	return err
+	return j.runner.Start(ctx, j.cmd)
 }
