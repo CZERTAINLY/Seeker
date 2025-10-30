@@ -44,7 +44,7 @@ var runCmd = &cobra.Command{
 
 var scanCmd = &cobra.Command{
 	Use:    "_scan",
-	Short:  "internal command",
+	Short:  "internal scan command",
 	RunE:   doScan,
 	Hidden: true,
 }
@@ -176,7 +176,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("unsupported arguments: %s", strings.Join(args, ", "))
 	}
-	config, err := loadConfig(cmd, args, false)
+	config, err := loadConfig(cmd, args)
 	if err != nil {
 		return err
 	}
@@ -196,10 +196,29 @@ func doRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return supervisor.Do(ctx)
+	errChan := make(chan error, 1)
+	go func() {
+		defer close(errChan)
+		errChan <- supervisor.Do(ctx)
+	}()
+	supervisor.AddJob(ctx, configPath, model.Scan{
+		Version:    0,
+		Filesystem: config.Filesystem,
+		Containers: config.Containers,
+		Ports:      config.Ports,
+		Service: model.ServiceFields{
+			Verbose: flagVerbose,
+			Log:     config.Service.Log,
+		},
+	})
+	if config.Service.Mode == model.ServiceModeManual {
+		supervisor.Start("**")
+	}
+
+	return <-errChan
 }
 
-func loadConfig(_ *cobra.Command, _ []string, skipDebug bool) (model.Config, error) {
+func loadConfig(_ *cobra.Command, _ []string) (model.Config, error) {
 	if envConfig, ok := os.LookupEnv("SEEKERCONFIG"); ok {
 		configPath = envConfig
 	} else if flagConfigFilePath != "" {

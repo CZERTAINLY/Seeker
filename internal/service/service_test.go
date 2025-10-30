@@ -3,7 +3,8 @@ package service_test
 import (
 	"bytes"
 	"context"
-	"os/exec"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -15,19 +16,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMain(m *testing.M) {
+	// Hidden service code unit testing protocol.
+	// If _SEEKER_PRINT_STDOUT or _SEEKER_PRINT_STDERR are set, emit their values to the
+	// respective stream and return immediately.
+	// Used by test harnesses to exercise process spawning, stdout/stderr capture
+	var testingCode bool
+	if x := os.Getenv("_SEEKER_PRINT_STDOUT"); x != "" {
+		fmt.Println(x)
+		testingCode = true
+	}
+	if x := os.Getenv("_SEEKER_PRINT_STDERR"); x != "" {
+		fmt.Fprintln(os.Stderr, x)
+		testingCode = true
+	}
+	if testingCode {
+		os.Exit(0)
+	}
+
+	os.Exit(m.Run())
+}
+
 func TestSupervisor(t *testing.T) {
 	t.Parallel()
-	sh, err := exec.LookPath("sh")
-	if err != nil {
-		t.Skipf("skipped, binary sh not available: %v", err)
-	}
-
-	cmd := service.Command{
-		Path:    sh,
-		Args:    []string{"-c", "echo stdout;"},
-		Timeout: 90 * time.Millisecond,
-	}
-
 	t.Run("timer", func(t *testing.T) {
 		var testCases = []struct {
 			scenario string
@@ -65,7 +76,7 @@ service:
 				u := service.NewWriteUploader(&buf)
 				supervisor, err := service.NewSupervisor(t.Context(), cfg)
 				require.NoError(t, err)
-				supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
+				supervisor = supervisor.WithUploaders(t.Context(), u)
 
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				t.Cleanup(cancel)
@@ -75,6 +86,10 @@ service:
 					err := supervisor.Do(ctx)
 					require.NoError(t, err)
 				})
+				// wait a little to let the supervisor to settle
+				time.Sleep(200 * time.Millisecond)
+				supervisor.AddJob(t.Context(), t.Name(), model.Scan{}, "stdout")
+				require.NoError(t, err)
 
 				g.Wait()
 				stdout := buf.String()
@@ -97,9 +112,27 @@ service:
 		u := service.NewWriteUploader(&buf)
 		supervisor, err := service.NewSupervisor(t.Context(), cfg)
 		require.NoError(t, err)
-		supervisor = supervisor.WithCmdUploaders(t.Context(), cmd, u)
-		err = supervisor.Do(t.Context())
+		supervisor = supervisor.WithUploaders(t.Context(), u)
+
+		var wg sync.WaitGroup
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		t.Cleanup(cancel)
+		start := time.Now()
+		wg.Go(func() {
+			err := supervisor.Do(ctx)
+			require.NoError(t, err)
+		})
+		// wait a little to let the supervisor to settle
+		time.Sleep(200 * time.Millisecond)
+
+		supervisor.AddJob(t.Context(), t.Name(), model.Scan{}, "stdout")
 		require.NoError(t, err)
+		supervisor.Start("**")
+
+		wg.Wait()
+		// Job should complete well before the 10s service timeout since it only prints to stdout.
+		// Use an 8s cap to leave headroom for a slow / overloaded CI before hitting the real timeout.
+		require.WithinDuration(t, start, time.Now(), 8*time.Second)
 		stdout := buf.String()
 		require.NotEmpty(t, stdout)
 		require.Equal(t, "stdout\n", stdout)
