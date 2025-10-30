@@ -207,7 +207,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 		Containers: config.Containers,
 		Ports:      config.Ports,
 		Service: model.ServiceFields{
-			Verbose: flagVerbose,
+			Verbose: flagVerbose || config.Service.Verbose,
 			Log:     config.Service.Log,
 		},
 	})
