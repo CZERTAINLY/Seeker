@@ -312,7 +312,7 @@ func LoadScanConfig(r io.Reader) (Scan, error) {
 
 func LoadScanConfigFromPath(path string) (Scan, error) {
 	var ret Scan
-	if err := loadConfigFromFile1(path, &ret, cueConfig); err != nil {
+	if err := loadConfigFromFile1(path, &ret, cueScan); err != nil {
 		return ret, err
 	}
 	return ret, nil
