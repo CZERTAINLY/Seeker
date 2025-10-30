@@ -128,6 +128,10 @@ func (c Config) IsZero() bool {
 		c.Service.IsZero()
 }
 
+func (c Containers) IsZero() bool {
+	return isZero(c)
+}
+
 func (c Filesystem) IsZero() bool {
 	return isZero(c)
 }
