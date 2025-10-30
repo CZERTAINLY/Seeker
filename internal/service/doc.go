@@ -35,7 +35,7 @@ package service
 //
 // Invariants:
 //   - At most one Runner per Job at a time.
-//   - Paralel scanning is done via multiple Jobs
+//   - Parallel scanning is done via multiple Jobs
 //   - Each execution produces one terminal Result (success or error).
 //   - Stderr is captured only when explicitly requested.
 //   - Stdout is captured after program is done.
