@@ -41,5 +41,5 @@ package service
 //   - Stdout is captured after program is done.
 //   - Each run can define own timeout, after which is gets killed
 //
-// internal/service/service_test.go is the best source about how to properly user
+// internal/service/service_test.go is the best source about how to properly use
 // Supervisor struct.

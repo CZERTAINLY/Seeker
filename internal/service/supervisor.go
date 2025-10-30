@@ -119,7 +119,7 @@ func (s *Supervisor) Start(name string) {
 //  4. Context cancellation – terminates the loop and begins shutdown.
 //
 // Modes:
-//   - Oneshoot (manual): a wildcard start "**" is triggered once on entry; the first scan or upload error is returned.
+//   - Oneshot (manual): a wildcard start "**" is triggered once on entry; the first scan or upload error is returned.
 //   - Other modes: errors are only logged; the loop runs until ctx is cancelled.
 //
 // Startup: starts the scheduler (if present).

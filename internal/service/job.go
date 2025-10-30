@@ -143,15 +143,13 @@ func (j *Job) Run(ctx context.Context) error {
 func (j *Job) callStart(ctx context.Context) error {
 	j.cfgMx.Lock()
 	defer j.cfgMx.Unlock()
-	if j.cmd.Stdin == nil {
-		var buf bytes.Buffer
-		enc := yaml.NewEncoder(&buf)
-		err := enc.Encode(j.config)
-		if err != nil {
-			return fmt.Errorf("encoding configuration for scan: %w", err)
-		}
-		j.cmd.Stdin = append([]byte{}, buf.Bytes()...)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	err := enc.Encode(j.config)
+	if err != nil {
+		return fmt.Errorf("encoding configuration for scan: %w", err)
 	}
+	j.cmd.Stdin = append([]byte{}, buf.Bytes()...)
 	err := j.runner.Start(ctx, j.cmd)
 	return err
 }
