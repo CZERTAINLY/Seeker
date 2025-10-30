@@ -67,12 +67,12 @@ func NewJob(name string, oneshot bool, config model.Scan, results chan<- Result)
 func (j *Job) WithTestData(stdout, stderr string) {
 	if stdout != "" {
 		j.cmd.Env = append(j.cmd.Env,
-			"_SEEKER_PRINT_STDOUT=stdout",
+			"_SEEKER_PRINT_STDOUT="+stdout,
 		)
 	}
 	if stderr != "" {
 		j.cmd.Env = append(j.cmd.Env,
-			"_SEEKER_PRINT_STDERR=stderr",
+			"_SEEKER_PRINT_STDERR="+stderr,
 		)
 	}
 }
@@ -129,7 +129,9 @@ func (j *Job) Run(ctx context.Context) error {
 		case <-j.start:
 			slog.DebugContext(ctx, "about to start")
 			if err := j.callStart(ctx); err != nil {
-				j.resultsChan <- j.runner.LastResult()
+				r := j.runner.LastResult()
+				r.Err = err
+				j.resultsChan <- r
 				if j.oneshot {
 					return err
 				}

@@ -88,13 +88,13 @@ service:
 				})
 				// wait a little to let the supervisor to settle
 				time.Sleep(200 * time.Millisecond)
-				supervisor.AddJob(t.Context(), t.Name(), model.Scan{}, "stdout")
+				supervisor.AddJob(t.Context(), t.Name(), model.Scan{}, "Stdout")
 				require.NoError(t, err)
 
 				g.Wait()
 				stdout := buf.String()
 				require.NotEmpty(t, stdout)
-				require.True(t, strings.HasPrefix(stdout, "stdout\nstdout\n"))
+				require.True(t, strings.HasPrefix(stdout, "Stdout\nStdout\n"))
 			})
 		}
 	})
