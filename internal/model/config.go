@@ -325,7 +325,7 @@ func loadConfigFromFile1[PT configPT](path string, pt PT, schema cue.Value) erro
 	} else {
 		f, err := os.Open(path)
 		if err != nil {
-			return fmt.Errorf("storing opening config file: %w", err)
+			return fmt.Errorf("error opening config file: %w", err)
 		}
 		r = f
 		defer func() {
