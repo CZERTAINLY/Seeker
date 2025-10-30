@@ -1,7 +1,6 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -258,10 +257,10 @@ func (s *Supervisor) callStart(ctx context.Context, name string) error {
 	return nil
 }
 
-func (s *Supervisor) upload(ctx context.Context, stdout *bytes.Buffer) error {
+func (s *Supervisor) upload(ctx context.Context, stdout []byte) error {
 	var errs []error
 	for _, u := range s.uploaders {
-		err := u.Upload(ctx, stdout.Bytes())
+		err := u.Upload(ctx, stdout)
 		if err != nil {
 			errs = append(errs, err)
 		}

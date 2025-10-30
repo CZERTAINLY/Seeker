@@ -58,9 +58,9 @@ func TestRunner(t *testing.T) {
 		var exitErr *exec.ExitError
 		require.ErrorAs(t, res.Err, &exitErr)
 
-		require.Greater(t, res.Stdout.Len(), 1024)
+		require.Greater(t, len(res.Stdout), 1024)
 		require.True(t, strings.HasPrefix(
-			string(res.Stdout.Bytes()[:256]),
+			string(res.Stdout[:256]),
 			"golang\ngolang\n",
 		))
 	})
@@ -100,7 +100,7 @@ func TestStderr(t *testing.T) {
 	err = runner.Start(t.Context(), cmd)
 	require.NoError(t, err)
 	res := <-runner.ResultsChan()
-	require.Equal(t, "stdout\n", res.Stdout.String())
+	require.Equal(t, "stdout\n", string(res.Stdout))
 
 	var stderr = []string{
 		<-stderrChan,
