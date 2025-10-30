@@ -50,7 +50,10 @@ func TestRunner(t *testing.T) {
 		require.Equal(t, []string{"golang"}, res.Args)
 		require.NotZero(t, res.Started)
 		require.NotZero(t, res.Stopped)
-		require.GreaterOrEqual(t, res.Stopped.Sub(res.Started), 100*time.Millisecond)
+		// on GHA command `yes` finishes up earlier with
+		// ERROR processing stderr error="read |0: file already closed"
+		// lets not make this a fatal error
+		require.GreaterOrEqual(t, res.Stopped.Sub(res.Started), 80*time.Millisecond)
 		require.Error(t, res.Err)
 		var exitErr *exec.ExitError
 		require.ErrorAs(t, res.Err, &exitErr)
