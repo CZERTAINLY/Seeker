@@ -100,7 +100,7 @@ func TestParseTLS(t *testing.T) {
 		if compo.CryptoProperties == nil || strings.HasPrefix(compo.Name, "CN=www.ssllabs.com") {
 			continue
 		}
-		if compo.Name == "ecdsa-sha2-nistp256" {
+		if compo.Name == "ecdsa-sha2-nistp256" || compo.Name == "ssh-ed25519" {
 			require.NotNil(t, compo.CryptoProperties)
 			require.NotNil(t, compo.CryptoProperties.AlgorithmProperties)
 			require.NotNil(t, compo.Properties)
