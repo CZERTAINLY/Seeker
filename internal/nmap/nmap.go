@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	props "github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
@@ -259,7 +259,6 @@ func sslEnumCiphers(ctx context.Context, s nmap.Script) []cdx.Component {
 					Version:      nameToProtoVersion(row.Key),
 					CipherSuites: cipherSuites(ctx, row.Tables),
 				},
-				OID: "1.3.18.0.2.32.104",
 			},
 		}
 		components = append(components, compo)
@@ -295,7 +294,7 @@ func nameToProtoVersion(name string) string {
 }
 
 func identifiers(ctx context.Context, name string) (cdx.CipherSuite, bool) {
-	spec, ok := props.ParseCipherSuite(name)
+	spec, ok := cdxprops.ParseCipherSuite(name)
 	if !ok {
 		slog.WarnContext(ctx, "skipping unsupported cipher suite", "name", name)
 		return cdx.CipherSuite{}, false
@@ -376,23 +375,18 @@ func sshHostKey(ctx context.Context, s nmap.Script) []cdx.Component {
 				fingerprint = row.Value
 			}
 		}
-		algoProp, ok := ParseSSHAlgorithm(typ)
-		if !ok {
-			slog.WarnContext(ctx, "unsupported ssh algorithm", "algorithm", typ)
+
+		compo, err := cdxprops.ParseSSHHostKey(model.SSHHostKey{
+			Key:         key,
+			Type:        typ,
+			Bits:        bits,
+			Fingerprint: fingerprint,
+		})
+
+		if err != nil {
+			slog.WarnContext(ctx, "parsing ssh host key", "error", err)
 			continue
 		}
-		compo := cdx.Component{
-			BOMRef: "crypto/ssh-hostkey/" + typ + "@" + bits,
-			Name:   typ,
-			Type:   cdx.ComponentTypeCryptographicAsset,
-			CryptoProperties: &cdx.CryptoProperties{
-				AssetType:           cdx.CryptoAssetTypeAlgorithm,
-				AlgorithmProperties: &algoProp,
-				OID:                 algoProp.ParameterSetIdentifier,
-			},
-		}
-		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostKeyContent, key)
-		props.SetComponentProp(&compo, props.CzertainlyComponentSSHHostKeyFingerprintContent, fingerprint)
 		components = append(components, compo)
 	}
 
