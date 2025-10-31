@@ -90,6 +90,7 @@ type Command struct {
 	Args    []string
 	Env     []string
 	Timeout time.Duration
+	Stdin   []byte
 }
 
 type Result struct {
@@ -99,7 +100,7 @@ type Result struct {
 	Started time.Time
 	Stopped time.Time
 	State   *os.ProcessState
-	Stdout  *bytes.Buffer
+	Stdout  []byte
 	Err     error
 }
 
@@ -144,8 +145,11 @@ func (r *Runner) Start(ctx context.Context, proto Command) error {
 		r.cmd.Stderr = os.Stderr
 	}
 	var buf bytes.Buffer
-	r.result.Stdout = &buf
 	r.cmd.Stdout = &buf
+
+	if proto.Stdin != nil {
+		r.cmd.Stdin = bytes.NewReader(proto.Stdin)
+	}
 
 	r.result.Started = time.Now().UTC()
 	if err := r.cmd.Start(); err != nil {
@@ -158,7 +162,8 @@ func (r *Runner) Start(ctx context.Context, proto Command) error {
 	if r.stderrFunc != nil {
 		go r.processStderr(ctx, stderr)
 	}
-	go r.wait(r.cmd)
+
+	go r.wait(r.cmd, &buf)
 	return nil
 }
 
@@ -207,7 +212,7 @@ func (r *Runner) processStderr(ctx context.Context, stderr io.Reader) {
 	}
 }
 
-func (r *Runner) wait(cmd *exec.Cmd) {
+func (r *Runner) wait(cmd *exec.Cmd, bufp *bytes.Buffer) {
 	err := cmd.Wait()
 	if r.cancelFunc != nil {
 		r.cancelFunc()
@@ -215,6 +220,9 @@ func (r *Runner) wait(cmd *exec.Cmd) {
 	stopped := time.Now().UTC()
 
 	r.mx.Lock()
+	// forces a copy of a stdout buffer, so Result owns
+	// the data
+	r.result.Stdout = append([]byte(nil), bufp.Bytes()...)
 	r.result.Stopped = stopped
 	r.result.State = cmd.ProcessState
 	r.result.Err = err

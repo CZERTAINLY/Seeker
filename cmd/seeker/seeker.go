@@ -26,7 +26,7 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Config) (Seeker, error) {
+func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}

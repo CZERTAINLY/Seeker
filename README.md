@@ -258,16 +258,91 @@ service:
       duration: "P1DT2H3M4S"
 ```
 
-# Config file format specification
+# Developers
+
+Following section is intended for developers
+
+## Architecture
+
+`seeker` is a single binary with two cooperating modes triggered by `run`.
+
+Supervisor (default when running `seeker run`):
+1. Parses the `service:` configuration and initializes runtime (logging, repository, mode).
+2. Sets up resources per selected mode.
+3. Spawns a scan as a separate subprocess (`seeker _scan`).
+4. Enforces single-scan execution (queues/rejects concurrent scans) and waits for completion.
+5. Collects results and outputs them (print/store/upload) per configuration.
+
+Scan (invoked internally as `seeker _scan`):
+- Performs the actual scanning work.
+- Uses the same base configuration, focusing on scan-related fields.
+- Returns detections/results to the supervisor for further handling.
+
+Supervisor and scan communicate over stdin/stdout for portability across all supported platforms. The supervisor sends scan configuration via stdin; the scan writes results to stdout and errors to stderr.
+
+## The detector interface
+
+The filesystem/container detectors are based around `scan.Detector` interface. In order to implement new scanning method, the `Detect` method is what is needed to be implemented. For details open the file and follow the comments of an interface.
+
+```go
+//internal/model/detection.go
+import cdx "github.com/CycloneDX/cyclonedx-go"
+type Detection struct {
+	Path         string
+	Components   []cdx.Component
+	Dependencies []cdx.Dependency
+}
+// internal/scan/scan.go
+type Detector interface {
+	Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error)
+}
+```
+
+Existing detectors (gitleaks and x509) are initialized in `main.go` and passed down to the seeker in `_scan` subcommand
+
+```go
+// cmd/seeker/main.go
+func init() {
+	// user configuration
+	d, err := os.UserConfigDir()
+	if err != nil {
+		panic(err)
+	}
+	userConfigPath = filepath.Join(d, "seeker")
+
+	// configure default detectors
+	// secrets:
+	leaks, err := gitleaks.NewDetector()
+	if err != nil {
+		panic(err)
+	}
+
+	// certificates:
+	detectors = []scan.Detector{
+		x509.Detector{},
+		leaks,
+	}
+}
+// func do Scan
+	seeker, err := NewSeeker(ctx, detectors, config)
+```
+
+## Config file format specification
 
 See [docs/config.cue] for a specification and (manual-config.yaml)[docs/manual-config.yaml] for an example config.
 
-# Fast unit test execution
+There are two main objects
 
-Some tests like nmap scan or a walk.Images, which inspect all docker images
-found can run too long when executed.
+1. Supervisor + _scan config in `#Config` (presented by `model.Config`)
+2. _scan only subset in `#Scan` (presented by `model.Scan`)
 
-It is advised to run unit tests with `-short` parameter in order to get the
-result as fast as possible for a developer. Github actions runs a full suite
-on every PR.
+The split allows code to:
+- Treat long‑lived supervisor settings as immutable while permitting hot reload of just scan parameters.
+- Reuse the same CUE and Go validation fragments for both full and subset configs.
+- Minimize data passed over the HTTP API (only `#Scan` fields) while retaining a canonical persisted `#Config`.
+- Decouple operational concerns (service mode, repository) from per‑scan tunables (paths, containers, ports).
+- Simplify testing (small #Scan fixtures) and enable merging (#Config baseline + #Scan override) without redefining schema.
 
+## Fast unit test execution
+
+Some tests (e.g. nmap scans or walk.Images enumerating all Docker images) can run for a long time. Use go test -short during local development for faster feedback. GitHub Actions runs the full test suite on each PR.

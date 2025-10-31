@@ -15,7 +15,29 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 )
 
+// Detector provides content analysis for a single file.
+// Detect receives the file content (b) and its path, returning any detections found.
+// ctx may be used to cancel long-running work.
+// It returns a slice of model.Detection (possibly empty) or an error.
+// Implementations should avoid modifying b and be concurrency-safe if used in parallel.
 type Detector interface {
+	// Detect analyzes the provided file content.
+	//
+	// Parameters:
+	//   ctx  - cancellation / deadline context; implementations must honor ctx.Done().
+	//   b    - complete file contents (immutable; do not modify).
+	//   path - logical or filesystem path to the content; treat only as a string
+	//          for allow/ignore pattern evaluation (avoid parsing or resolving).
+	//
+	// Returns:
+	//   []model.Detection - zero or more findings (empty slice if none; may be nil if implementations choose).
+	//   error             - non-nil if the analysis failed; return partial results only if clearly documented.
+	//
+	// Concurrency:
+	//   Implementations should be safe for concurrent use (no shared mutable state without synchronization).
+	//
+	// Side effects:
+	//   Must not mutate input b, and should avoid I/O other than what is required for analysis.
 	Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error)
 }
 

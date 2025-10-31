@@ -13,6 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/kodeart/go-problem/v2 v2.0.3
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/smallstep/pkcs7 v0.2.1
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.11.1
@@ -135,7 +136,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/protocolbuffers/txtpbfmt v0.0.0-20250627152318-f293424e46b5 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.33.0 // indirect
 	github.com/sagikazarmark/locafero v0.11.0 // indirect
 	github.com/scylladb/go-set v1.0.3-0.20200225121959-cc7b2070d91e // indirect
