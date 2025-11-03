@@ -57,7 +57,7 @@ var (
 	reInvalidValueBounds = regexp.MustCompile(`(?i)invalid value %v \(out of bound %s`)
 )
 
-func humanize(err error, config cue.Value) []CueErrorDetail {
+func humanize(err error, config, schema cue.Value) []CueErrorDetail {
 	if err == nil {
 		return nil
 	}
@@ -69,7 +69,7 @@ func humanize(err error, config cue.Value) []CueErrorDetail {
 	for _, e := range cuerrs {
 		raw, args := e.Msg()
 		path := normalizePath(e.Path())
-		code, msg := classify(raw, args, path, config)
+		code, msg := classify(raw, args, path, config, schema)
 
 		pos := position(e)
 		if pos.Filename == "" && len(cuerrs) > 1 {
@@ -232,7 +232,7 @@ func normalizePath(p []string) string {
 	return strings.Join(p, ".")
 }
 
-func classify(raw string, args []any, path string, config cue.Value) (code CueErrorCode, msg string) {
+func classify(raw string, args []any, path string, config, schema cue.Value) (code CueErrorCode, msg string) {
 	switch {
 	case reNotAllowed.MatchString(raw):
 		return CodeUnknownField, fmt.Sprintf("Field %s is not allowed", last(path))
@@ -243,19 +243,19 @@ func classify(raw string, args []any, path string, config cue.Value) (code CueEr
 		}
 		return CodeMissingRequired, fmt.Sprintf("Field %s is required", last(path))
 	case reConflict.MatchString(raw):
-		return furtherClassify(CodeConflictingValues, raw, args, path, config)
+		return furtherClassify(CodeConflictingValues, raw, args, path, config, schema)
 	case reEnum.MatchString(raw):
 		return CodeInvalidEnum, fmt.Sprintf("Field %s has invalid value", last(path))
 	case reExpectedGot.MatchString(raw):
 		return CodeTypeMismatch, fmt.Sprintf("Field %s has wrong type/value", last(path))
 	case reInvalidValueBounds.MatchString(raw):
-		return furtherClassify(CodeValidationError, raw, args, path, config)
+		return furtherClassify(CodeValidationError, raw, args, path, config, schema)
 	default:
 		return CodeValidationError, raw
 	}
 }
 
-func furtherClassify(in CueErrorCode, raw string, args []any, path string, config cue.Value) (code CueErrorCode, msg string) {
+func furtherClassify(in CueErrorCode, raw string, args []any, path string, config, schema cue.Value) (code CueErrorCode, msg string) {
 	asStr := func(x any) string {
 		return fmt.Sprintf("%s", x)
 	}
@@ -285,14 +285,14 @@ func furtherClassify(in CueErrorCode, raw string, args []any, path string, confi
 		msg = fmt.Sprintf("Field %s is invalid: %s", last(path), msg)
 	case CodeConflictingValues:
 		if !validMsg {
-			msg = enumPossibilitiesOnConflict(path, config)
+			msg = enumPossibilitiesOnConflict(path, config, schema)
 		}
 		msg = fmt.Sprintf("Conflicting values for %s: %s", last(path), msg)
 	}
 	return
 }
 
-func enumPossibilitiesOnConflict(path string, config cue.Value) (msg string) {
+func enumPossibilitiesOnConflict(path string, config, schema cue.Value) (msg string) {
 	cueValue := lookup(schema, path)
 	values, dflt := enumerate(cueValue)
 	msg = fmt.Sprintf("possible values (%s)", strings.Join(values, ","))

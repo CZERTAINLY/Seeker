@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -38,6 +39,16 @@ const (
 	LogDiscard = "discard"
 )
 
+// Scan is a scanning related config
+type Scan struct {
+	Version    int           `json:"version"` // fixed 0 for now
+	Filesystem Filesystem    `json:"filesystem"`
+	Containers Containers    `json:"containers"`
+	Ports      Ports         `json:"ports"`
+	Service    ServiceFields `json:"service"`
+}
+
+// Config is a supervisor + scan related config
 type Config struct {
 	Version    int        `json:"version"` // fixed 0 for now
 	Filesystem Filesystem `json:"filesystem"`
@@ -76,11 +87,16 @@ type Ports struct {
 	IPv6    bool   `json:"ipv6"`
 }
 
+type ServiceFields struct {
+	Verbose bool   `json:"verbose,omitempty"`
+	Log     string `json:"log,omitempty"` // "stderr"|"stdout"|"discard"|path - defaults to stderr
+}
+
 // Service configuration
 type Service struct {
-	Mode       string         `json:"mode"` // must be "manual" or "timer"
-	Verbose    bool           `json:"verbose,omitempty"`
-	Log        string         `json:"log,omitempty"`                                    // "stderr"|"stdout"|"discard"|path - defaults to stderr
+	ServiceFields `yaml:",inline"`
+
+	Mode       string         `json:"mode"`                                             // must be "manual" or "timer"
 	Dir        string         `json:"dir,omitempty"`                                    // output directory
 	Repository *Repository    `json:"repository,omitempty" yaml:"repository,omitempty"` // remote publication
 	Schedule   *TimerSchedule `json:"schedule,omitempty"`                               // only for mode timer
@@ -112,6 +128,10 @@ func (c Config) IsZero() bool {
 		c.Service.IsZero()
 }
 
+func (c Containers) IsZero() bool {
+	return isZero(c)
+}
+
 func (c Filesystem) IsZero() bool {
 	return isZero(c)
 }
@@ -125,37 +145,92 @@ func (c Service) IsZero() bool {
 	return isZero(c)
 }
 
-func (c *Config) ExpandEnv() {
-	var kids = []interface{ ExpandEnv() }{
-		&c.Filesystem,
-		&c.Containers,
-		&c.Ports,
-		&c.Service,
+func (s *Scan) Merge(newCfg Scan) {
+	if !newCfg.Containers.Config.IsZero() {
+		s.Containers.Config = newCfg.Containers.Config
 	}
-	for _, ee := range kids {
-		ee.ExpandEnv()
+	if !newCfg.Filesystem.IsZero() {
+		s.Filesystem = newCfg.Filesystem
 	}
-}
-
-func (c *Filesystem) ExpandEnv() {
-	c.Paths = expandStrings(c.Paths)
-}
-
-func (c *Containers) ExpandEnv() {
-	for idx, cc := range c.Config {
-		cc.Name = os.ExpandEnv(cc.Name)
-		cc.Host = os.ExpandEnv(cc.Host)
-		cc.Images = expandStrings(cc.Images)
-		c.Config[idx] = cc
+	if !newCfg.Ports.IsZero() {
+		s.Ports = newCfg.Ports
+	}
+	if !isZero(newCfg.Service) {
+		s.Service = newCfg.Service
 	}
 }
 
-func (c *Ports) ExpandEnv() {
-	c.Binary = os.ExpandEnv(c.Binary)
+func expandEnvRecursive[PT configPT](pt PT) {
+	var v any = pt
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer {
+		// require pointer so we can mutate
+		return
+	}
+	rv = rv.Elem()
+	expandValue(rv)
 }
 
-func (c *Service) ExpandEnv() {
-	c.Dir = os.ExpandEnv(c.Dir)
+func expandValue(v reflect.Value) {
+	if !v.IsValid() {
+		return
+	}
+	switch v.Kind() {
+	case reflect.String:
+		if v.CanSet() {
+			v.SetString(os.ExpandEnv(v.String()))
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Field(i)
+			// only exported (CanSet)
+			if f.CanSet() {
+				expandValue(f)
+			} else {
+				// still allow recursive into addressable nested structs
+				if f.Kind() == reflect.Struct {
+					expandValue(f)
+				}
+			}
+		}
+	case reflect.Pointer:
+		if !v.IsNil() {
+			expandValue(v.Elem())
+		}
+	case reflect.Slice:
+		et := v.Type().Elem()
+		switch et.Kind() {
+		case reflect.String:
+			if v.CanSet() {
+				// copy to []string
+				strs := make([]string, v.Len())
+				for i := 0; i < v.Len(); i++ {
+					strs[i] = v.Index(i).String()
+				}
+				strs = expandStrings(strs)
+				// write back
+				for i := 0; i < v.Len() && i < len(strs); i++ {
+					v.Index(i).SetString(strs[i])
+				}
+				// if lengths differ, rebuild slice
+				if len(strs) != v.Len() {
+					newSlice := reflect.MakeSlice(v.Type(), len(strs), len(strs))
+					for i := range strs {
+						newSlice.Index(i).SetString(strs[i])
+					}
+					v.Set(newSlice)
+				}
+			}
+		case reflect.Struct, reflect.Pointer:
+			for i := 0; i < v.Len(); i++ {
+				expandValue(v.Index(i))
+			}
+		default:
+			// other slice types ignored
+		}
+	default:
+		// other kinds ignored
+	}
 }
 
 func expandStrings(slice []string) []string {
@@ -170,8 +245,9 @@ func expandStrings(slice []string) []string {
 var cueSource []byte
 
 var (
-	cueCtx *cue.Context
-	schema cue.Value
+	cueCtx    *cue.Context
+	cueConfig cue.Value
+	cueScan   cue.Value
 )
 
 func init() {
@@ -188,11 +264,19 @@ func init() {
 		panic(err)
 	}
 
-	schema = compiled.LookupPath(cue.ParsePath("#Config"))
-	if schema.Err() != nil {
-		panic(schema.Err())
+	cueConfig = compiled.LookupPath(cue.ParsePath("#Config"))
+	if cueConfig.Err() != nil {
+		panic(cueConfig.Err())
 	}
-	if err := schema.Validate(); err != nil {
+	if err := cueConfig.Validate(); err != nil {
+		panic(err)
+	}
+
+	cueScan = compiled.LookupPath(cue.ParsePath("#ScanConfig"))
+	if cueScan.Err() != nil {
+		panic(cueScan.Err())
+	}
+	if err := cueScan.Validate(); err != nil {
 		panic(err)
 	}
 }
@@ -201,10 +285,84 @@ func init() {
 // NOT SAFE for multiple goroutines
 // Return CueError in a case validation phase fails
 func LoadConfig(r io.Reader) (Config, error) {
-	var zero Config
+	var ret Config
+	if err := loadConfig1(r, &ret, cueConfig); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
+func LoadConfigFromPath(path string) (Config, error) {
+	var ret Config
+	if err := loadConfigFromFile1(path, &ret, cueConfig); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
+// LoadScanConfig loads a scan configuration from io.Reader
+// like LoadConfig validates against CUE schema
+func LoadScanConfig(r io.Reader) (Scan, error) {
+	var ret Scan
+	if err := loadConfig1(r, &ret, cueScan); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
+func LoadScanConfigFromPath(path string) (Scan, error) {
+	var ret Scan
+	if err := loadConfigFromFile1(path, &ret, cueScan); err != nil {
+		return ret, err
+	}
+	return ret, nil
+}
+
+type configPT interface {
+	*Config | *Scan
+}
+
+func loadConfigFromFile1[PT configPT](path string, pt PT, schema cue.Value) error {
+	var r io.Reader
+	if path == "-" {
+		r = os.Stdin
+	} else {
+		f, err := os.Open(path)
+		if err != nil {
+			return fmt.Errorf("error opening config file: %w", err)
+		}
+		r = f
+		defer func() {
+			err := f.Close()
+			if err != nil {
+				slog.Error("can't close config file", "path", path, "error", err)
+			}
+		}()
+	}
+	err := loadConfig1(r, pt, schema)
+	if err != nil {
+		var cuerr CueError
+		ok := errors.As(err, &cuerr)
+		if ok {
+			for _, d := range cuerr.Details() {
+				slog.Error("validation error", d.Attr("detail"))
+			}
+		}
+		return fmt.Errorf("parsing config: %w", err)
+	}
+	return nil
+}
+
+func loadConfig1[PT configPT](r io.Reader, pt PT, schema cue.Value) error {
+	b, err := io.ReadAll(r)
+	if err != nil {
+		return err
+	}
+	r = bytes.NewReader(b)
+
 	yamlFile, err := yaml.Extract("config.yaml", r)
 	if err != nil {
-		return zero, err
+		return err
 	}
 	yamlValue := cueCtx.BuildFile(yamlFile)
 
@@ -213,16 +371,15 @@ func LoadConfig(r io.Reader) (Config, error) {
 		cue.All(),          // all constraints
 		cue.Concrete(true), // no incomplete values
 	); err != nil {
-		return zero, CueError{cuerr: err, config: yamlValue}
+		return CueError{cuerr: err, config: yamlValue, schema: schema}
 	}
 
-	var out Config
-	if err := unified.Decode(&out); err != nil {
-		return zero, err
+	if err := unified.Decode(pt); err != nil {
+		return err
 	}
 
-	out.ExpandEnv()
-	return out, nil
+	expandEnvRecursive(pt)
+	return nil
 }
 
 // CueError provides more user friendly validation errors on top of
@@ -230,6 +387,7 @@ func LoadConfig(r io.Reader) (Config, error) {
 type CueError struct {
 	cuerr  error
 	config cue.Value // content of --config file
+	schema cue.Value // loaded cue schema
 }
 
 // Error implements error interface, returns the string content of underlying
@@ -244,8 +402,8 @@ func (e CueError) Unwrap() error {
 }
 
 // Details provide human-friendlier error messages
-func (c CueError) Details() []CueErrorDetail {
-	return humanize(c.cuerr, c.config)
+func (e CueError) Details() []CueErrorDetail {
+	return humanize(e.cuerr, e.config, e.schema)
 }
 
 // DefaultConfig returns a default configuration for seeker
@@ -274,10 +432,12 @@ func DefaultConfig(ctx context.Context) Config {
 			IPv6:    true,
 		},
 		Service: Service{
-			Mode:    ServiceModeManual,
-			Verbose: true,
-			Log:     "stderr",
-			Dir:     ".",
+			ServiceFields: ServiceFields{
+				Verbose: true,
+				Log:     "stderr",
+			},
+			Mode: ServiceModeManual,
+			Dir:  ".",
 		},
 	}
 

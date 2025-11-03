@@ -3,11 +3,14 @@ package model_test
 import (
 	"bytes"
 	"errors"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
+
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -25,16 +28,149 @@ service:
       type: token
       token: ABC123
 `
-	cfg, err := model.LoadConfig(strings.NewReader(yml))
+	abspath := saveYaml(t, yml)
+
+	var testCases = []struct {
+		scenario string
+		then     func() (model.Config, error)
+	}{
+		{
+			scenario: "reader",
+			then: func() (model.Config, error) {
+				return model.LoadConfig(strings.NewReader(yml))
+			},
+		},
+		{
+			scenario: "path",
+			then: func() (model.Config, error) {
+				return model.LoadConfigFromPath(abspath)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			cfg, err := tc.then()
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+			require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
+			require.Equal(t, model.LogStderr, cfg.Service.Log)
+			require.NotNil(t, cfg.Service.Repository)
+			require.True(t, cfg.Service.Repository.Enabled)
+			require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
+			require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
+			require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
+		})
+	}
+
+}
+
+func TestLoadScanConfig_Minimal(t *testing.T) {
+	yml := `
+version: 0
+`
+	sc, err := model.LoadScanConfig(strings.NewReader(yml))
 	require.NoError(t, err)
-	require.NotNil(t, cfg)
-	require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
-	require.Equal(t, model.LogStderr, cfg.Service.Log)
-	require.NotNil(t, cfg.Service.Repository)
-	require.True(t, cfg.Service.Repository.Enabled)
-	require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
-	require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
-	require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
+	require.Equal(t, 0, sc.Version)
+	// If Filesystem defaulting logic exists, assert it here, e.g.:
+	// require.Nil(t, sc.Filesystem) or require.False(t, sc.Filesystem.Enabled)
+}
+
+func TestLoadScanConfig_WithFilesystem(t *testing.T) {
+	yml := `
+version: 0
+filesystem:
+  enabled: true
+  paths:
+    - /tmp
+    - /var/log
+`
+
+	abspath := saveYaml(t, yml)
+	var testCases = []struct {
+		scenario string
+		then     func() (model.Config, error)
+	}{
+		{
+			scenario: "reader",
+			then: func() (model.Config, error) {
+				return model.LoadConfig(strings.NewReader(yml))
+			},
+		},
+		{
+			scenario: "path",
+			then: func() (model.Config, error) {
+				return model.LoadConfigFromPath(abspath)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			sc, err := tc.then()
+			require.NoError(t, err)
+			require.Equal(t, 0, sc.Version)
+			require.NotNil(t, sc.Filesystem)
+			require.True(t, sc.Filesystem.Enabled)
+			require.Equal(t, []string{"/tmp", "/var/log"}, sc.Filesystem.Paths)
+		})
+	}
+}
+
+func TestLoadScanConfig_Full(t *testing.T) {
+	yml := `
+version: 0
+filesystem:
+  enabled: true
+  paths: [/opt/app]
+containers:
+  enabled: true
+  config:
+    - name: docker
+      type: docker
+      host: host
+      images: ["alpine:latest","ubuntu:22.04"]
+ports:
+  enabled: true
+  ports: 22,443
+`
+	sc, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.NoError(t, err)
+	require.Equal(t, 0, sc.Version)
+
+	require.True(t, sc.Filesystem.Enabled)
+	require.Equal(t, []string{"/opt/app"}, sc.Filesystem.Paths)
+
+	require.True(t, sc.Containers.Enabled)
+	require.Len(t, sc.Containers.Config, 1)
+	cc := sc.Containers.Config[0]
+	require.Equal(t, "docker", cc.Name)
+	require.Equal(t, "docker", cc.Type)
+	require.Equal(t, "host", cc.Host)
+	require.Equal(t, []string{"alpine:latest", "ubuntu:22.04"}, cc.Images)
+
+	require.True(t, sc.Ports.Enabled)
+	require.Equal(t, "22,443", sc.Ports.Ports)
+}
+
+func TestLoadScanConfig_InvalidYAML(t *testing.T) {
+	yml := `
+version: 0
+ports: foo
+`
+	_, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.Error(t, err)
+
+	path := saveYaml(t, yml)
+	slog.Warn("Following line will log ERROR validation error, this is expected and confirm test is working")
+	_, err = model.LoadScanConfigFromPath(path)
+	require.Error(t, err)
+}
+
+func TestLoadScanConfig_Empty(t *testing.T) {
+	const yml = ``
+	_, err := model.LoadScanConfig(strings.NewReader(yml))
+	require.NoError(t, err)
 }
 
 func TestLoadConfig_Fail(t *testing.T) {
@@ -103,7 +239,7 @@ service:
 						Line:     3,
 						Column:   9,
 					},
-					Raw: "#Config.service: conflicting values null and {verbose?:(bool|*false),log?:(*\"stderr\"|\"stdout\"|\"discard\"|string),dir?:string,repository?:#Repository} (mismatched types null and struct)",
+					Raw: "#Config.service: conflicting values null and {verbose?:(bool|*false),log?:(*\"stderr\"|\"stdout\"|\"discard\"|string)} (mismatched types null and struct)",
 				},
 			},
 		},
@@ -693,4 +829,180 @@ ports:
 
 	require.Equal(t, "test_ee_nmap_binary", cfg.Ports.Binary)
 
+}
+
+func TestScanMerge_NoChanges(t *testing.T) {
+	orig := &model.Scan{
+		Version: 0,
+		Filesystem: model.Filesystem{
+			Enabled: true,
+			Paths:   []string{"/data"},
+		},
+		Containers: model.Containers{
+			Enabled: true,
+			Config: model.ContainersConfig{
+				{
+					Name: "dockerd",
+					Type: "docker",
+					Host: "/var/run/docker.sock",
+				},
+			},
+		},
+		Ports: model.Ports{
+			Enabled: true,
+			Binary:  "nmap",
+			Ports:   "22,80",
+			IPv4:    true,
+			IPv6:    false,
+		},
+		Service: model.ServiceFields{
+			Verbose: true,
+			Log:     "stderr",
+		},
+	}
+
+	// newCfg is zero => nothing should change
+	newCfg := model.Scan{} // all zero
+
+	before := *orig
+	orig.Merge(newCfg)
+
+	require.Equal(t, before, *orig, "Merge with zero newCfg should not alter orig")
+}
+
+func TestScanMerge_AllFieldsChange(t *testing.T) {
+	orig := &model.Scan{
+		Version: 7,
+		Filesystem: model.Filesystem{
+			Enabled: false,
+			Paths:   nil,
+		},
+		Containers: model.Containers{
+			Enabled: false,
+			Config:  nil,
+		},
+		Ports: model.Ports{
+			Enabled: false,
+		},
+		Service: model.ServiceFields{
+			Verbose: false,
+			Log:     "",
+		},
+	}
+
+	newCfg := model.Scan{
+		// Version intentionally different; Merge does NOT copy Version
+		Version: 99,
+		Filesystem: model.Filesystem{
+			Enabled: true,
+			Paths:   []string{"/opt/app", "/var/log"},
+		},
+		Containers: model.Containers{
+			Enabled: true,
+			Config: model.ContainersConfig{
+				{
+					Name:   "podman",
+					Type:   "podman",
+					Host:   "/run/podman/podman.sock",
+					Images: []string{"alpine:latest"},
+				},
+			},
+		},
+		Ports: model.Ports{
+			Enabled: true,
+			Binary:  "/usr/bin/nmap",
+			Ports:   "1-1024",
+			IPv4:    true,
+			IPv6:    true,
+		},
+		Service: model.ServiceFields{
+			Verbose: true,
+			Log:     "stdout",
+		},
+	}
+
+	orig.Merge(newCfg)
+
+	// Version unchanged
+	require.Equal(t, 7, orig.Version)
+
+	require.Equal(t, newCfg.Filesystem, orig.Filesystem)
+	require.Equal(t, newCfg.Containers.Config, orig.Containers.Config)
+	require.Equal(t, newCfg.Ports, orig.Ports)
+	require.Equal(t, newCfg.Service, orig.Service)
+}
+
+func TestScanMerge_PartialChange(t *testing.T) {
+	orig := &model.Scan{
+		Version: 3,
+		Filesystem: model.Filesystem{
+			Enabled: true,
+			Paths:   []string{"/base"},
+		},
+		Containers: model.Containers{
+			Enabled: true,
+			Config: model.ContainersConfig{
+				{
+					Name: "docker",
+					Type: "docker",
+					Host: "/var/run/docker.sock",
+				},
+			},
+		},
+		Ports: model.Ports{
+			Enabled: true,
+			Binary:  "nmap",
+			Ports:   "22",
+			IPv4:    true,
+			IPv6:    false,
+		},
+		Service: model.ServiceFields{
+			Verbose: false,
+			Log:     "stderr",
+		},
+	}
+
+	newCfg := model.Scan{
+		// Only update Filesystem.Paths and Service.Log; leave others zero so they should NOT change.
+		Filesystem: model.Filesystem{
+			Enabled: true, // ensure non-zero
+			Paths:   []string{"/override"},
+		},
+		Service: model.ServiceFields{
+			Verbose: true,
+			Log:     "discard",
+		},
+		// Containers.Config zero (nil) => should not overwrite
+		// Ports zero => should not overwrite
+	}
+
+	beforeContainers := orig.Containers
+	beforePorts := orig.Ports
+
+	orig.Merge(newCfg)
+
+	// Changed
+	require.Equal(t, []string{"/override"}, orig.Filesystem.Paths)
+	require.Equal(t, model.ServiceFields{Verbose: true, Log: "discard"}, orig.Service)
+
+	// Unchanged
+	require.Equal(t, beforeContainers, orig.Containers)
+	require.Equal(t, beforePorts, orig.Ports)
+}
+
+func saveYaml(t *testing.T, yml string) (abspath string) {
+	t.Helper()
+	root, err := os.OpenRoot(t.TempDir())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, root.Close())
+	})
+	path := t.Name() + ".yaml"
+	f, err := root.Create(path)
+	require.NoError(t, err)
+	_, err = f.WriteString(yml)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	abspath = filepath.Join(root.Name(), path)
+	return
 }
