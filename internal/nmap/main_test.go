@@ -35,6 +35,10 @@ var (
 	testdata embed.FS
 )
 
+func Testdata() embed.FS {
+	return testdata
+}
+
 func TestMain(m *testing.M) {
 	cert, err := generateSelfSignedCert()
 	if err != nil {
