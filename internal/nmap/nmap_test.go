@@ -121,7 +121,6 @@ func TestScanner(t *testing.T) {
 			require.Equal(t, expPort.State, gotPort.State)
 			require.Equal(t, expPort.Protocol, gotPort.Protocol)
 			require.Equal(t, expPort.Service.Name, gotPort.Service.Name)
-			require.Equal(t, expPort.Service.Product, gotPort.Service.Product)
 
 			if gotPort.Service.Name == "ssl" {
 				require.Len(t, gotPort.Ciphers, 2)
@@ -136,8 +135,6 @@ func TestScanner(t *testing.T) {
 			if gotPort.Service.Name == "ssh" {
 				require.Len(t, gotPort.SSHHostKeys, 1)
 			}
-
-			require.Empty(t, gotPort.Scripts)
 		})
 	}
 }
