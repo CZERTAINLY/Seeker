@@ -110,6 +110,8 @@ func TestScanner(t *testing.T) {
 			require.NoError(t, err)
 			require.NotZero(t, got)
 
+			t.Logf("got:%#+v", got)
+
 			require.Equal(t, tc.then.Address, got.Address)
 			require.Equal(t, tc.then.Status, got.Status)
 			require.Len(t, got.Ports, 1)

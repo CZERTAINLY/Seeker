@@ -10,6 +10,7 @@ import (
 	"os"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
@@ -113,13 +114,12 @@ func goScan(ctx context.Context, scanner *scan.Scan, seq iter.Seq2[walk.Entry, e
 }
 
 func nmapScan(ctx context.Context, scanner nmap.Scanner, ip netip.Addr, detections chan<- model.Detection) {
-	results, err := scanner.Detect(ctx, ip)
+	nmapScan, err := scanner.Scan(ctx, ip)
 	if err != nil {
 		slog.ErrorContext(ctx, "nmap scan failed", "error", err)
 	}
-	for _, d := range results {
-		detections <- d
-	}
+	compos := cdxprops.ParseNmap(ctx, nmapScan)
+	detections <- model.Detection{Path: "nmap", Components: compos}
 }
 
 func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entry, error], error) {

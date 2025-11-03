@@ -202,7 +202,7 @@ func sslEnumCiphers(ctx context.Context, s nmap.Script) []model.SSLEnumCiphers {
 	return ciphers
 }
 
-func cipherSuites(ctx context.Context, tables []nmap.Table) []string {
+func cipherSuites(_ context.Context, tables []nmap.Table) []string {
 	var ret []string
 	for _, row := range tables {
 		if row.Key != "ciphers" {
@@ -219,7 +219,7 @@ func cipherSuites(ctx context.Context, tables []nmap.Table) []string {
 	return ret
 }
 
-func sslCerts(ctx context.Context, s nmap.Script) []model.Finding {
+func sslCerts(_ context.Context, s nmap.Script) []model.Finding {
 	certs := make([]model.Finding, 0, len(s.Elements))
 
 	for _, row := range s.Elements {
@@ -235,7 +235,7 @@ func sslCerts(ctx context.Context, s nmap.Script) []model.Finding {
 	return certs
 }
 
-func sshHostKey(ctx context.Context, s nmap.Script) []model.SSHHostKey {
+func sshHostKey(_ context.Context, s nmap.Script) []model.SSHHostKey {
 	hostKeys := make([]model.SSHHostKey, len(s.Tables))
 
 	for idx, table := range s.Tables {
