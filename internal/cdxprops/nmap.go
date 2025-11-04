@@ -10,47 +10,40 @@ import (
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-var algoMap = map[string]cdx.CryptoAlgorithmProperties{
-	"ecdsa-sha2-nistp256": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "nistp256@1.2.840.10045.3.1.7",
-		Curve:                  "nistp256",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"ecdsa-sha2-nistp384": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "nistp384@1.3.132.0.34",
-		Curve:                  "nistp384",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"ecdsa-sha2-nistp521": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "nistp521@1.3.132.0.35",
-		Curve:                  "nistp521",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"ssh-ed25519": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "ed25519@1.3.101.112",
-		Curve:                  "ed25519",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"rsa-sha2-256": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "rsa@1.2.840.113549.1.1.1",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"rsa-sha2-512": {
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "rsa@1.2.840.113549.1.1.1",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-	"ssh-rsa": { // legacy
-		Primitive:              cdx.CryptoPrimitiveAE,
-		ParameterSetIdentifier: "rsa@1.2.840.113549.1.1.1",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	},
-}
+const (
+	rsaIdentifier = "rsa@1.2.840.113549.1.1.1"
+)
+
+var (
+	cryptoFunctions = &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify}
+	algoMap         = map[string]cdx.CryptoAlgorithmProperties{
+		"ecdsa-sha2-nistp256": {
+			ParameterSetIdentifier: "nistp256@1.2.840.10045.3.1.7",
+			Curve:                  "nistp256",
+		},
+		"ecdsa-sha2-nistp384": {
+			ParameterSetIdentifier: "nistp384@1.3.132.0.34",
+			Curve:                  "nistp384",
+		},
+		"ecdsa-sha2-nistp521": {
+			ParameterSetIdentifier: "nistp521@1.3.132.0.35",
+			Curve:                  "nistp521",
+		},
+		"ssh-ed25519": {
+			ParameterSetIdentifier: "ed25519@1.3.101.112",
+			Curve:                  "ed25519",
+		},
+		"rsa-sha2-256": {
+			ParameterSetIdentifier: rsaIdentifier,
+		},
+		"rsa-sha2-512": {
+			ParameterSetIdentifier: rsaIdentifier,
+		},
+		"ssh-rsa": { // legacy
+			ParameterSetIdentifier: rsaIdentifier,
+		},
+	}
+)
 
 func ParseNmap(ctx context.Context, nmap model.Nmap) []cdx.Component {
 	compos := make([]cdx.Component, 0, len(nmap.Ports))
@@ -172,6 +165,8 @@ func ParseTLSCiphers(ctx context.Context, ciphers []string) *[]cdx.CipherSuite {
 // host key algorithm string. It reports ok=false if the algorithm is unsupported.
 func ParseSSHAlgorithm(algo string) (cdx.CryptoAlgorithmProperties, bool) {
 	p, ok := algoMap[algo]
+	p.Primitive = cdx.CryptoPrimitiveSignature
+	p.CryptoFunctions = cryptoFunctions
 	return p, ok
 }
 
