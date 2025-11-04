@@ -122,19 +122,21 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 	var detectionErrors []error
 	res := make([]model.Detection, 0, 10)
 	for _, detector := range s.detectors {
-
+		var detectCtx = ctx
 		if ld, ok := detector.(interface{ LogAttrs() []slog.Attr }); ok {
-			ctx = log.ContextAttrs(ctx, ld.LogAttrs()...)
+			detectCtx = log.ContextAttrs(ctx, ld.LogAttrs()...)
 		}
 
-		d, err := detector.Detect(ctx, buf, entry.Path())
+		d, err := detector.Detect(detectCtx, buf, entry.Path())
 		s.poolPutCounter.Add(1)
 		s.pool.Put(bp)
 		switch {
 		case err == nil:
 			res = append(res, d...)
 			// file was detected, so no point in trying other detectors
-			goto detectionEnd
+			if len(d) > 0 {
+				goto detectionEnd
+			}
 		case errors.Is(err, model.ErrNoMatch):
 			// ignore ErrNoMatch
 		default:

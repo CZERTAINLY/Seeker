@@ -11,10 +11,13 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
+
+	cdx "github.com/CycloneDX/cyclonedx-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -27,7 +30,7 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Scan) (Seeker, error) {
+func NewSeeker(ctx context.Context, detectors []scan.Detector, leaks *gitleaks.Scanner, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}
@@ -40,6 +43,10 @@ func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Scan
 
 	containers := containers(ctx, config.Containers)
 	nmaps, ips := nmaps(ctx, config.Ports)
+
+	if leaks != nil {
+		detectors = append(detectors, leaksDetector{s: leaks})
+	}
 
 	return Seeker{
 		detectors:   detectors,
@@ -193,4 +200,32 @@ func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr) {
 	}
 
 	return scanners, ips
+}
+
+type leaksDetector struct {
+	s *gitleaks.Scanner
+}
+
+func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	leaks, err := d.s.Scan(ctx, b, path)
+	if err != nil {
+		return nil, err
+	}
+	compos := make([]cdx.Component, 0, len(leaks))
+	for _, leak := range leaks {
+		compo := cdxprops.LeakToComponent(leak)
+		if leak.RuleID == "" {
+			continue
+		}
+		compos = append(compos, compo)
+	}
+	return []model.Detection{
+		{Components: compos},
+	}, nil
+}
+
+func (d leaksDetector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "gitleaks"),
+	}
 }

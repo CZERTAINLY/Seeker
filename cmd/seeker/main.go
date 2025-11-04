@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	detectors []scan.Detector
+	detectors    []scan.Detector
+	leaksScanner *gitleaks.Scanner
 
 	userConfigPath string // /default/config/path/seeker on given OS
 	configPath     string // actual config file used (if loaded)
@@ -63,9 +64,9 @@ func init() {
 	}
 	userConfigPath = filepath.Join(d, "seeker")
 
-	// configure default detectors
+	// configure default scanner
 	// secrets:
-	leaks, err := gitleaks.NewDetector()
+	leaksScanner, err = gitleaks.NewScanner()
 	if err != nil {
 		panic(err)
 	}
@@ -73,7 +74,6 @@ func init() {
 	// certificates:
 	detectors = []scan.Detector{
 		x509.Detector{},
-		leaks,
 	}
 }
 
@@ -141,7 +141,22 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 	config, err := model.LoadScanConfigFromPath(configPath)
 	if err != nil {
-		return err
+		// fallback to the service config - if config does not comes from stdin
+		// this allows one to debug the scanning part directly while using the same
+		// seeker.yaml as with a supervisor.
+		if configPath != "-" {
+			serviceConfig, err := model.LoadConfigFromPath(configPath)
+			if err != nil {
+				return err
+			}
+			config = model.Scan{
+				Version:    0,
+				Filesystem: serviceConfig.Filesystem,
+				Containers: serviceConfig.Containers,
+				Ports:      serviceConfig.Ports,
+				Service:    serviceConfig.Service.ServiceFields,
+			}
+		}
 	}
 
 	// --verbose has a precedence over config file
@@ -156,7 +171,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "_scan", "configPath", configPath)
 	slog.DebugContext(ctx, "_scan", "config", config)
 
-	seeker, err := NewSeeker(ctx, detectors, config)
+	seeker, err := NewSeeker(ctx, detectors, leaksScanner, config)
 	if err != nil {
 		return err
 	}
