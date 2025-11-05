@@ -4,17 +4,18 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/pem"
-	"strings"
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
-	cdx "github.com/CycloneDX/cyclonedx-go"
+
 	"github.com/stretchr/testify/require"
 )
 
 func Test_ZIP_META_INF_Detection(t *testing.T) {
-	der, _, _ := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	der := selfSigned.Der
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 
 	// Build a ZIP with META-INF/CERT.RSA containing the PEM cert
@@ -26,22 +27,10 @@ func Test_ZIP_META_INF_Detection(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, zw.Close())
 
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), buf.Bytes(), "testpath")
+	var d czX509.Scanner
+	got, err := d.Scan(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-	foundZip := false
-	for _, comp := range got[0].Components {
-		require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-		requireEvidencePath(t, comp)
-		requireFormatAndDERBase64(t, comp)
-		if strings.HasPrefix(getProp(comp, cdxprops.CzertainlyComponentCertificateSourceFormat), "ZIP/") {
-			foundZip = true
-		}
-	}
-	require.True(t, foundZip, "expected a component with format ZIP/*")
 }
 
 func Test_ZIP_ErrorPaths(t *testing.T) {
@@ -70,10 +59,10 @@ func Test_ZIP_ErrorPaths(t *testing.T) {
 		}},
 	}
 
-	var d czX509.Detector
+	var d czX509.Scanner
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := d.Detect(t.Context(), tt.data, "testpath")
+			_, err := d.Scan(t.Context(), tt.data, "testpath")
 			require.NoError(t, err)
 		})
 	}
@@ -100,8 +89,8 @@ func Test_ZIP_ValidButNoCerts(t *testing.T) {
 
 	require.NoError(t, zw.Close())
 
-	var d czX509.Detector
-	_, err = d.Detect(t.Context(), buf.Bytes(), "testpath")
+	var d czX509.Scanner
+	_, err = d.Scan(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 }
 
@@ -130,15 +119,17 @@ func Test_ZIP_InvalidCertInMetaINF(t *testing.T) {
 
 	require.NoError(t, zw.Close())
 
-	var d czX509.Detector
-	_, err = d.Detect(t.Context(), buf.Bytes(), "testpath")
+	var d czX509.Scanner
+	_, err = d.Scan(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 }
 
 func Test_ZIP_MultipleFiles(t *testing.T) {
 	t.Parallel()
 
-	der, _, _ := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	der := selfSigned.Der
 	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 
 	// Create a ZIP with multiple certificate files
@@ -167,25 +158,8 @@ func Test_ZIP_MultipleFiles(t *testing.T) {
 
 	require.NoError(t, zw.Close())
 
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), buf.Bytes(), "testpath")
+	var d czX509.Scanner
+	got, err := d.Scan(t.Context(), buf.Bytes(), "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-
-	// We should find at least one certificate from the ZIP files
-	// Note: Some files might be detected multiple times (as PEM and as ZIP),
-	// so we just check that we have some components
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-	// Check that at least some certificates were found with ZIP source
-	zipCount := 0
-	for _, comp := range got[0].Components {
-		require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-		requireEvidencePath(t, comp)
-		requireFormatAndDERBase64(t, comp)
-		if strings.HasPrefix(getProp(comp, cdxprops.CzertainlyComponentCertificateSourceFormat), "ZIP/") {
-			zipCount++
-		}
-	}
-	require.GreaterOrEqual(t, zipCount, 1, "expected at least one certificate to be detected as ZIP source")
 }

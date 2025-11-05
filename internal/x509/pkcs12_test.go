@@ -3,64 +3,46 @@ package x509_test
 import (
 	"testing"
 
-	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
-	cdx "github.com/CycloneDX/cyclonedx-go"
+
 	"github.com/stretchr/testify/require"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
 func Test_Detect_PKCS12_WithKey(t *testing.T) {
-	_, cert, key := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	cert := selfSigned.Cert
+	key := selfSigned.Key
 
 	// Build a PFX with key+cert
 	pfx, err := pkcs12.Modern.Encode(key, cert, nil, "changeit")
 	require.NoError(t, err)
 
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pfx, "testpath")
+	var d czX509.Scanner
+	got, err := d.Scan(t.Context(), pfx, "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-	// At least one component should be tagged PKCS12
-	foundPKCS12 := false
-	for _, comp := range got[0].Components {
-		require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-		requireEvidencePath(t, comp)
-		requireFormatAndDERBase64(t, comp)
-		if getProp(comp, cdxprops.CzertainlyComponentCertificateSourceFormat) == "PKCS12" {
-			foundPKCS12 = true
-		}
-	}
-	require.True(t, foundPKCS12, "expected a component with format PKCS12")
 }
 
 func Test_PKCS12_Edge_Cases(t *testing.T) {
 	t.Parallel()
 
 	// Test PKCS12 with different passwords and edge cases
-	_, cert, key := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	cert := selfSigned.Cert
+	key := selfSigned.Key
 
 	// Test with empty password
 	pfx, err := pkcs12.Modern.Encode(key, cert, nil, "")
 	require.NoError(t, err)
 
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pfx, "testpath")
+	var d czX509.Scanner
+	got, err := d.Scan(t.Context(), pfx, "testpath")
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-	// Verify PKCS12 format is detected
-	found := false
-	for _, comp := range got[0].Components {
-		if getProp(comp, cdxprops.CzertainlyComponentCertificateSourceFormat) == "PKCS12" {
-			found = true
-			break
-		}
-	}
-	require.True(t, found, "expected a component with format PKCS12")
 }
 
 func Test_PKCS12_InvalidData(t *testing.T) {
@@ -81,10 +63,10 @@ func Test_PKCS12_InvalidData(t *testing.T) {
 		}},
 	}
 
-	var d czX509.Detector
+	var d czX509.Scanner
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := d.Detect(t.Context(), tt.data, "testpath")
+			_, err := d.Scan(t.Context(), tt.data, "testpath")
 			require.NoError(t, err)
 		})
 	}

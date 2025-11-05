@@ -7,11 +7,11 @@ import (
 	"log/slog"
 )
 
-// pemDetector handles PEM block detection for certificates, PKCS7, and PKCS12
-type pemDetector struct{}
+// pemScanner handles PEM block detection for certificates, PKCS7, and PKCS12
+type pemScanner struct{}
 
-// detect finds all certificates in PEM blocks
-func (d pemDetector) detect(ctx context.Context, b []byte) []certHit {
+// scan finds all certificates in PEM blocks
+func (d pemScanner) scan(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting ALL PEM blocks anywhere in the blob (handles leading text)")
 
 	var out []certHit

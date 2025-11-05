@@ -9,11 +9,11 @@ import (
 	"strings"
 )
 
-// zipDetector handles ZIP/JAR/APK META-INF certificate detection
-type zipDetector struct{}
+// zipScanner handles ZIP/JAR/APK META-INF certificate detection
+type zipScanner struct{}
 
-// detect finds certificates in ZIP files (typically in META-INF for signed Java/Android artifacts)
-func (d zipDetector) detect(ctx context.Context, b []byte) []certHit {
+// scan finds certificates in ZIP files (typically in META-INF for signed Java/Android artifacts)
+func (d zipScanner) scan(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting ZIP/JAR/APK META-INF")
 
 	var out []certHit

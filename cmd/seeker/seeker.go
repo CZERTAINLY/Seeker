@@ -16,6 +16,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
+	"github.com/CZERTAINLY/Seeker/internal/x509"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"golang.org/x/sync/errgroup"
@@ -30,7 +31,7 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, detectors []scan.Detector, leaks *gitleaks.Scanner, config model.Scan) (Seeker, error) {
+func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitleaks.Scanner, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}
@@ -44,8 +45,10 @@ func NewSeeker(ctx context.Context, detectors []scan.Detector, leaks *gitleaks.S
 	containers := containers(ctx, config.Containers)
 	nmaps, ips := nmaps(ctx, config.Ports)
 
-	if leaks != nil {
-		detectors = append(detectors, leaksDetector{s: leaks})
+	detectors := make([]scan.Detector, 0, 2)
+	detectors = append(detectors, x509Detector{s: x509Scanner})
+	if leaksScanner != nil {
+		detectors = append(detectors, leaksDetector{s: leaksScanner})
 	}
 
 	return Seeker{
@@ -227,5 +230,35 @@ func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]mod
 func (d leaksDetector) LogAttrs() []slog.Attr {
 	return []slog.Attr{
 		slog.String("detector", "gitleaks"),
+	}
+}
+
+type x509Detector struct {
+	s x509.Scanner
+}
+
+func (d x509Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	hits, err := d.s.Scan(ctx, b, path)
+	if err != nil {
+		return nil, err
+	}
+
+	compos := make([]cdx.Component, 0, len(hits))
+	for _, hit := range hits {
+		compo, err := cdxprops.CertHitToComponent(ctx, hit)
+		if err != nil {
+			slog.WarnContext(ctx, "can't convert certificate to cdx.Component", "error", err, "path", hit.Location, "source", hit.Source)
+			continue
+		}
+		compos = append(compos, compo)
+	}
+	return []model.Detection{
+		{Components: compos},
+	}, nil
+}
+
+func (s x509Detector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "x509"),
 	}
 }

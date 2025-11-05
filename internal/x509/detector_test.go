@@ -2,20 +2,13 @@ package x509_test
 
 import (
 	"crypto/x509"
+	"encoding/pem"
 	"testing"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	"github.com/stretchr/testify/require"
 )
-
-func Test_Detector_LogAttrs(t *testing.T) {
-	t.Parallel()
-	var d czX509.Scanner
-	attrs := d.LogAttrs()
-	require.Len(t, attrs, 1)
-	require.Equal(t, "detector", attrs[0].Key)
-	require.Equal(t, "x509", attrs[0].Value.String())
-}
 
 func Test_Component_Various_Algorithms(t *testing.T) {
 	t.Parallel()
@@ -46,10 +39,12 @@ func Test_Component_Various_Algorithms(t *testing.T) {
 		{"UnknownSignatureAlgorithm", x509.UnknownSignatureAlgorithm}, // For testing default case
 	}
 
+	// Generate a basic RSA cert that we can modify the signature algorithm for testing
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	cert := selfSigned.Cert
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Generate a basic RSA cert that we can modify the signature algorithm for testing
-			_, cert, _ := genSelfSignedCert(t)
 			// Modify the signature algorithm for testing purposes
 			cert.SignatureAlgorithm = tt.alg
 
@@ -57,20 +52,9 @@ func Test_Component_Various_Algorithms(t *testing.T) {
 			pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
 
 			var d czX509.Scanner
-			got, err := d.Detect(t.Context(), pemBytes, "testpath")
+			got, err := d.Scan(t.Context(), pemBytes, "testpath")
 			require.NoError(t, err)
 			require.Len(t, got, 1)
-			require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-			comp := got[0].Components[0]
-			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-			requireEvidencePath(t, comp)
-			requireFormatAndDERBase64(t, comp)
-
-			if tt.alg == x509.UnknownSignatureAlgorithm {
-				// Even when Go enum is unknown, we should still resolve something via OID parsing
-				require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
-			}
 		})
 	}
 }

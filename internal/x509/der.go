@@ -6,11 +6,11 @@ import (
 	"log/slog"
 )
 
-// derDetector handles raw DER certificate detection
-type derDetector struct{}
+// derScanner handles raw DER certificate detection
+type derScanner struct{}
 
-// detect finds certificates in raw DER format (single or concatenated)
-func (d derDetector) detect(ctx context.Context, b []byte) []certHit {
+// scan finds certificates in raw DER format (single or concatenated)
+func (d derScanner) scan(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting Raw DER: single/concatenated certs, or DER-encoded PKCS#7")
 
 	var out []certHit

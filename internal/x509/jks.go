@@ -10,11 +10,11 @@ import (
 	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
 )
 
-// jksDetector handles JKS/JCEKS keystore detection
-type jksDetector struct{}
+// jksScanner handles JKS/JCEKS keystore detection
+type jksScanner struct{}
 
-// detect finds certificates in JKS/JCEKS keystores
-func (d jksDetector) detect(ctx context.Context, b []byte) []certHit {
+// scan finds certificates in JKS/JCEKS keystores
+func (d jksScanner) scan(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting JKS / JCEKS (Java keystores)")
 
 	var out []certHit

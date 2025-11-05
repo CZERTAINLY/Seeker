@@ -3,7 +3,6 @@ package x509
 import (
 	"context"
 	"crypto/sha256"
-	"log/slog"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 )
@@ -21,12 +20,6 @@ func (s Scanner) Scan(ctx context.Context, b []byte, path string) ([]model.CertH
 	}
 
 	return hits, nil
-}
-
-func (s Scanner) LogAttrs() []slog.Attr {
-	return []slog.Attr{
-		slog.String("detector", "x509"),
-	}
 }
 
 // -------- Certificate extraction (multi-source) --------

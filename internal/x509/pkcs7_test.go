@@ -3,6 +3,7 @@ package x509_test
 import (
 	"testing"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
 	"github.com/stretchr/testify/require"
 )
@@ -39,10 +40,10 @@ func Test_PKCS7_InvalidData(t *testing.T) {
 		}},
 	}
 
-	var d czX509.Detector
+	var d czX509.Scanner
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := d.Detect(t.Context(), tt.data, "testpath")
+			_, err := d.Scan(t.Context(), tt.data, "testpath")
 			// no error should be returned
 			require.NoError(t, err)
 		})
@@ -57,19 +58,21 @@ func Test_OidHasPrefix(t *testing.T) {
 	// We need to use reflection or add it as an exposed function for testing
 
 	// Create test PKCS7 data that would exercise the sniffing
-	der, _, _ := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	der := selfSigned.Der
 
 	// Try with malformed PKCS7 data to exercise the oidHasPrefix path
 	// This is a bit indirect but will exercise the code paths
 	badData := []byte{0x30, 0x82, 0x01, 0x23} // partial ASN.1 SEQUENCE
 
-	var d czX509.Detector
-	_, err := d.Detect(t.Context(), badData, "testpath")
+	var d czX509.Scanner
+	_, err = d.Scan(t.Context(), badData, "testpath")
 	// no error should be returned
 	require.NoError(t, err)
 
 	// Test with real certificate that might go through DER detection
-	_, err = d.Detect(t.Context(), der, "testpath")
+	_, err = d.Scan(t.Context(), der, "testpath")
 	require.NoError(t, err) // Should succeed
 }
 
@@ -85,8 +88,8 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 		0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x20, 0x54, 0x65, 0x73, 0x74, 0x21, 0x00, 0x00, // "Hello World Test!"
 	}
 
-	var d czX509.Detector
-	_, err := d.Detect(t.Context(), testData, "testpath")
+	var d czX509.Scanner
+	_, err := d.Scan(t.Context(), testData, "testpath")
 	// This should trigger the oidHasPrefix function with a PKCS7 OID but fail to parse as valid PKCS7
 	require.NoError(t, err)
 
@@ -98,7 +101,7 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 		0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x20, 0x54, 0x65, 0x73, 0x74, 0x21, 0x00, 0x00, // "Hello World Test!"
 	}
 
-	_, err = d.Detect(t.Context(), testDataWrongOID, "testpath")
+	_, err = d.Scan(t.Context(), testDataWrongOID, "testpath")
 	// This should also fail to find certificates
 	require.NoError(t, err)
 
@@ -110,6 +113,6 @@ func Test_oidHasPrefix_Direct(t *testing.T) {
 		0x54, 0x65, 0x73, 0x74, 0x20, 0x64, 0x61, 0x74, 0x61, // "Test data"
 	}
 
-	_, err = d.Detect(t.Context(), testDataShortOID, "testpath")
+	_, err = d.Scan(t.Context(), testDataShortOID, "testpath")
 	require.NoError(t, err)
 }
