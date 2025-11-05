@@ -3,46 +3,27 @@ package x509
 import (
 	"context"
 	"crypto/sha256"
-	"crypto/x509"
 	"log/slog"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
-
-	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// ---- internal type to carry source/format label ----
+type certHit = model.CertHit
 
-type certHit struct {
-	Cert   *x509.Certificate
-	Source string // e.g., "PEM", "DER", "PKCS7-PEM", "PKCS7-DER", "PKCS12", "JKS", "JCEKS", "ZIP/<subsource>"
-}
+// Scanner tries to parse the X509 certificate(s) and return a proper hit objects
+type Scanner struct{}
 
-// Detector tries to parse the X509 certificate(s) and return a proper detection object
-type Detector struct{}
-
-func (d Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+func (s Scanner) Scan(ctx context.Context, b []byte, path string) ([]model.CertHit, error) {
 	hits := findAllCerts(ctx, b)
-	if len(hits) == 0 {
-		return nil, nil
+
+	for idx := range hits {
+		hits[idx].Location = path
 	}
 
-	components := make([]cdx.Component, 0, len(hits))
-	for _, h := range hits {
-		component, err := toComponent(ctx, h.Cert, path, h.Source)
-		if err != nil {
-			return nil, err
-		}
-		components = append(components, component)
-	}
-
-	return []model.Detection{{
-		Path:       path,
-		Components: components,
-	}}, nil
+	return hits, nil
 }
 
-func (d Detector) LogAttrs() []slog.Attr {
+func (s Scanner) LogAttrs() []slog.Attr {
 	return []slog.Attr{
 		slog.String("detector", "x509"),
 	}
@@ -50,12 +31,12 @@ func (d Detector) LogAttrs() []slog.Attr {
 
 // -------- Certificate extraction (multi-source) --------
 
-// detector interface for certificate detection
-type detector interface {
-	detect(ctx context.Context, b []byte) []certHit
+// scanner interface for certificate detection
+type scanner interface {
+	scan(ctx context.Context, b []byte) []model.CertHit
 }
 
-func findAllCerts(ctx context.Context, b []byte) []certHit {
+func findAllCerts(ctx context.Context, b []byte) []model.CertHit {
 	seen := make(map[[32]byte]struct{})
 	add := func(hits []certHit, out *[]certHit) {
 		for _, h := range hits {
@@ -73,18 +54,18 @@ func findAllCerts(ctx context.Context, b []byte) []certHit {
 
 	out := make([]certHit, 0, 4)
 
-	// Initialize all detectors
-	detectors := []detector{
-		pemDetector{},    // 1) PEM blocks (handles certificates, PKCS7, PKCS12 in PEM)
-		jksDetector{},    // 2) JKS / JCEKS (Java keystores)
-		pkcs12Detector{}, // 3) PKCS#12 (PFX)
-		derDetector{},    // 4) Raw DER (single/concatenated certs, or DER-encoded PKCS#7)
-		zipDetector{},    // 5) ZIP/JAR/APK META-INF
+	// Initialize all scanners
+	scanners := []scanner{
+		pemScanner{},    // 1) PEM blocks (handles certificates, PKCS7, PKCS12 in PEM)
+		jksScanner{},    // 2) JKS / JCEKS (Java keystores)
+		pkcs12Scanner{}, // 3) PKCS#12 (PFX)
+		derScanner{},    // 4) Raw DER (single/concatenated certs, or DER-encoded PKCS#7)
+		zipScanner{},    // 5) ZIP/JAR/APK META-INF
 	}
 
 	// Run all detectors
-	for _, d := range detectors {
-		hits := d.detect(ctx, b)
+	for _, d := range scanners {
+		hits := d.scan(ctx, b)
 		add(hits, &out)
 	}
 

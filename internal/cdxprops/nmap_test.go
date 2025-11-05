@@ -212,7 +212,7 @@ func TestParseNmap_TLS(t *testing.T) {
 						},
 					},
 				},
-				TLSCerts: []model.Finding{
+				TLSCerts: []model.PEMHit{
 					{
 						Raw: []byte(`-----BEGIN CERTIFICATE-----
 MIICywxhaWxob3N0MB4XDTIxMTAzMjA0NzU5WhcNMjUxMTAzMjE0NzU5WjAUMRIw

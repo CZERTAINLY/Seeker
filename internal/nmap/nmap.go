@@ -219,13 +219,13 @@ func cipherSuites(_ context.Context, tables []nmap.Table) []string {
 	return ret
 }
 
-func sslCerts(_ context.Context, s nmap.Script) []model.Finding {
-	certs := make([]model.Finding, 0, len(s.Elements))
+func sslCerts(_ context.Context, s nmap.Script) []model.PEMHit {
+	certs := make([]model.PEMHit, 0, len(s.Elements))
 
 	for _, row := range s.Elements {
 		if row.Key == "pem" {
 			val := html.UnescapeString(row.Value)
-			certs = append(certs, model.Finding{
+			certs = append(certs, model.PEMHit{
 				Raw:      []byte(val),
 				Location: "",
 				Source:   "nmap",

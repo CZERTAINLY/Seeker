@@ -1,6 +1,7 @@
-package x509_test
+package cdxprops_test
 
 import (
+	"crypto/dsa" //nolint:staticcheck // seeker is going to recognize even obsoleted crypto
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -9,7 +10,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/pem"
 	"fmt"
 	"math/big"
 	"path/filepath"
@@ -17,68 +17,13 @@ import (
 	"testing"
 	"time"
 
-	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
+
 	"github.com/stretchr/testify/require"
 )
-
-func Test_Component_Various_Algorithms(t *testing.T) {
-	t.Parallel()
-
-	// Test various signature algorithms and key types by generating certificates
-	// This test primarily exists to improve coverage of readSignatureAlgorithmRef
-	// and readSubjectPublicKeyRef functions
-
-	tests := []struct {
-		name string
-		alg  x509.SignatureAlgorithm
-	}{
-		{"MD5WithRSA", x509.MD5WithRSA},
-		{"SHA1WithRSA", x509.SHA1WithRSA},
-		{"SHA256WithRSA", x509.SHA256WithRSA},
-		{"SHA384WithRSA", x509.SHA384WithRSA},
-		{"SHA512WithRSA", x509.SHA512WithRSA},
-		{"DSAWithSHA1", x509.DSAWithSHA1},
-		{"DSAWithSHA256", x509.DSAWithSHA256},
-		{"ECDSAWithSHA1", x509.ECDSAWithSHA1},
-		{"ECDSAWithSHA256", x509.ECDSAWithSHA256},
-		{"ECDSAWithSHA384", x509.ECDSAWithSHA384},
-		{"ECDSAWithSHA512", x509.ECDSAWithSHA512},
-		{"SHA256WithRSAPSS", x509.SHA256WithRSAPSS},
-		{"SHA384WithRSAPSS", x509.SHA384WithRSAPSS},
-		{"SHA512WithRSAPSS", x509.SHA512WithRSAPSS},
-		{"PureEd25519", x509.PureEd25519},
-		{"UnknownSignatureAlgorithm", x509.UnknownSignatureAlgorithm}, // For testing default case
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Generate a basic RSA cert that we can modify the signature algorithm for testing
-			_, cert, _ := genSelfSignedCert(t)
-			// Modify the signature algorithm for testing purposes
-			cert.SignatureAlgorithm = tt.alg
-
-			// Convert to PEM and run detection
-			pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-
-			var d czX509.Detector
-			got, err := d.Detect(t.Context(), pemBytes, "testpath")
-			require.NoError(t, err)
-			require.Len(t, got, 1)
-			require.GreaterOrEqual(t, len(got[0].Components), 1)
-
-			comp := got[0].Components[0]
-			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-			requireEvidencePath(t, comp)
-			requireFormatAndDERBase64(t, comp)
-
-			if tt.alg == x509.UnknownSignatureAlgorithm {
-				// Even when Go enum is unknown, we should still resolve something via OID parsing
-				require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
-			}
-		})
-	}
-}
 
 func Test_Component_Edge_Cases(t *testing.T) {
 	t.Parallel()
@@ -86,34 +31,37 @@ func Test_Component_Edge_Cases(t *testing.T) {
 	// Test edge cases for component creation to improve coverage
 
 	// Test with certificate that has no serial number (edge case)
-	_, cert, _ := genSelfSignedCert(t)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	cert := selfSigned.Cert
 
 	// Create a certificate with some edge cases
 	cert.SerialNumber = big.NewInt(0) // Edge case: zero serial number
 
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-
 	testPath, _ := filepath.Abs("testpath.crt")
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, testPath)
-	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
-	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	require.NotNil(t, comp.Evidence)
-	require.NotNil(t, comp.Evidence.Occurrences)
-	require.GreaterOrEqual(t, len(*comp.Evidence.Occurrences), 1)
-	loc := (*comp.Evidence.Occurrences)[0].Location
+	hit := model.CertHit{
+		Cert:     cert,
+		Source:   "TEST",
+		Location: testPath,
+	}
+	compo, err := cdxprops.CertHitToComponent(t.Context(), hit)
+	require.NoError(t, err)
+	require.NotZero(t, compo)
+
+	require.Equal(t, cdx.ComponentTypeCryptographicAsset, compo.Type)
+	require.NotNil(t, compo.Evidence)
+	require.NotNil(t, compo.Evidence.Occurrences)
+	require.GreaterOrEqual(t, len(*compo.Evidence.Occurrences), 1)
+	loc := (*compo.Evidence.Occurrences)[0].Location
 	require.NotEmpty(t, loc)
 	require.True(t, filepath.IsAbs(loc))
-	requireFormatAndDERBase64(t, comp)
+	requireFormatAndDERBase64(t, compo)
 
 	// Check that certificate extension is properly set
-	require.NotNil(t, comp.CryptoProperties)
-	require.NotNil(t, comp.CryptoProperties.CertificateProperties)
-	require.Equal(t, ".crt", comp.CryptoProperties.CertificateProperties.CertificateExtension)
+	require.NotNil(t, compo.CryptoProperties)
+	require.NotNil(t, compo.CryptoProperties.CertificateProperties)
+	require.Equal(t, ".crt", compo.CryptoProperties.CertificateProperties.CertificateExtension)
 }
 
 // Test_Component_UnsupportedKeys tests handling of key types for better coverage
@@ -138,18 +86,20 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
 	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
+	cert, err := x509.ParseCertificate(certDER)
+	require.NoError(t, err)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
+
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	requireEvidencePath(t, comp)
+	err = cdxtest.HasEvidencePath(comp)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
 	// Should have Ed25519 algorithm and key references
@@ -179,18 +129,18 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
 	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	requireEvidencePath(t, comp)
+	err = cdxtest.HasEvidencePath(comp)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
 	// Should have ECDSA key reference
@@ -204,16 +154,18 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	certDER384, err := x509.CreateCertificate(rand.Reader, template, template, &priv384.PublicKey, priv384)
 	require.NoError(t, err)
 
-	pemBytes384 := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER384})
-
-	got384, err := d.Detect(t.Context(), pemBytes384, "testpath")
+	cert384, err := x509.ParseCertificate(certDER384)
 	require.NoError(t, err)
-	require.Len(t, got384, 1)
-	require.GreaterOrEqual(t, len(got384[0].Components), 1)
+	comp384, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert384,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
 
-	comp384 := got384[0].Components[0]
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp384.Type)
-	requireEvidencePath(t, comp384)
+	err = cdxtest.HasEvidencePath(comp384)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp384)
 
 	// Should have ECDSA P-384 key reference
@@ -227,16 +179,18 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	certDER521, err := x509.CreateCertificate(rand.Reader, template, template, &priv521.PublicKey, priv521)
 	require.NoError(t, err)
 
-	pemBytes521 := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER521})
-
-	got521, err := d.Detect(t.Context(), pemBytes521, "testpath")
+	cert521, err := x509.ParseCertificate(certDER521)
 	require.NoError(t, err)
-	require.Len(t, got521, 1)
-	require.GreaterOrEqual(t, len(got521[0].Components), 1)
+	comp521, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert521,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
 
-	comp521 := got521[0].Components[0]
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp521.Type)
-	requireEvidencePath(t, comp521)
+	err = cdxtest.HasEvidencePath(comp521)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp521)
 
 	// Should have ECDSA P-521 key reference
@@ -245,7 +199,6 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 
 // Test_Component_DSA_Keys tests DSA key handling for better coverage
 // Disabled due to DSA cert creation issues with crypto.Signer interface
-/*
 func Test_Component_DSA_Keys(t *testing.T) {
 	t.Parallel()
 
@@ -273,24 +226,24 @@ func Test_Component_DSA_Keys(t *testing.T) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
 	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
+
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	requireEvidencePath(t, comp)
+	err = cdxtest.HasEvidencePath(comp)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
 	// Check DSA signature algorithm reference
 	require.Equal(t, "crypto/algorithm/sha-1-dsa@1.2.840.10040.4.3", string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef))
 }
-*/
 
 // Test_Component_MoreAlgorithms tests additional signature algorithms for coverage
 func Test_Component_MoreAlgorithms(t *testing.T) {
@@ -322,18 +275,19 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 
 			certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
 			require.NoError(t, err)
-
-			pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-			var d czX509.Detector
-			got, err := d.Detect(t.Context(), pemBytes, "testpath")
+			cert, err := x509.ParseCertificate(certDER)
 			require.NoError(t, err)
-			require.Len(t, got, 1)
-			require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-			comp := got[0].Components[0]
+			comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+				Cert:     cert,
+				Location: "testpath",
+				Source:   "TEST",
+			})
+			require.NoError(t, err)
+
 			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-			requireEvidencePath(t, comp)
+			err = cdxtest.HasEvidencePath(comp)
+			require.NoError(t, err)
 			requireFormatAndDERBase64(t, comp)
 
 			// Exercise RSA SubjectPublicKeyRef (should include bit length)
@@ -364,18 +318,19 @@ func Test_Component_UnknownAlgorithm(t *testing.T) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &priv.PublicKey, priv)
 	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
+
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	requireEvidencePath(t, comp)
+	err = cdxtest.HasEvidencePath(comp)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
 	// Should have proper signature algorithm reference
@@ -404,18 +359,18 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, priv.Public(), priv)
 	require.NoError(t, err)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	requireEvidencePath(t, comp)
+	err = cdxtest.HasEvidencePath(comp)
+	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
 	// Check Ed25519 signature algorithm reference
@@ -433,17 +388,15 @@ func Test_readSignatureAlgorithmRef_DirectCalls(t *testing.T) {
 	// field based on the actual signature used, we need to test this differently.
 
 	// Test with normal certificate creation to exercise the common paths
-	_, cert, _ := genSelfSignedCert(t)
-
-	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
-
-	var d czX509.Detector
-	got, err := d.Detect(t.Context(), pemBytes, "testpath")
+	cert, err := cdxtest.GenSelfSignedCert()
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	require.GreaterOrEqual(t, len(got[0].Components), 1)
 
-	comp := got[0].Components[0]
+	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+		Cert:     cert.Cert,
+		Location: "testpath",
+		Source:   "TEST",
+	})
+	require.NoError(t, err)
 
 	// The generated certificate should have some signature algorithm
 	require.NotEmpty(t, comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef)
@@ -512,7 +465,7 @@ func Test_PQC_SignatureAlgorithm_OIDs(t *testing.T) {
 		"2.16.840.1.101.3.4.3.19": "crypto/algorithm/ml-dsa-87@2.16.840.1.101.3.4.3.19",
 	} {
 		c := mkCertWithSigOID(oid)
-		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		got := cdxprops.ReadSignatureAlgorithmRef(ctx, c)
 		require.Equal(t, want, got)
 	}
 
@@ -524,7 +477,7 @@ func Test_PQC_SignatureAlgorithm_OIDs(t *testing.T) {
 		"2.16.840.1.101.3.4.3.31": "crypto/algorithm/slh-dsa-shake-256f@2.16.840.1.101.3.4.3.31",
 	} {
 		c := mkCertWithSigOID(oid)
-		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		got := cdxprops.ReadSignatureAlgorithmRef(ctx, c)
 		require.Equal(t, want, got)
 	}
 
@@ -535,13 +488,13 @@ func Test_PQC_SignatureAlgorithm_OIDs(t *testing.T) {
 		"1.2.840.113549.1.9.16.3.17": "crypto/algorithm/hss-lms-hashsig@1.2.840.113549.1.9.16.3.17",
 	} {
 		c := mkCertWithSigOID(oid)
-		got := czX509.ReadSignatureAlgorithmRef(ctx, c)
+		got := cdxprops.ReadSignatureAlgorithmRef(ctx, c)
 		require.Equal(t, want, got)
 	}
 
 	// Unknown and parse-failure paths
-	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), czX509.ReadSignatureAlgorithmRef(ctx, mkCertWithSigOID("1.2.3.4.5")))
-	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), czX509.ReadSignatureAlgorithmRef(ctx, &x509.Certificate{Raw: []byte{0xff}}))
+	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), cdxprops.ReadSignatureAlgorithmRef(ctx, mkCertWithSigOID("1.2.3.4.5")))
+	require.Equal(t, cdx.BOMReference("crypto/algorithm/unknown@unknown"), cdxprops.ReadSignatureAlgorithmRef(ctx, &x509.Certificate{Raw: []byte{0xff}}))
 }
 
 func Test_PQC_SPKI_OIDs(t *testing.T) {
@@ -556,7 +509,7 @@ func Test_PQC_SPKI_OIDs(t *testing.T) {
 		"2.16.840.1.101.3.4.4.3":  "crypto/key/ml-kem-1024@2.16.840.1.101.3.4.4.3",
 	} {
 		c := mkCertWithSPKIOID(oid)
-		got := czX509.ReadSubjectPublicKeyRef(ctx, c)
+		got := cdxprops.ReadSubjectPublicKeyRef(ctx, c)
 		require.Equal(t, want, got)
 	}
 
@@ -570,11 +523,17 @@ func Test_PQC_SPKI_OIDs(t *testing.T) {
 		"1.3.9999.6.1.1":             "crypto/key/hqc-128@1.3.9999.6.1.1",
 	} {
 		c := mkCertWithSPKIOID(oid)
-		got := czX509.ReadSubjectPublicKeyRef(ctx, c)
+		got := cdxprops.ReadSubjectPublicKeyRef(ctx, c)
 		require.Equal(t, want, got)
 	}
 
 	// Unknown and parse-failure paths
-	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), czX509.ReadSubjectPublicKeyRef(ctx, mkCertWithSPKIOID("1.2.3.4.5")))
-	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), czX509.ReadSubjectPublicKeyRef(ctx, &x509.Certificate{RawSubjectPublicKeyInfo: []byte{0xff}}))
+	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), cdxprops.ReadSubjectPublicKeyRef(ctx, mkCertWithSPKIOID("1.2.3.4.5")))
+	require.Equal(t, cdx.BOMReference("crypto/key/unknown@unknown"), cdxprops.ReadSubjectPublicKeyRef(ctx, &x509.Certificate{RawSubjectPublicKeyInfo: []byte{0xff}}))
+}
+
+func requireFormatAndDERBase64(t *testing.T, compo cdx.Component) {
+	t.Helper()
+	err := cdxtest.HasFormatAndDERBase64(compo, cdxprops.CzertainlyComponentCertificateSourceFormat, cdxprops.CzertainlyComponentCertificateBase64Content)
+	require.NoError(t, err)
 }
