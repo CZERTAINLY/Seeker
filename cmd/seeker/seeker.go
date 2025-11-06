@@ -222,6 +222,9 @@ func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]mod
 		compo := cdxprops.LeakToComponent(leak)
 		compos = append(compos, compo)
 	}
+	if len(compos) == 0 {
+		return nil, nil
+	}
 	return []model.Detection{
 		{Components: compos},
 	}, nil
@@ -252,6 +255,11 @@ func (d x509Detector) Detect(ctx context.Context, b []byte, path string) ([]mode
 		}
 		compos = append(compos, compo)
 	}
+
+	if len(compos) == 0 {
+		return nil, nil
+	}
+
 	return []model.Detection{
 		{Components: compos},
 	}, nil

@@ -346,3 +346,17 @@ The split allows code to:
 ## Fast unit test execution
 
 Some tests (e.g. nmap scans or walk.Images enumerating all Docker images) can run for a long time. Use go test -short during local development for faster feedback. GitHub Actions runs the full test suite on each PR.
+
+## Integration tests
+
+Are placed in a `seeker_test.go` in a project root. It is a normal Go test, which starts the `seeker-ci` binary in a specified directory. It expects the binary is built via
+
+```sh
+go build -race -cover -covermode=atomic -o seeker-ci ./cmd/seeker/
+```
+
+Data for the seeker under the test are stored in a temporary directory, which is deleted after test ends. In order to keep the content of a further examination, the `test.keepdir` can be used. This will keep the temporary directory on disk.
+
+```sh
+go test -v -test.keepdir
+```
