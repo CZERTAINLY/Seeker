@@ -33,7 +33,7 @@ type SSHHostKey struct {
 	Fingerprint string
 }
 
-// SSLEnumCiphers is an ouptut of `ssl-enum-ciphers` script of nmap
+// SSLEnumCiphers is an output of `ssl-enum-ciphers` script of nmap
 type SSLEnumCiphers struct {
 	Name    string
 	Ciphers []string
