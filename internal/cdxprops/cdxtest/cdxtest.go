@@ -124,37 +124,3 @@ func HasFormatAndDERBase64(comp cdx.Component, formatKey, base64Key string) erro
 
 	return nil
 }
-
-func ValidateEvidencePath(comp cdx.Component) error {
-	if comp.Evidence == nil {
-		return fmt.Errorf("evidence is nil")
-	}
-
-	if comp.Evidence.Occurrences == nil {
-		return fmt.Errorf("evidence occurrences is nil")
-	}
-
-	if len(*comp.Evidence.Occurrences) < 1 {
-		return fmt.Errorf("evidence occurrences must have at least one entry")
-	}
-
-	loc := (*comp.Evidence.Occurrences)[0].Location
-	if loc == "" {
-		return fmt.Errorf("evidence location is empty")
-	}
-
-	abs, err := filepath.Abs("testpath")
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
-	}
-
-	if !filepath.IsAbs(loc) {
-		return fmt.Errorf("evidence location path is not absolute: %s", loc)
-	}
-
-	if !strings.HasSuffix(loc, filepath.Clean(abs)) {
-		return fmt.Errorf("evidence location %s does not have expected suffix %s", loc, filepath.Clean(abs))
-	}
-
-	return nil
-}
