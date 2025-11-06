@@ -57,7 +57,6 @@ func ParseNmap(ctx context.Context, nmap model.Nmap) []cdx.Component {
 			slog.WarnContext(ctx, "unsupported service: skipping", "service_name", port.Service.Name)
 		}
 	}
-
 	return compos
 }
 
@@ -95,11 +94,11 @@ func tlsToCompos(ctx context.Context, port model.NmapPort) []cdx.Component {
 		ret = append(ret, compo)
 	}
 
-	for _, cert := range port.TLSCerts {
-		compo := cdx.Component{
-			// FIXME: merge x509 code first
-			Description: "TODO parse TLS cert from nmap",
-			Scope:       cdx.Scope(cert.Location),
+	for _, certHit := range port.TLSCerts {
+		compo, err := CertHitToComponent(ctx, certHit)
+		if err != nil {
+			slog.WarnContext(ctx, "can't convert certHit to component: ignoring", "location", certHit.Location, "source", certHit.Source)
+			continue
 		}
 		ret = append(ret, compo)
 	}

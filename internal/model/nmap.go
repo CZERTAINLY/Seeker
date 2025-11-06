@@ -14,7 +14,7 @@ type NmapPort struct {
 	Protocol    string
 	Service     NmapService
 	Ciphers     []SSLEnumCiphers
-	TLSCerts    []PEMHit
+	TLSCerts    []CertHit
 	SSHHostKeys []SSHHostKey
 	Scripts     []NmapScript
 }

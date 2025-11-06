@@ -2,7 +2,9 @@ package cdxprops_test
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
@@ -212,22 +214,46 @@ func TestParseNmap_TLS(t *testing.T) {
 						},
 					},
 				},
-				TLSCerts: []model.PEMHit{
-					{
+				TLSCerts: []model.CertHit{
+					pemHit{
 						Raw: []byte(`-----BEGIN CERTIFICATE-----
-MIICywxhaWxob3N0MB4XDTIxMTAzMjA0NzU5WhcNMjUxMTAzMjE0NzU5WjAUMRIw
-EAYDVQQDEwlsb2NhbGhvc3QwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIB
-AQCYq+6pXGEi5wM1OV8bW1PqP6XVn+FJP1BCXyJZ8p+1zHpPzwE56qtD4iJJaBHU
-Co2rOUJ3A14w3OrVDcrwZZVFYCY2XkZQn6Rakv6yAt+Paq9y4DXJYibdrnWTeSkk
-zhutKktBE0fH4hbrEvGsrQzOW4Lcm6JJAzEhkqZ4eR2pOvXQEvFmGrIgaf0qr2Ah
-qBj0avw/bWb/7xOtAgMBAAGjVTBTMA4GA1UdDwEB/wQEAwIFoDATBgNVHSUEDDAK
-BggrBgEFBQcDATAsBgNVHREEJTAjgglsb2NhbGhvc3SHBH8AAAGHEAAAAAAAAAAAAAAAAAAAAAEwDQYJKoZIhvcNAQELBQADggEBAHJuT+AzIpH6lKm3Qx5qW8Y1ZX8j4Mzan5oJz119tRKmsTh
-ZywEBdyQftgJgkOezwq7xkp/X2bSmkfa5Ah7E+Adb8zeXzutlVQ+CoT6C/QQ2ulPXwkWF7+1IokjGR0DdIx1zHwbpxsIiNjapPggLHBg6zXzS8V+T7SnZ3ISJs6+HHzm9UojfQtaaIcvlB3fmcRV2oHQxLvwDOGReiy
-lPqvoNaAu5xFgDfb1+0nYr6oGvlUti6WCturiDdEKwG/lEW4oCU=
------END CERTIFICATE-----`),
+MIIF7zCCA9egAwIBAgIUCMqEjHI4T6kthdMJu78jyoU0t7AwDQYJKoZIhvcNAQEL
+BQAwgYYxCzAJBgNVBAYTAlhYMRIwEAYDVQQIDAlTdGF0ZU5hbWUxETAPBgNVBAcM
+CENpdHlOYW1lMRQwEgYDVQQKDAtDb21wYW55TmFtZTEbMBkGA1UECwwSQ29tcGFu
+eVNlY3Rpb25OYW1lMR0wGwYDVQQDDBRDb21tb25OYW1lT3JIb3N0bmFtZTAeFw0y
+NTEwMjAxMDE2MDdaFw0zNTEwMTgxMDE2MDdaMIGGMQswCQYDVQQGEwJYWDESMBAG
+A1UECAwJU3RhdGVOYW1lMREwDwYDVQQHDAhDaXR5TmFtZTEUMBIGA1UECgwLQ29t
+cGFueU5hbWUxGzAZBgNVBAsMEkNvbXBhbnlTZWN0aW9uTmFtZTEdMBsGA1UEAwwU
+Q29tbW9uTmFtZU9ySG9zdG5hbWUwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIK
+AoICAQDHpyqMDyC06hAoKjTmXXzq3m9vBqXjzdGA21mTORmnmrZQO18W9SD1dq8N
+aAwjVAEDJcP2b5iwFTuBbwWJfKGWwNo3d68pakwnLdgWxtmKmGPkvBPSNCz1Nwa0
+bSty06lBUOs9kL8z5uKY23bi4dgyeO9cKJdkfwSVtxBT4l4c12PN1ymUlEp2Z8u5
+PEElg1x4yIxKtXqfw45/cClwANdvK5wHDrVQ8tz1nRuEU43K67l4tqTklY+JDogB
+3RiMfXHIpZ4Fk5XWB9/iyiUrYh53ojqchjAF+isNMuOCsfpl46hYlzcndL2Zm5dN
+I+A9fcWqzPT7a5kc13rkbyglCM1mazcl3bQFpoY9Y0Pabysr/nVychBA+9UOn9AA
+VBd1eCvmT4r8gWXRaJqgk051pyeHmp3toEhryRS2ONv2LJ9ifkvyBKHutWjLjugP
+MvgLAQjiSv1prAilsg2d6gM7Eli+OY6fpavelI1wG4b87mEhU1nTmLtM4d90jwNv
+iUk0sEGo2lMuIXP4epHifXWMG5/gUUcpuuEJAt1PkLYD6L1IbWFuRblR6MnenbcN
+c+QzUd0AcLJKKYgqPMxgPW0Jq+KPDC2eMOSQCD2KVOLsaJDnWbC2iyQYl6xcIhcp
+sLvRgsSuJj3cOVEulVIn18EJvsK1EtPNjs6vgDzulTziVQBuRwIDAQABo1MwUTAd
+BgNVHQ4EFgQUPQ5bXWzI8hql/z9uSFfuM0WmZuQwHwYDVR0jBBgwFoAUPQ5bXWzI
+8hql/z9uSFfuM0WmZuQwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOC
+AgEAHxfi/WrErM+UbIjmWJe3V1r63jsdCve6syr5aGN0aXDanzlDUAzB5t/httG0
+TQHh8gP4O0nHgtm368v1uZ0NaYHOGbvV+j0WQ4ulhJcBjYhobRU6XYM2sIrgJkLo
+jUmz2b7Y1Q8fBz3G4g1puu0s1AoRvZVwsVzQ3M6AMjLgEnDbQt89kTM8EnReXYq4
+6ar3ksiJMapmhuiGatVqQl6wyCtl9Ef6Tl8zaDyBvziDsl7hiN+FQxQFz8YgWWr7
+L/rNkuIid4uj/209vJm0BJMHjOx4abaTFZhdnTtTONvjD48LsKExFvdV0CWC5mnI
+lJ68kNDyOS59bdMqsPC9erFcheoAoT04/8rjXwTwXwEUyUEpuQXvctTGEAV19HzZ
+nKJKqXthLCxsTPteGzAexFPmMdOiZiCGMGIQQk9tirz4E1YEsLYMMNvre6LByuEp
+VR9gCh0N/FxU2+/HR2hMJLIbIMdQ1YlxVdsR3e3/RKUGnpwB0LqH2vQhg/WFFawO
+2013tnAGd5FCO3lrCwwo7cwvci/IyMex3GmZXyFNdddK/fKmdVJDr/k3O7QhuW2I
+U7/C9UWr2GEk6inRCF9unCHXUzQNLg56Mf0I8dw8PDJ3QbVywN0csSJxGqcGRoyM
+YhdzwN34rxXHelPfnN3lpV674QQnbYoVDDpfcZf+ZgkbvOk=
+-----END CERTIFICATE-----
+`),
 						Location: "127.0.0.1:40645",
-						Source:   "nmap",
-					},
+						Source:   "NMAP",
+					}.CertHit(t),
 				},
 				SSHHostKeys: nil,
 				Scripts:     nil,
@@ -388,7 +414,7 @@ lPqvoNaAu5xFgDfb1+0nYr6oGvlUti6WCturiDdEKwG/lEW4oCU=
 		{
 			scenario: "cert",
 			given:    compos[2],
-			then:     `{"description":"TODO parse TLS cert from nmap", "name":"", "scope":"127.0.0.1:40645", "type":""}`,
+			then:     `{"type":"cryptographic-asset","name":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","version":"50188223309792639209962727766352873045328443312","properties":[{"name":"czertainly:component:certificate:source_format","value":"NMAP"},{"name":"czertainly:component:certificate:base64_content","value":"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"}],"evidence":{"occurrences":[{"location":"127.0.0.1:40645"}]},"cryptoProperties":{"assetType":"certificate","certificateProperties":{"subjectName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","issuerName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","notValidBefore":"2025-10-20T10:16:07Z","notValidAfter":"2035-10-18T10:16:07Z","signatureAlgorithmRef":"crypto/algorithm/sha-256-rsa@1.2.840.113549.1.1.11","subjectPublicKeyRef":"crypto/key/rsa-4096@1.2.840.113549.1.1.1","certificateFormat":"X.509","certificateExtension":".1:40645"}}}`,
 		},
 	}
 
@@ -397,7 +423,28 @@ lPqvoNaAu5xFgDfb1+0nYr6oGvlUti6WCturiDdEKwG/lEW4oCU=
 			var buf bytes.Buffer
 			enc := json.NewEncoder(&buf)
 			require.NoError(t, enc.Encode(tc.given))
+			t.Logf("%s", buf.String())
 			require.JSONEq(t, tc.then, buf.String())
 		})
+	}
+}
+
+type pemHit struct {
+	Raw      []byte
+	Source   string
+	Location string
+}
+
+func (h pemHit) CertHit(t *testing.T) model.CertHit {
+	t.Helper()
+	block, _ := pem.Decode(h.Raw)
+	require.NotNil(t, block, "failed to decode PEM block")
+	require.Equal(t, "CERTIFICATE", block.Type)
+	cert, err := x509.ParseCertificate(block.Bytes)
+	require.NoError(t, err)
+	return model.CertHit{
+		Cert:     cert,
+		Source:   h.Source,
+		Location: h.Location,
 	}
 }

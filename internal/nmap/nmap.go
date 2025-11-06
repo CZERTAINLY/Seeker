@@ -11,6 +11,7 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/x509"
 
 	"github.com/Ullaakut/nmap/v3"
 )
@@ -145,6 +146,7 @@ func HostToModel(ctx context.Context, host nmap.Host) model.Nmap {
 		m := portToModel(ctx, port)
 		for ii := range m.TLSCerts {
 			m.TLSCerts[ii].Location = address + ":" + strconv.Itoa(int(port.ID))
+			m.TLSCerts[ii].Source = "NMAP"
 		}
 		ports[i] = m
 	}
@@ -219,17 +221,19 @@ func cipherSuites(_ context.Context, tables []nmap.Table) []string {
 	return ret
 }
 
-func sslCerts(_ context.Context, s nmap.Script) []model.PEMHit {
-	certs := make([]model.PEMHit, 0, len(s.Elements))
+func sslCerts(ctx context.Context, s nmap.Script) []model.CertHit {
+	certs := make([]model.CertHit, 0, len(s.Elements))
 
 	for _, row := range s.Elements {
 		if row.Key == "pem" {
 			val := html.UnescapeString(row.Value)
-			certs = append(certs, model.PEMHit{
-				Raw:      []byte(val),
-				Location: "",
-				Source:   "nmap",
-			})
+			// empty path is fine, this will be added in a upper layer
+			hits, err := x509.Scanner{}.Scan(ctx, []byte(val), "")
+			if err != nil {
+				slog.WarnContext(ctx, "failed to scan x509 certificate: ignoring", "error", err)
+				continue
+			}
+			certs = append(certs, hits...)
 		}
 	}
 	return certs

@@ -125,11 +125,11 @@ func TestScanner(t *testing.T) {
 			if gotPort.Service.Name == "ssl" {
 				require.Len(t, gotPort.Ciphers, 2)
 				require.Len(t, gotPort.TLSCerts, 1)
-				gotCert := gotPort.TLSCerts[0]
-				require.NotEmpty(t, gotCert.Raw)
-				require.NotEmpty(t, gotCert.Location)
-				require.Equal(t, got.Address+":"+strconv.Itoa(gotPort.ID), gotCert.Location)
-				require.Equal(t, "nmap", gotCert.Source)
+				gotHit := gotPort.TLSCerts[0]
+				require.NotNil(t, gotHit.Cert)
+				require.NotEmpty(t, gotHit.Location)
+				require.Equal(t, got.Address+":"+strconv.Itoa(gotPort.ID), gotHit.Location)
+				require.Equal(t, "nmap", gotHit.Source)
 			}
 
 			if gotPort.Service.Name == "ssh" {
@@ -179,10 +179,10 @@ func TestHostToModel(t *testing.T) {
 
 	// TLS certs
 	require.Len(t, p.TLSCerts, 1)
-	cert := p.TLSCerts[0]
-	require.NotEmpty(t, cert.Raw)
-	require.Equal(t, "23.88.35.44:443", cert.Location)
-	require.Equal(t, "nmap", cert.Source)
+	hit := p.TLSCerts[0]
+	require.NotNil(t, hit.Cert)
+	require.Equal(t, "23.88.35.44:443", hit.Location)
+	require.Equal(t, "NMAP", hit.Source)
 
 	require.Len(t, got.Ports, 1)
 	gotPort := got.Ports[0]
