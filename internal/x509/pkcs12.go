@@ -9,11 +9,11 @@ import (
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 
-// pkcs12Detector handles PKCS#12/PFX detection
-type pkcs12Detector struct{}
+// pkcs12Scanner handles PKCS#12/PFX detection
+type pkcs12Scanner struct{}
 
-// detect finds certificates in PKCS#12/PFX format
-func (d pkcs12Detector) detect(ctx context.Context, b []byte) []certHit {
+// scan finds certificates in PKCS#12/PFX format
+func (d pkcs12Scanner) scan(ctx context.Context, b []byte) []certHit {
 	slog.DebugContext(ctx, "Detecting PKCS#12 (PFX)")
 
 	var out []certHit

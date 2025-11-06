@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,7 +13,6 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/service"
 	"github.com/CZERTAINLY/Seeker/internal/x509"
 
@@ -21,7 +21,8 @@ import (
 )
 
 var (
-	detectors []scan.Detector
+	leaksScanner *gitleaks.Scanner
+	x509Scanner  x509.Scanner
 
 	userConfigPath string // /default/config/path/seeker on given OS
 	configPath     string // actual config file used (if loaded)
@@ -63,18 +64,14 @@ func init() {
 	}
 	userConfigPath = filepath.Join(d, "seeker")
 
-	// configure default detectors
+	// configure default scanner
 	// secrets:
-	leaks, err := gitleaks.NewDetector()
+	leaksScanner, err = gitleaks.NewScanner()
 	if err != nil {
 		panic(err)
 	}
 
-	// certificates:
-	detectors = []scan.Detector{
-		x509.Detector{},
-		leaks,
-	}
+	x509Scanner = x509.Scanner{}
 }
 
 func main() {
@@ -141,7 +138,22 @@ func doScan(cmd *cobra.Command, args []string) error {
 
 	config, err := model.LoadScanConfigFromPath(configPath)
 	if err != nil {
-		return err
+		// fallback to the service config - if config does not comes from stdin
+		// this allows one to debug the scanning part directly while using the same
+		// seeker.yaml as with a supervisor.
+		if configPath != "-" {
+			serviceConfig, fallbackErr := model.LoadConfigFromPath(configPath)
+			if fallbackErr != nil {
+				return fmt.Errorf("loading config fail: %w", errors.Join(err, fallbackErr))
+			}
+			config = model.Scan{
+				Version:    0,
+				Filesystem: serviceConfig.Filesystem,
+				Containers: serviceConfig.Containers,
+				Ports:      serviceConfig.Ports,
+				Service:    serviceConfig.Service.ServiceFields,
+			}
+		}
 	}
 
 	// --verbose has a precedence over config file
@@ -156,7 +168,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "_scan", "configPath", configPath)
 	slog.DebugContext(ctx, "_scan", "config", config)
 
-	seeker, err := NewSeeker(ctx, detectors, config)
+	seeker, err := NewSeeker(ctx, x509Scanner, leaksScanner, config)
 	if err != nil {
 		return err
 	}

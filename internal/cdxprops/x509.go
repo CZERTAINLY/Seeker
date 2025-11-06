@@ -1,4 +1,4 @@
-package x509
+package cdxprops
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
@@ -148,8 +148,8 @@ func spkiOID(cert *x509.Certificate) (string, bool) {
 // ---------- public API ----------
 
 // toComponent converts an X.509 certificate to a CycloneDX component
-func toComponent(ctx context.Context, cert *x509.Certificate, path string, source string) (cdx.Component, error) {
-	absPath, _ := filepath.Abs(path)
+func CertHitToComponent(ctx context.Context, hit model.CertHit) (cdx.Component, error) {
+	cert, path, source := hit.Cert, hit.Location, hit.Source
 
 	c := cdx.Component{
 		Type:    cdx.ComponentTypeCryptographicAsset,
@@ -170,9 +170,9 @@ func toComponent(ctx context.Context, cert *x509.Certificate, path string, sourc
 		},
 	}
 
-	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, source)
-	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateBase64Content, base64.StdEncoding.EncodeToString(cert.Raw))
-	cdxprops.AddEvidenceLocation(&c, absPath)
+	SetComponentProp(&c, CzertainlyComponentCertificateSourceFormat, source)
+	SetComponentProp(&c, CzertainlyComponentCertificateBase64Content, base64.StdEncoding.EncodeToString(cert.Raw))
+	AddEvidenceLocation(&c, path)
 
 	return c, nil
 }

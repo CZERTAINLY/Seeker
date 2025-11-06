@@ -10,10 +10,15 @@ import (
 	"os"
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
+	"github.com/CZERTAINLY/Seeker/internal/x509"
+
+	cdx "github.com/CycloneDX/cyclonedx-go"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -26,7 +31,7 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Scan) (Seeker, error) {
+func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitleaks.Scanner, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}
@@ -39,6 +44,12 @@ func NewSeeker(ctx context.Context, detectors []scan.Detector, config model.Scan
 
 	containers := containers(ctx, config.Containers)
 	nmaps, ips := nmaps(ctx, config.Ports)
+
+	detectors := make([]scan.Detector, 0, 2)
+	detectors = append(detectors, x509Detector{s: x509Scanner})
+	if leaksScanner != nil {
+		detectors = append(detectors, leaksDetector{s: leaksScanner})
+	}
 
 	return Seeker{
 		detectors:   detectors,
@@ -113,13 +124,12 @@ func goScan(ctx context.Context, scanner *scan.Scan, seq iter.Seq2[walk.Entry, e
 }
 
 func nmapScan(ctx context.Context, scanner nmap.Scanner, ip netip.Addr, detections chan<- model.Detection) {
-	results, err := scanner.Detect(ctx, ip)
+	nmapScan, err := scanner.Scan(ctx, ip)
 	if err != nil {
 		slog.ErrorContext(ctx, "nmap scan failed", "error", err)
 	}
-	for _, d := range results {
-		detections <- d
-	}
+	compos := cdxprops.ParseNmap(ctx, nmapScan)
+	detections <- model.Detection{Path: "nmap", Components: compos}
 }
 
 func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entry, error], error) {
@@ -193,4 +203,62 @@ func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr) {
 	}
 
 	return scanners, ips
+}
+
+type leaksDetector struct {
+	s *gitleaks.Scanner
+}
+
+func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	leaks, err := d.s.Scan(ctx, b, path)
+	if err != nil {
+		return nil, err
+	}
+	compos := make([]cdx.Component, 0, len(leaks))
+	for _, leak := range leaks {
+		if leak.RuleID == "" {
+			continue
+		}
+		compo := cdxprops.LeakToComponent(leak)
+		compos = append(compos, compo)
+	}
+	return []model.Detection{
+		{Components: compos},
+	}, nil
+}
+
+func (d leaksDetector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "gitleaks"),
+	}
+}
+
+type x509Detector struct {
+	s x509.Scanner
+}
+
+func (d x509Detector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	hits, err := d.s.Scan(ctx, b, path)
+	if err != nil {
+		return nil, err
+	}
+
+	compos := make([]cdx.Component, 0, len(hits))
+	for _, hit := range hits {
+		compo, err := cdxprops.CertHitToComponent(ctx, hit)
+		if err != nil {
+			slog.WarnContext(ctx, "can't convert certificate to cdx.Component", "error", err, "path", hit.Location, "source", hit.Source)
+			continue
+		}
+		compos = append(compos, compo)
+	}
+	return []model.Detection{
+		{Components: compos},
+	}, nil
+}
+
+func (s x509Detector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "x509"),
+	}
 }
