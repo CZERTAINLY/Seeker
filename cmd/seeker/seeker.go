@@ -216,10 +216,10 @@ func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]mod
 	}
 	compos := make([]cdx.Component, 0, len(leaks))
 	for _, leak := range leaks {
-		compo := cdxprops.LeakToComponent(leak)
 		if leak.RuleID == "" {
 			continue
 		}
+		compo := cdxprops.LeakToComponent(leak)
 		compos = append(compos, compo)
 	}
 	return []model.Detection{
