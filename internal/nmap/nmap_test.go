@@ -129,7 +129,7 @@ func TestScanner(t *testing.T) {
 				require.NotNil(t, gotHit.Cert)
 				require.NotEmpty(t, gotHit.Location)
 				require.Equal(t, got.Address+":"+strconv.Itoa(gotPort.ID), gotHit.Location)
-				require.Equal(t, "nmap", gotHit.Source)
+				require.Equal(t, "NMAP", gotHit.Source)
 			}
 
 			if gotPort.Service.Name == "ssh" {
