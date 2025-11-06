@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -141,9 +142,9 @@ func doScan(cmd *cobra.Command, args []string) error {
 		// this allows one to debug the scanning part directly while using the same
 		// seeker.yaml as with a supervisor.
 		if configPath != "-" {
-			serviceConfig, err := model.LoadConfigFromPath(configPath)
-			if err != nil {
-				return err
+			serviceConfig, fallbackErr := model.LoadConfigFromPath(configPath)
+			if fallbackErr != nil {
+				return fmt.Errorf("loading config fail: %w", errors.Join(err, fallbackErr))
 			}
 			config = model.Scan{
 				Version:    0,
