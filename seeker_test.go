@@ -27,7 +27,7 @@ var (
 	certDER      []byte
 
 	// tmpDir is a function used to create a tempdir
-	// -test.keepdir flag says test to use os.MkdirTemp
+	// -test.keepdir flag tells the test to use os.MkdirTemp
 	// default is t.TempDir, which will be cleaned up
 	tmpDir func(t *testing.T) string
 )
@@ -35,7 +35,7 @@ var (
 func TestMain(m *testing.M) {
 	var keepTestDir bool
 	flag.BoolVar(&keepTestDir, "test.keepdir", false, "use os.TempDir instead of t.TempDir to keep test artifacts")
-	flag.Lookup("test.keepdir")
+
 
 	flag.Parse()
 
