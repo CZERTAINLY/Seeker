@@ -67,7 +67,7 @@ func (s SelfSignedCert) CertPEM() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode certificate: %w", err)
 	}
-	return buf.Bytes(), err
+	return buf.Bytes(), nil
 }
 
 // PrivKeyPEM encodes private key in PEM format
