@@ -23,7 +23,7 @@ func Test_Detector_IgnorePrivateKey(t *testing.T) {
 	t.Parallel()
 	selfSigned, err := cdxtest.GenSelfSignedCert()
 	require.NoError(t, err)
-	// private keys, CLRs and others are ignored by x509 detector, which is focused on *x509.Certificate only
+	// private keys, CRLs and others are ignored by x509 detector, which is focused on *x509.Certificate only
 	privKeyPEM, err := selfSigned.PrivKeyPEM()
 	require.NoError(t, err)
 

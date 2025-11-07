@@ -12,9 +12,9 @@ import (
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// LeakToComponent converts the finding to component
-// it IGNORES private-key as this is expected to be
-// detected by x509 code and not by regular expressions
+// LeakToComponent converts the finding to a component.
+// Private keys are now processed and converted to components,
+// with their content base64-encoded.
 func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool) {
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
