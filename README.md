@@ -355,7 +355,7 @@ Are placed in a `seeker_test.go` in a project root. It is a normal Go test, whic
 go build -race -cover -covermode=atomic -o seeker-ci ./cmd/seeker/
 ```
 
-Data for the seeker under the test are stored in a temporary directory, which is deleted after test ends. In order to keep the content of a further examination, the `test.keepdir` can be used. This will keep the temporary directory on disk.
+Data for the seeker under the test are stored in a temporary directory, which is deleted after test ends. In order to keep the content for further examination, the `test.keepdir` can be used. This will keep the temporary directory on disk.
 
 ```sh
 go test -v -test.keepdir
