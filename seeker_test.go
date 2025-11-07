@@ -3,22 +3,17 @@ package seeker_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"embed"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 
 	"github.com/stretchr/testify/require"
@@ -120,12 +115,13 @@ service:
 	creat(t, "priv.key", privKeyBytes)
 	creat(t, "pem.cert", certDER)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, seekerPath, "run", "--config", "seeker.yaml")
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	t.Logf("./seeker-ci run: %#+v", cmd)
 	err := cmd.Run()
 	if err != nil {
 		t.Logf("%s", stderr.String())
@@ -140,15 +136,13 @@ service:
 	err = dec.Decode(&bom)
 	require.NoError(t, err)
 
-	// FIXME: should be two
-	require.Len(t, *bom.Components, 3)
+	require.Len(t, *bom.Components, 2)
 	names := make([]string, len(*bom.Components))
 	for i, compo := range *bom.Components {
 		names[i] = compo.Name
 	}
 	require.ElementsMatch(t, []string{
-		"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX",
-		"",
+		"CN=Test Cert",
 		"aws-access-token",
 	}, names)
 }
@@ -202,55 +196,17 @@ func fixture(t *testing.T, inPath string) string {
 }
 
 func generateRSACert() (privKeyBytes []byte, certDER []byte, err error) {
-	// Generate private key
-	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	selfSigned, err := cdxtest.GenSelfSignedCert()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to generate private key: %w", err)
+		return nil, nil, err
 	}
-
-	// Prepare certificate template
-	template := x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Country:            []string{"XX"},
-			Province:           []string{"StateName"},
-			Locality:           []string{"CityName"},
-			Organization:       []string{"CompanyName"},
-			OrganizationalUnit: []string{"CompanySectionName"},
-			CommonName:         "CommonNameOrHostname",
-		},
-		NotBefore:             time.Now(),
-		NotAfter:              time.Now().AddDate(10, 0, 0), // 10 years (3650 days)
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	// Create certificate
-	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privateKey.PublicKey, privateKey)
+	privKeyPEM, err := selfSigned.PrivKeyPEM()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create certificate: %w", err)
+		return nil, nil, err
 	}
-
-	// Encode private key to PEM
-	privKeyPEM := &bytes.Buffer{}
-	err = pem.Encode(privKeyPEM, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
-	})
+	certPEM, err := selfSigned.CertPEM()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to encode private key: %w", err)
+		return nil, nil, err
 	}
-
-	// Encode certificate to PEM
-	certPEM := &bytes.Buffer{}
-	err = pem.Encode(certPEM, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: derBytes,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to encode certificate: %w", err)
-	}
-
-	return privKeyPEM.Bytes(), certPEM.Bytes(), nil
+	return privKeyPEM, certPEM, nil
 }
