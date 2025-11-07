@@ -8,7 +8,6 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/asn1"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -171,7 +170,7 @@ func CertHitToComponent(ctx context.Context, hit model.CertHit) (cdx.Component, 
 	}
 
 	SetComponentProp(&c, CzertainlyComponentCertificateSourceFormat, source)
-	SetComponentProp(&c, CzertainlyComponentCertificateBase64Content, base64.StdEncoding.EncodeToString(cert.Raw))
+	SetComponentBase64Prop(&c, CzertainlyComponentCertificateBase64Content, cert.Raw)
 	AddEvidenceLocation(&c, path)
 
 	return c, nil

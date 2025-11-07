@@ -36,7 +36,6 @@ func TestMain(m *testing.M) {
 	var keepTestDir bool
 	flag.BoolVar(&keepTestDir, "test.keepdir", false, "use os.TempDir instead of t.TempDir to keep test artifacts")
 
-
 	flag.Parse()
 
 	if testing.Short() {
@@ -136,7 +135,7 @@ service:
 	err = dec.Decode(&bom)
 	require.NoError(t, err)
 
-	require.Len(t, *bom.Components, 2)
+	require.Len(t, *bom.Components, 3)
 	names := make([]string, len(*bom.Components))
 	for i, compo := range *bom.Components {
 		names[i] = compo.Name
@@ -144,6 +143,7 @@ service:
 	require.ElementsMatch(t, []string{
 		"CN=Test Cert",
 		"aws-access-token",
+		"private-key",
 	}, names)
 }
 

@@ -1,6 +1,10 @@
 package cdxprops
 
 import (
+	"context"
+	"encoding/pem"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -11,14 +15,13 @@ import (
 // LeakToComponent converts the finding to component
 // it IGNORES private-key as this is expected to be
 // detected by x509 code and not by regular expressions
-func LeakToComponent(leak model.Leak) (cdx.Component, bool) {
-	var zero cdx.Component
+func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool) {
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
 	case leak.RuleID == "private-key":
-		return zero, true
+		cryptoType = cdx.RelatedCryptoMaterialTypePrivateKey
 	case strings.Contains(leak.RuleID, "jwt"):
-		fallthrough
+		cryptoType = cdx.RelatedCryptoMaterialTypeToken
 	case strings.Contains(leak.RuleID, "token"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeToken
 	case strings.Contains(leak.RuleID, "key"):
@@ -48,5 +51,25 @@ func LeakToComponent(leak model.Leak) (cdx.Component, bool) {
 			},
 		},
 	}
+
+	if leak.RuleID == "private-key" && leak.Content != "" {
+		err := setCzertainlyProps(leak, &compo)
+		if err != nil {
+			slog.WarnContext(ctx, "can't process private-key leak: ignoring", "error", err)
+			return cdx.Component{}, true
+		}
+	}
 	return compo, false
+}
+
+func setCzertainlyProps(leak model.Leak, compop *cdx.Component) error {
+	raw := []byte(leak.Content)
+	block, _ := pem.Decode(raw)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block")
+	}
+
+	SetComponentProp(compop, CzertainlyPrivateKeyType, block.Type)
+	SetComponentBase64Prop(compop, CzertainlyPrivateKeyBase64Content, raw)
+	return nil
 }

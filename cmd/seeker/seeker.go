@@ -219,7 +219,7 @@ func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]mod
 		if leak.RuleID == "" {
 			continue
 		}
-		compo, ignored := cdxprops.LeakToComponent(leak)
+		compo, ignored := cdxprops.LeakToComponent(ctx, leak)
 		if ignored {
 			continue
 		}

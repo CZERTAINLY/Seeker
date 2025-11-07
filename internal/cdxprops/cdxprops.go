@@ -1,6 +1,8 @@
 package cdxprops
 
 import (
+	"encoding/base64"
+
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
@@ -10,6 +12,8 @@ const (
 	CzertainlyComponentCertificateBase64Content     = "czertainly:component:certificate:base64_content"
 	CzertainlyComponentSSHHostKeyFingerprintContent = "czertainly:component:ssh_hostkey:fingerprint_content"
 	CzertainlyComponentSSHHostKeyContent            = "czertainly:component:ssh_hostkey:content"
+	CzertainlyPrivateKeyType                        = "czertainly:component:private_key:type"
+	CzertainlyPrivateKeyBase64Content               = "czertainly:component:private_key:base64_content"
 )
 
 // Set (or upsert) a CycloneDX component property.
@@ -31,6 +35,10 @@ func SetComponentProp(c *cdx.Component, name, value string) {
 	}
 	props = append(props, cdx.Property{Name: name, Value: value})
 	*c.Properties = props
+}
+
+func SetComponentBase64Prop(c *cdx.Component, name string, value []byte) {
+	SetComponentProp(c, name, base64.StdEncoding.EncodeToString(value))
 }
 
 // Add (append) an evidence.occurrence location if non-empty.

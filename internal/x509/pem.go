@@ -52,7 +52,7 @@ func (d pemScanner) scan(ctx context.Context, b []byte) []certHit {
 			}
 		default:
 			// ignore keys, CSRs, CRLs, etc.
-			slog.InfoContext(ctx, "PEM type ignored", "type", p.Type)
+			slog.DebugContext(ctx, "PEM type ignored by this detector", "type", p.Type)
 		}
 		rest = r
 	}
