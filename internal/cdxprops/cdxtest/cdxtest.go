@@ -80,7 +80,7 @@ func (s SelfSignedCert) PrivKeyPEM() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode private key: %w", err)
 	}
-	return buf.Bytes(), err
+	return buf.Bytes(), nil
 }
 
 // getProp gets a property value from a CDX component
