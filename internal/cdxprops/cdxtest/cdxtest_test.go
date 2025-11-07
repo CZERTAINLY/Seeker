@@ -14,26 +14,34 @@ import (
 
 func TestGenSelfSignedCert(t *testing.T) {
 	// Generate the self-signed certificate
-	cert, err := cdxtest.GenSelfSignedCert()
+	selfSigned, err := cdxtest.GenSelfSignedCert()
 
 	// require no error occurred
 	require.NoError(t, err)
 
 	// Verify the certificate is not nil and contains expected values
-	require.NotNil(t, cert.Der)
-	require.NotNil(t, cert.Cert)
-	require.NotNil(t, cert.Key)
+	require.NotNil(t, selfSigned.Der)
+	require.NotNil(t, selfSigned.Cert)
+	require.NotNil(t, selfSigned.Key)
 
 	// Verify certificate fields
-	require.Equal(t, "Test Cert", cert.Cert.Subject.CommonName)
-	require.True(t, cert.Cert.BasicConstraintsValid)
+	require.Equal(t, "Test Cert", selfSigned.Cert.Subject.CommonName)
+	require.True(t, selfSigned.Cert.BasicConstraintsValid)
 
 	// Verify key usage
 	expectedKeyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
-	require.Equal(t, expectedKeyUsage, cert.Cert.KeyUsage)
+	require.Equal(t, expectedKeyUsage, selfSigned.Cert.KeyUsage)
 
 	// Verify ExtKeyUsage
-	require.Contains(t, cert.Cert.ExtKeyUsage, x509.ExtKeyUsageServerAuth)
+	require.Contains(t, selfSigned.Cert.ExtKeyUsage, x509.ExtKeyUsageServerAuth)
+
+	certPEM, err := selfSigned.CertPEM()
+	require.NoError(t, err)
+	require.NotEmpty(t, certPEM)
+
+	privKeyPEM, err := selfSigned.PrivKeyPEM()
+	require.NoError(t, err)
+	require.NotEmpty(t, privKeyPEM)
 }
 
 func TestGetProp(t *testing.T) {

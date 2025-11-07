@@ -116,6 +116,7 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 		return nil, fmt.Errorf("scan ReadAll: %w", err)
 	}
 	defer func() {
+		s.poolPutCounter.Add(1)
 		s.pool.Put(bp)
 	}()
 	// IMPORTANT: data must be passed as buf[:n] otherwise data from a previous
@@ -129,9 +130,8 @@ func (s *Scan) scan(ctx context.Context, entry walk.Entry) ([]model.Detection, e
 		if ld, ok := detector.(interface{ LogAttrs() []slog.Attr }); ok {
 			detectCtx = log.ContextAttrs(ctx, ld.LogAttrs()...)
 		}
-
 		d, err := detector.Detect(detectCtx, buf, entry.Path())
-		s.poolPutCounter.Add(1)
+
 		switch {
 		case err == nil:
 			res = append(res, d...)

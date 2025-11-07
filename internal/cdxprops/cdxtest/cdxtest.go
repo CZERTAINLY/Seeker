@@ -1,11 +1,13 @@
 package cdxtest
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"math/big"
 	"path/filepath"
@@ -53,6 +55,32 @@ func GenSelfSignedCert() (SelfSignedCert, error) {
 		Cert: cert,
 		Key:  key,
 	}, nil
+}
+
+// CertPEM encodes certificate in PEM format
+func (s SelfSignedCert) CertPEM() ([]byte, error) {
+	var buf bytes.Buffer
+	err := pem.Encode(&buf, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: s.Der,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode certificate: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+// PrivKeyPEM encodes private key in PEM format
+func (s SelfSignedCert) PrivKeyPEM() ([]byte, error) {
+	var buf bytes.Buffer
+	err := pem.Encode(&buf, &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(s.Key),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode private key: %w", err)
+	}
+	return buf.Bytes(), nil
 }
 
 // getProp gets a property value from a CDX component

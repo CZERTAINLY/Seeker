@@ -15,13 +15,15 @@ func TestLeakToComponent(t *testing.T) {
 		scenario string
 		given    model.Leak
 		then     cdx.Component
+		ignored  bool
 	}{
 		{
 			scenario: "private key should return empty component",
 			given: model.Leak{
 				RuleID: "private-key",
 			},
-			then: cdx.Component{},
+			then:    cdx.Component{},
+			ignored: true,
 		},
 		{
 			scenario: "jwt token detection",
@@ -139,8 +141,9 @@ func TestLeakToComponent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.scenario, func(t *testing.T) {
-			got := cdxprops.LeakToComponent(tt.given)
+			got, ignored := cdxprops.LeakToComponent(tt.given)
 			require.Equal(t, tt.then, got)
+			require.Equal(t, tt.ignored, ignored)
 		})
 	}
 }

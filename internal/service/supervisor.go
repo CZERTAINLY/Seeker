@@ -17,29 +17,14 @@ import (
 )
 
 type Supervisor struct {
-	start     chan string
 	uploaders []model.Uploader
 	oneshot   bool
 	scheduler gocron.Scheduler
 	results   chan Result
-	jobsChan  chan job
+	jobsChan  chan isJob
 	jobsMx    sync.Mutex
 	jobs      map[string]*Job
 	wg        sync.WaitGroup
-}
-
-type jobOp int
-
-const (
-	jobOpAdd jobOp = iota
-	jobOpConfigure
-)
-
-type job struct {
-	op     jobOp
-	name   string
-	job    *Job
-	config *model.Scan
 }
 
 func NewSupervisor(ctx context.Context, cfg model.Config) (*Supervisor, error) {
@@ -63,9 +48,8 @@ func NewSupervisor(ctx context.Context, cfg model.Config) (*Supervisor, error) {
 	supervisor.oneshot = (svcCfg.Mode == model.ServiceModeManual)
 	supervisor.scheduler = scheduler
 
-	supervisor.start = make(chan string, 1)
 	supervisor.results = make(chan Result, 1)
-	supervisor.jobsChan = make(chan job, 1)
+	supervisor.jobsChan = make(chan isJob, 1)
 	supervisor.jobs = make(map[string]*Job)
 
 	return supervisor, nil
@@ -96,19 +80,19 @@ func (s *Supervisor) AddJob(ctx context.Context, name string, cfg model.Scan, te
 		slog.ErrorContext(ctx, "job can't be created: ignoring", "job_name", name, "error", err)
 		return
 	}
-	s.jobsChan <- job{op: jobOpAdd, name: name, job: j}
+	s.jobsChan <- jobAdd{name: name, job: j}
 }
 
 // ConfigureJob allows added job to change its configuration
 func (s *Supervisor) ConfigureJob(_ context.Context, name string, cfg model.Scan) {
-	s.jobsChan <- job{op: jobOpConfigure, name: name, config: &cfg}
+	s.jobsChan <- jobConfigure{name: name, config: &cfg}
 }
 
 // Start tells supervisor to start a new scan - this hints as a signal, so this
 // ends immediately and without any error.
 // start "**" will trigger all registered jobs
 func (s *Supervisor) Start(name string) {
-	s.start <- name
+	s.jobsChan <- jobStart{name: name}
 }
 
 // Do runs the supervisor event loop.
@@ -154,17 +138,29 @@ func (s *Supervisor) Do(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case j, ok := <-s.jobsChan:
-			if ok {
-				s.handleJob(ctx, j)
+		case x, ok := <-s.jobsChan:
+			if !ok {
+				continue
 			}
-		case name := <-s.start:
-			err := s.callStart(ctx, name)
-			if err != nil {
-				if s.oneshot {
-					return err
+			switch j := x.(type) {
+			case jobAdd:
+				s.handleJobAdd(ctx, j)
+			case jobConfigure:
+				if j.config == nil {
+					slog.WarnContext(ctx, "can't configure job: config is nil", "job_name", j.name)
+					continue
 				}
-				slog.ErrorContext(ctx, "start returned", "error", err)
+				s.handleJobConfigure(ctx, j.name, *j.config)
+			case jobStart:
+				err := s.callStart(ctx, j.name)
+				if err != nil {
+					if s.oneshot {
+						return err
+					}
+					slog.ErrorContext(ctx, "start returned", "error", err)
+				}
+			default:
+				continue
 			}
 		case result := <-s.results:
 			var reason string
@@ -214,26 +210,7 @@ func (s *Supervisor) closeJobs() {
 	}
 }
 
-func (s *Supervisor) handleJob(ctx context.Context, j job) {
-	switch j.op {
-	case jobOpAdd:
-		if j.job == nil {
-			slog.WarnContext(ctx, "job add nil: ignoring add", "job_name", j.name)
-			return
-		}
-		s.handleJobAdd(ctx, j)
-	case jobOpConfigure:
-		if j.config == nil {
-			slog.WarnContext(ctx, "job config nil: ignoring configure", "job_name", j.name)
-			return
-		}
-		s.handleJobConfigure(ctx, j.name, *j.config)
-	default:
-		slog.WarnContext(ctx, "job operation not supported: ignoring", "op", j.op)
-	}
-}
-
-func (s *Supervisor) handleJobAdd(ctx context.Context, j job) {
+func (s *Supervisor) handleJobAdd(ctx context.Context, j jobAdd) {
 	s.jobsMx.Lock()
 	defer s.jobsMx.Unlock()
 	job := j.job
@@ -418,3 +395,29 @@ func (u *OSRootUploader) Close() error {
 	u.root = nil
 	return err
 }
+
+// isJob is a sum-like type implementing the protocol for
+// async scan job execution
+type isJob interface {
+	isJob()
+}
+
+type jobAdd struct {
+	name string
+	job  *Job
+}
+
+func (jobAdd) isJob() {}
+
+type jobConfigure struct {
+	name   string
+	config *model.Scan
+}
+
+func (jobConfigure) isJob() {}
+
+type jobStart struct {
+	name string
+}
+
+func (jobStart) isJob() {}

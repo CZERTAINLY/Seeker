@@ -11,12 +11,12 @@ import (
 // LeakToComponent converts the finding to component
 // it IGNORES private-key as this is expected to be
 // detected by x509 code and not by regular expressions
-func LeakToComponent(leak model.Leak) cdx.Component {
+func LeakToComponent(leak model.Leak) (cdx.Component, bool) {
 	var zero cdx.Component
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
 	case leak.RuleID == "private-key":
-		return zero
+		return zero, true
 	case strings.Contains(leak.RuleID, "jwt"):
 		fallthrough
 	case strings.Contains(leak.RuleID, "token"):
@@ -48,5 +48,5 @@ func LeakToComponent(leak model.Leak) cdx.Component {
 			},
 		},
 	}
-	return compo
+	return compo, false
 }
