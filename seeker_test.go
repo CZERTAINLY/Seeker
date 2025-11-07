@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 			t.Helper()
 			dir, err := os.MkdirTemp("", t.Name()+"*")
 			require.NoError(t, err)
-			_, err = fmt.Fprintf(t.Output(), "TEMPDIR %s: -test.keepir used, so it won't be automatically deleted", dir)
+			_, err = fmt.Fprintf(t.Output(), "TEMPDIR %s: -test.keepdir used, so it won't be automatically deleted", dir)
 			require.NoError(t, err)
 			return dir
 		}
