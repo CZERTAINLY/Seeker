@@ -6,4 +6,5 @@ type Leak struct {
 	Description string
 	File        string
 	StartLine   int
+	Content     string
 }
