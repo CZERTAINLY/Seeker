@@ -29,7 +29,7 @@ func TestLeakToComponent(t *testing.T) {
 		ignored  bool
 	}{
 		{
-			scenario: "private key should return empty component",
+			scenario: "private key should return component with encoded content",
 			given: model.Leak{
 				RuleID:    "private-key",
 				File:      "privKey.pem",

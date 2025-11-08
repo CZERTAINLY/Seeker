@@ -27,7 +27,7 @@ func Test_Detector_IgnorePrivateKey(t *testing.T) {
 	privKeyPEM, err := selfSigned.PrivKeyPEM()
 	require.NoError(t, err)
 
-	// Test that detector returns no match for invalid data
+	// Test that detector returns no match for private key PEM
 	var d czX509.Scanner
 	hits, err := d.Scan(t.Context(), privKeyPEM, "testpath")
 	require.NoError(t, err)
