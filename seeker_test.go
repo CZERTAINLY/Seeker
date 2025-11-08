@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -96,7 +97,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestSeeker(t *testing.T) {
+func TestSeekerManual(t *testing.T) {
 	_ = chDir(t)
 
 	const config = `
@@ -131,6 +132,89 @@ service:
 	creat(t, t.Name()+".json", stdout.Bytes())
 
 	dec := cdx.NewBOMDecoder(&stdout, cdx.BOMFileFormatJSON)
+	bom := cdx.BOM{}
+	err = dec.Decode(&bom)
+	require.NoError(t, err)
+
+	require.Len(t, *bom.Components, 3)
+	names := make([]string, len(*bom.Components))
+	for i, compo := range *bom.Components {
+		names[i] = compo.Name
+	}
+	require.ElementsMatch(t, []string{
+		"CN=Test Cert",
+		"aws-access-token",
+		"private-key",
+	}, names)
+}
+
+func TestSeekerTimer(t *testing.T) {
+	_ = chDir(t)
+
+	const config = `
+version: 0
+filesystem:
+    enabled: true
+    paths: 
+        - .
+service:
+    mode: "timer"
+    schedule:
+       cron: "@every 1s"
+    dir: .
+    verbose: false
+`
+	creat(t, "seeker.yaml", []byte(config))
+	fixture(t, "testing/leaks/aws_token.py")
+	creat(t, "priv.key", privKeyBytes)
+	creat(t, "pem.cert", certDER)
+	err := rmrf("seeker*json")
+	require.NoError(t, err)
+
+	runCtx, cancelRun := context.WithTimeout(t.Context(), 30*time.Second)
+	t.Cleanup(cancelRun)
+	// wait on new scan file to appear and cancel the context
+	// which kills the seeker - this will speedup the test
+	go func(ctx context.Context, cancel context.CancelFunc) {
+		t := time.NewTicker(5 * time.Second)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				results, _ := filepath.Glob("seeker*.json")
+				if len(results) >= 1 {
+					cancel()
+				}
+				return
+			}
+		}
+	}(runCtx, cancelRun)
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(runCtx, seekerPath, "run", "--config", "seeker.yaml")
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	t.Logf("./seeker-ci run: %#+v", cmd)
+	err = cmd.Run()
+	if err != nil {
+		t.Logf("%s", stderr.String())
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) {
+			require.NoError(t, err)
+		}
+	}
+
+	results, err := filepath.Glob("seeker*.json")
+	require.NoError(t, err)
+	f, err := os.Open(results[0])
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		err = f.Close()
+		require.NoError(t, err)
+	})
+
+	dec := cdx.NewBOMDecoder(f, cdx.BOMFileFormatJSON)
 	bom := cdx.BOM{}
 	err = dec.Decode(&bom)
 	require.NoError(t, err)
@@ -184,6 +268,20 @@ func creat(t *testing.T, path string, content []byte) {
 	require.NoError(t, err)
 	err = f.Sync()
 	require.NoError(t, err)
+}
+
+func rmrf(pattern string) error {
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return fmt.Errorf("glob pattern error: %w", err)
+	}
+
+	for _, match := range matches {
+		if err := os.RemoveAll(match); err != nil {
+			return fmt.Errorf("failed to remove %s: %w", match, err)
+		}
+	}
+	return nil
 }
 
 func fixture(t *testing.T, inPath string) string {
