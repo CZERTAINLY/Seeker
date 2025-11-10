@@ -93,3 +93,9 @@ func TestValidator_Validate(t *testing.T) {
 		})
 	}
 }
+
+func TestValidator_UnsupportedVersion(t *testing.T) {
+	_, err := bom.NewValidator(cdx.SpecVersion1_0)
+	require.Error(t, err)
+	require.EqualError(t, err, "unknown schema version: 1.0")
+}
