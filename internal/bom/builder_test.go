@@ -12,12 +12,6 @@ func TestBuilder(t *testing.T) {
 	t.Parallel()
 
 	b := bom.NewBuilder().
-		AppendAuthors(cdx.OrganizationalContact{
-			BOMRef: "",
-			Name:   "test-author",
-			Email:  "test.author@example.net",
-			Phone:  "+1 555 555 5555",
-		}).
 		AppendComponents(cdx.Component{
 			BOMRef:       "",
 			MIMEType:     "application/x-pem-file",

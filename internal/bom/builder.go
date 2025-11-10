@@ -22,7 +22,6 @@ func init() {
 
 // Builder is a builder pattern for a CycloneDX BOM structure
 type Builder struct {
-	authors      []cdx.OrganizationalContact
 	components   []cdx.Component
 	dependencies []cdx.Dependency
 	properties   []cdx.Property
@@ -35,11 +34,6 @@ func NewBuilder() *Builder {
 		dependencies: []cdx.Dependency{},
 		properties:   []cdx.Property{},
 	}
-}
-
-func (b *Builder) AppendAuthors(authors ...cdx.OrganizationalContact) *Builder {
-	b.authors = append(b.authors, authors...)
-	return b
 }
 
 func (b *Builder) AppendComponents(components ...cdx.Component) *Builder {
@@ -74,7 +68,6 @@ func (b *Builder) BOM() cdx.BOM {
 					Description: "",
 				},
 			},
-			Authors: &b.authors,
 			// This can't be not nil otherwise this error will happen
 			// json: error calling MarshalJSON for type *cyclonedx.ToolsChoice: unexpected end of JSON input
 			Component: &cdx.Component{

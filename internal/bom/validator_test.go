@@ -42,8 +42,8 @@ func TestValidator_Validate_Errors(t *testing.T) {
 			enc := cdx.NewBOMEncoder(&buf, cdx.BOMFileFormatJSON)
 			require.NoError(t, enc.Encode(&bom))
 
-			errBOM := validator.Validate(t.Context(), &bom)
-			errBytes := validator.ValidateBytes(t.Context(), buf.Bytes())
+			errBOM := validator.Validate(&bom)
+			errBytes := validator.ValidateBytes(buf.Bytes())
 
 			if errBOM == nil {
 				t.Logf("%s", buf.String())
@@ -81,8 +81,8 @@ func TestValidator_Validate(t *testing.T) {
 			enc := cdx.NewBOMEncoder(&buf, cdx.BOMFileFormatJSON)
 			require.NoError(t, enc.Encode(&bom))
 
-			errBOM := validator.Validate(t.Context(), &bom)
-			errBytes := validator.ValidateBytes(t.Context(), buf.Bytes())
+			errBOM := validator.Validate(&bom)
+			errBytes := validator.ValidateBytes(buf.Bytes())
 
 			if errBOM != nil {
 				t.Logf("%s", buf.String())
@@ -110,8 +110,8 @@ func TestValidator_UnsupportedVersion(t *testing.T) {
 	enc := cdx.NewBOMEncoder(&buf, cdx.BOMFileFormatJSON)
 	require.NoError(t, enc.Encode(&bom))
 
-	errBOM := validator.Validate(t.Context(), &bom)
-	errBytes := validator.ValidateBytes(t.Context(), buf.Bytes())
+	errBOM := validator.Validate(&bom)
+	errBytes := validator.ValidateBytes(buf.Bytes())
 
 	require.Error(t, errBOM)
 	require.EqualError(t, errBOM, "unsupported BOM specification version: supported 1.6: got: 1.5")

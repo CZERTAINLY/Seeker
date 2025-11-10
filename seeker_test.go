@@ -141,7 +141,7 @@ service:
 	creat(t, t.Name()+".json", stdout.Bytes())
 
 	// validate result against JSON schema
-	require.NoError(t, validator.ValidateBytes(t.Context(), stdout.Bytes()))
+	require.NoError(t, validator.ValidateBytes(stdout.Bytes()))
 
 	dec := cdx.NewBOMDecoder(&stdout, cdx.BOMFileFormatJSON)
 	bom := cdx.BOM{}
@@ -236,7 +236,7 @@ service:
 	require.NoError(t, err)
 
 	// validate result against JSON schema
-	require.NoError(t, validator.ValidateBytes(t.Context(), buf.Bytes()))
+	require.NoError(t, validator.ValidateBytes(buf.Bytes()))
 
 	require.Len(t, *bom.Components, 3)
 	names := make([]string, len(*bom.Components))

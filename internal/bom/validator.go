@@ -2,7 +2,6 @@ package bom
 
 import (
 	"bytes"
-	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -48,7 +47,7 @@ func NewValidator(versions ...cdx.SpecVersion) (Validator, error) {
 	}, nil
 }
 
-func (v Validator) Validate(ctx context.Context, bom *cdx.BOM) error {
+func (v Validator) Validate(bom *cdx.BOM) error {
 	schema, err := v.versionToSchema(bom.SpecVersion)
 	if err != nil {
 		return err
@@ -60,10 +59,10 @@ func (v Validator) Validate(ctx context.Context, bom *cdx.BOM) error {
 	if err != nil {
 		return fmt.Errorf("encoding bom to JSON: %w", err)
 	}
-	return v.validateBytes(ctx, schema, buf.Bytes())
+	return v.validateBytes(schema, buf.Bytes())
 }
 
-func (v Validator) ValidateBytes(ctx context.Context, b []byte) error {
+func (v Validator) ValidateBytes(b []byte) error {
 	var bom struct {
 		SpecVersion cdx.SpecVersion `json:"specVersion"`
 	}
@@ -76,7 +75,7 @@ func (v Validator) ValidateBytes(ctx context.Context, b []byte) error {
 	if err != nil {
 		return err
 	}
-	return v.validateBytes(ctx, schema, b)
+	return v.validateBytes(schema, b)
 }
 
 func (v Validator) versionToSchema(version cdx.SpecVersion) (*jss.Schema, error) {
@@ -94,7 +93,7 @@ func (v Validator) versionToSchema(version cdx.SpecVersion) (*jss.Schema, error)
 	return schema, nil
 }
 
-func (v Validator) validateBytes(ctx context.Context, schema *jss.Schema, b []byte) error {
+func (v Validator) validateBytes(schema *jss.Schema, b []byte) error {
 	res := schema.Validate(b)
 	if !res.Valid {
 		var errorMsgs []string
