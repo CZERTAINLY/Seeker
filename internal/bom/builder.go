@@ -31,7 +31,6 @@ type Builder struct {
 func NewBuilder() *Builder {
 	return &Builder{
 		// those MUST be initialized as cyclone-dx JSON schema do not allow items to be null
-		authors:      []cdx.OrganizationalContact{},
 		components:   []cdx.Component{},
 		dependencies: []cdx.Dependency{},
 		properties:   []cdx.Property{},
@@ -61,7 +60,7 @@ func (b *Builder) AppendDependencies(dependencies ...cdx.Dependency) *Builder {
 // BOM returns a cdx.BOM based on a data inside the Builder
 func (b *Builder) BOM() cdx.BOM {
 	bom := cdx.BOM{
-		JSONSchema:   "",
+		JSONSchema:   "http://cyclonedx.org/schema/bom-1.6.schema.json",
 		BOMFormat:    "CycloneDX",
 		SpecVersion:  cdx.SpecVersion1_6,
 		SerialNumber: "urn:uuid:" + uuid.New().String(),
@@ -78,38 +77,22 @@ func (b *Builder) BOM() cdx.BOM {
 			Authors: &b.authors,
 			// This can't be not nil otherwise this error will happen
 			// json: error calling MarshalJSON for type *cyclonedx.ToolsChoice: unexpected end of JSON input
-			Tools: nil,
 			Component: &cdx.Component{
 				Type:    "application",
 				Name:    "Seeker",
 				Version: version,
 				Manufacturer: &cdx.OrganizationalEntity{
-					BOMRef:  "",
 					Name:    "CZERTAINLY",
 					Address: &cdx.PostalAddress{},
 					URL: &[]string{
 						"https://www.czertainly.com",
 					},
-					Contact: &[]cdx.OrganizationalContact{},
 				},
 			},
-			Manufacture:  &cdx.OrganizationalEntity{},
-			Manufacturer: &cdx.OrganizationalEntity{},
-			Supplier:     &cdx.OrganizationalEntity{},
-			Licenses:     &cdx.Licenses{},
-			Properties:   &[]cdx.Property{},
 		},
-		Components:         &b.components,
-		Services:           &[]cdx.Service{},
-		ExternalReferences: &[]cdx.ExternalReference{},
-		Dependencies:       &b.dependencies,
-		Compositions:       &[]cdx.Composition{},
-		Properties:         &b.properties,
-		Vulnerabilities:    &[]cdx.Vulnerability{},
-		Annotations:        &[]cdx.Annotation{},
-		Formulation:        &[]cdx.Formula{},
-		Declarations:       &cdx.Declarations{},
-		Definitions:        &cdx.Definitions{},
+		Components:   &b.components,
+		Dependencies: &b.dependencies,
+		Properties:   &b.properties,
 	}
 	return bom
 }

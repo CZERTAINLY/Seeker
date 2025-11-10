@@ -73,7 +73,11 @@ func TestSetComponentProp_AppendsNew(t *testing.T) {
 func TestSetComponentProp_EmptyValueIsNoop(t *testing.T) {
 	// when Properties is nil, empty value should not allocate or change anything
 	var c cdx.Component
+	SetComponentProp(nil, "anything", "")
+	require.Nil(t, c.Properties)
 	SetComponentProp(&c, "anything", "")
+	require.Nil(t, c.Properties)
+	SetComponentProp(&c, "", "anything")
 	require.Nil(t, c.Properties)
 
 	// when Properties already exists, empty value should not modify

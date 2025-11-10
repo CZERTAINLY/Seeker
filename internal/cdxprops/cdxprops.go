@@ -18,7 +18,7 @@ const (
 
 // Set (or upsert) a CycloneDX component property.
 func SetComponentProp(c *cdx.Component, name, value string) {
-	if value == "" || c == nil {
+	if name == "" || value == "" || c == nil {
 		return
 	}
 	if c.Properties == nil {
