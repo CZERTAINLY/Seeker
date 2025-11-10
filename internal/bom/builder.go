@@ -60,7 +60,7 @@ func (b *Builder) AppendDependencies(dependencies ...cdx.Dependency) *Builder {
 // BOM returns a cdx.BOM based on a data inside the Builder
 func (b *Builder) BOM() cdx.BOM {
 	bom := cdx.BOM{
-		JSONSchema:   "http://cyclonedx.org/schema/bom-1.6.schema.json",
+		JSONSchema:   "https://cyclonedx.org/schema/bom-1.6.schema.json",
 		BOMFormat:    "CycloneDX",
 		SpecVersion:  cdx.SpecVersion1_6,
 		SerialNumber: "urn:uuid:" + uuid.New().String(),

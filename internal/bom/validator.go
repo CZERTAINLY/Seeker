@@ -26,7 +26,7 @@ type Validator struct {
 
 func NewValidator(versions ...cdx.SpecVersion) (Validator, error) {
 	var zero Validator
-	schemas := make(map[cdx.SpecVersion]*jss.Schema, 10)
+	schemas := make(map[cdx.SpecVersion]*jss.Schema, 1)
 	for _, ver := range versions {
 		path, ok := versionToPath[ver]
 		if !ok {
