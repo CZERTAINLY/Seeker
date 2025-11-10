@@ -98,4 +98,24 @@ func TestValidator_UnsupportedVersion(t *testing.T) {
 	_, err := bom.NewValidator(cdx.SpecVersion1_0)
 	require.Error(t, err)
 	require.EqualError(t, err, "unknown schema version: 1.0")
+
+	validator, err := bom.NewValidator(cdx.SpecVersion1_6)
+	require.NoError(t, err)
+	b := bom.NewBuilder()
+	bom := b.BOM()
+
+	bom.SpecVersion = cdx.SpecVersion1_5
+
+	var buf bytes.Buffer
+	enc := cdx.NewBOMEncoder(&buf, cdx.BOMFileFormatJSON)
+	require.NoError(t, enc.Encode(&bom))
+
+	errBOM := validator.Validate(t.Context(), &bom)
+	errBytes := validator.ValidateBytes(t.Context(), buf.Bytes())
+
+	require.Error(t, errBOM)
+	require.EqualError(t, errBOM, "unsupported BOM specification version: supported 1.6: got: 1.5")
+	require.Error(t, errBytes)
+	require.EqualError(t, errBytes, "unsupported BOM specification version: supported 1.6: got: 1.5")
+
 }
