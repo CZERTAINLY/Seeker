@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -14,9 +15,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
-	cdx "github.com/CycloneDX/cyclonedx-go"
 
+	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +28,7 @@ var (
 	seekerPath   string
 	privKeyBytes []byte
 	certDER      []byte
+	validator    bom.Validator
 
 	// tmpDir is a function used to create a tempdir
 	// -test.keepdir flag tells the test to use os.MkdirTemp
@@ -94,6 +97,12 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	validator, err = bom.NewValidator(cdx.SpecVersion1_6)
+	if err != nil {
+		slog.Error("can't initialize BOM validator", "error", err)
+		os.Exit(1)
+	}
+
 	os.Exit(m.Run())
 }
 
@@ -130,6 +139,9 @@ service:
 
 	// store the $TEST_NAME json
 	creat(t, t.Name()+".json", stdout.Bytes())
+
+	// validate result against JSON schema
+	require.NoError(t, validator.ValidateBytes(stdout.Bytes()))
 
 	dec := cdx.NewBOMDecoder(&stdout, cdx.BOMFileFormatJSON)
 	bom := cdx.BOM{}
@@ -207,6 +219,7 @@ service:
 
 	results, err := filepath.Glob("seeker*.json")
 	require.NoError(t, err)
+	require.True(t, len(results) > 0)
 	f, err := os.Open(results[0])
 	require.NoError(t, err)
 	t.Cleanup(func() {
@@ -214,10 +227,16 @@ service:
 		require.NoError(t, err)
 	})
 
-	dec := cdx.NewBOMDecoder(f, cdx.BOMFileFormatJSON)
+	var buf bytes.Buffer
+	var r = io.TeeReader(f, &buf)
+
+	dec := cdx.NewBOMDecoder(r, cdx.BOMFileFormatJSON)
 	bom := cdx.BOM{}
 	err = dec.Decode(&bom)
 	require.NoError(t, err)
+
+	// validate result against JSON schema
+	require.NoError(t, validator.ValidateBytes(buf.Bytes()))
 
 	require.Len(t, *bom.Components, 3)
 	names := make([]string, len(*bom.Components))
