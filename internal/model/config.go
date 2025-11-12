@@ -100,6 +100,8 @@ type Service struct {
 	Dir        string         `json:"dir,omitempty"`                                    // output directory
 	Repository *Repository    `json:"repository,omitempty" yaml:"repository,omitempty"` // remote publication
 	Schedule   *TimerSchedule `json:"schedule,omitempty"`                               // only for mode timer
+	Seeker     *SeekerServer  `json:"seeker,omitempty"`
+	Core       *Core          `json:"core,omitempty"`
 }
 
 // TimerSchedule defines the duration for a timer mode
@@ -110,15 +112,15 @@ type TimerSchedule struct {
 
 // Repository publication settings.
 type Repository struct {
-	Enabled bool   `json:"enabled"`
-	URL     string `json:"url"`
-	Auth    Auth   `json:"auth"` // discriminated union by Auth.Type
+	URL URL `json:"base_url"`
 }
 
-// Auth is a tagged union: Type "none" or "static_token".
-type Auth struct {
-	Type  string `json:"type"`            // "none" | "static_token"
-	Token string `json:"token,omitempty"` // required when Type == "static_token"
+type SeekerServer struct {
+	Addr    TCPAddr `json:"addr"` // :port or ip:port
+	BaseURL URL     `json:"base_url"`
+}
+type Core struct {
+	BaseURL URL `json:"base_url"`
 }
 
 func (c Config) IsZero() bool {
@@ -168,10 +170,10 @@ func expandEnvRecursive[PT configPT](pt PT) {
 		return
 	}
 	rv = rv.Elem()
-	expandValue(rv)
+	expandEnvValue(rv)
 }
 
-func expandValue(v reflect.Value) {
+func expandEnvValue(v reflect.Value) {
 	if !v.IsValid() {
 		return
 	}
@@ -185,17 +187,17 @@ func expandValue(v reflect.Value) {
 			f := v.Field(i)
 			// only exported (CanSet)
 			if f.CanSet() {
-				expandValue(f)
+				expandEnvValue(f)
 			} else {
 				// still allow recursive into addressable nested structs
 				if f.Kind() == reflect.Struct {
-					expandValue(f)
+					expandEnvValue(f)
 				}
 			}
 		}
 	case reflect.Pointer:
 		if !v.IsNil() {
-			expandValue(v.Elem())
+			expandEnvValue(v.Elem())
 		}
 	case reflect.Slice:
 		et := v.Type().Elem()
@@ -223,7 +225,7 @@ func expandValue(v reflect.Value) {
 			}
 		case reflect.Struct, reflect.Pointer:
 			for i := 0; i < v.Len(); i++ {
-				expandValue(v.Index(i))
+				expandEnvValue(v.Index(i))
 			}
 		default:
 			// other slice types ignored

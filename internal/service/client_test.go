@@ -9,12 +9,20 @@ import (
 	"strings"
 	"testing"
 
-	pd "github.com/kodeart/go-problem/v2"
+	"github.com/CZERTAINLY/Seeker/internal/model"
 
+	pd "github.com/kodeart/go-problem/v2"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewBOMRepoUploaderFunc(t *testing.T) {
+	parse := func(t *testing.T, s string) model.URL {
+		t.Helper()
+		var u model.URL
+		err := u.UnmarshalText([]byte(s))
+		require.NoError(t, err)
+		return u
+	}
 
 	testCases := map[string]struct {
 		serverURL string
@@ -41,7 +49,8 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 
-			u, err := NewBOMRepoUploader(tc.serverURL)
+			mu := parse(t, tc.serverURL)
+			u, err := NewBOMRepoUploader(mu)
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {
@@ -53,8 +62,11 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 }
 
 func TestDecodeUploadResponse(t *testing.T) {
+	var mu model.URL
+	err := mu.UnmarshalText([]byte("http://some-server.com"))
+	require.NoError(t, err)
 
-	u, err := NewBOMRepoUploader("http://some-server.com")
+	u, err := NewBOMRepoUploader(mu)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 
@@ -303,7 +315,11 @@ func TestDecodeUploadResponse(t *testing.T) {
 }
 
 func TestBOMRepoUploadBadServerURLFunc(t *testing.T) {
-	u, err := NewBOMRepoUploader("http://does-not-exist.yet")
+	var mu model.URL
+	err := mu.UnmarshalText([]byte("http://some-server.com"))
+	require.NoError(t, err)
+
+	u, err := NewBOMRepoUploader(mu)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 
@@ -316,6 +332,14 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer ts.Close()
+
+	parse := func(t *testing.T, s string) model.URL {
+		t.Helper()
+		var u model.URL
+		err := u.UnmarshalText([]byte(s))
+		require.NoError(t, err)
+		return u
+	}
 
 	testCases := map[string]struct {
 		setup   func() (*httptest.Server, func())
@@ -501,7 +525,8 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			s, closeFunc := tc.setup()
 			defer closeFunc()
 
-			u, err := NewBOMRepoUploader(s.URL)
+			mu := parse(t, s.URL)
+			u, err := NewBOMRepoUploader(mu)
 			require.NoError(t, err)
 			require.NotNil(t, u)
 

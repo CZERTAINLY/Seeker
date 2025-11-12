@@ -314,7 +314,7 @@ func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func
 }
 
 func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
-	if cfg.Dir == "" && (cfg.Repository == nil || !cfg.Repository.Enabled) {
+	if cfg.Dir == "" && cfg.Repository == nil {
 		return []model.Uploader{NewWriteUploader(os.Stdout)}, nil
 	}
 	var uploaders []model.Uploader
@@ -326,7 +326,7 @@ func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
 		uploaders = append(uploaders, u)
 	}
 
-	if cfg.Repository != nil && cfg.Repository.Enabled {
+	if cfg.Repository != nil {
 		u, err := NewBOMRepoUploader(cfg.Repository.URL)
 		if err != nil {
 			return nil, err

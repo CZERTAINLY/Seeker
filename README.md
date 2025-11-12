@@ -111,14 +111,13 @@ service:
     dir: .
 ```
 
-The following setup is needed to upload to a [CBOM-Repository](https://github.com/CZERTAINLY/CBOM-Repository): Currently, Seeker does not support making authenticated requests.
+The following setup is needed to upload to a [CBOM-Repository](https://github.com/CZERTAINLY/CBOM-Repository)
 
 ```yaml
 service:
     mode: manual
     repository:
-      enabled: true
-      url: "http://localhost:8080"
+      base_url: "http://localhost:8080"
 ```
 
 Both the `dir` and the `repository` can be combined in a single configuration
@@ -129,8 +128,7 @@ service:
     mode: manual
     dir: .
     repository:
-      enabled: true
-      url: "http://localhost:8080"
+      base_url: "http://localhost:8080"
 ```
 
 # Modes of operation
@@ -257,6 +255,31 @@ service:
       # 1 day 2 hours 3 minutes 4 s
       duration: "P1DT2H3M4S"
 ```
+
+## CZERTAINLY discovery
+
+> !WARNING
+> CZERTAINLY core integration is in development at the moment. This part describes the configuration, but nothing more.
+
+```yaml
+version: 0
+service:
+    mode: "discovery"
+    repository:
+        base_url: https://example.com/repo
+    seeker:
+        # where should seeker bind to - can be ip:port
+        addr: :8080
+        # public address from which is seeker accessible
+        # to CZERTAINLY
+        base_url: https://seeker.example.net/api
+    core:
+        # base address of CZERTAINLY Core API
+        base_url: https://core-demo.example.net/api
+```
+
+In this mode Seeker is fully managed by CZERTAINLY via discovery
+protocol. In this mode using a `repository` is more than recommended, as CZERTAINLY Core is expected to pull BOMs from there.
 
 # Developers
 
