@@ -18,8 +18,9 @@ import (
 
 type Supervisor struct {
 	uploaders []model.Uploader
-	oneshot   bool
+	cfg       model.Service
 	scheduler gocron.Scheduler
+	duration  time.Duration
 	results   chan Result
 	jobsChan  chan isJob
 	jobsMx    sync.Mutex
@@ -28,24 +29,26 @@ type Supervisor struct {
 }
 
 func NewSupervisor(ctx context.Context, cfg model.Config) (*Supervisor, error) {
-	svcCfg := cfg.Service
-	uploaders, err := uploaders(ctx, svcCfg)
+	var supervisor = &Supervisor{
+		cfg: cfg.Service,
+	}
+	uploaders, err := uploaders(ctx, supervisor.cfg)
 	if err != nil {
 		return nil, fmt.Errorf("initializing uploaders: %w", err)
 	}
 
-	var supervisor = &Supervisor{}
 	var scheduler gocron.Scheduler
-	if svcCfg.Mode == "timer" {
+	if supervisor.cfg.Mode == "timer" {
 		var err error
-		scheduler, err = newScheduler(ctx, svcCfg.Schedule, func() { supervisor.Start("**") })
+		var d time.Duration
+		d, scheduler, err = newScheduler(ctx, supervisor.cfg.Schedule, func() { supervisor.Start("**") })
+		supervisor.duration = d
 		if err != nil {
 			return nil, fmt.Errorf("timer mode failed: %w", err)
 		}
 	}
 
 	supervisor.uploaders = uploaders
-	supervisor.oneshot = (svcCfg.Mode == model.ServiceModeManual)
 	supervisor.scheduler = scheduler
 
 	supervisor.results = make(chan Result, 1)
@@ -68,7 +71,11 @@ func (s *Supervisor) WithUploaders(ctx context.Context, uploaders ...model.Uploa
 // (hidden integration test protocol). For spawning / stream capture tests only;
 // not for production use.
 func (s *Supervisor) AddJob(ctx context.Context, name string, cfg model.Scan, testData ...string) {
-	j, err := NewJob(name, s.oneshot, cfg, s.results)
+	j, err := NewJob(name, s.cfg.Mode == model.ServiceModeManual, cfg, s.results)
+	if err != nil {
+		slog.ErrorContext(ctx, "job can't be created: ignoring", "job_name", name, "error", err)
+		return
+	}
 	// internal test harness protocol
 	if len(testData) == 1 {
 		j.WithTestData(testData[0], "")
@@ -76,10 +83,6 @@ func (s *Supervisor) AddJob(ctx context.Context, name string, cfg model.Scan, te
 		j.WithTestData(testData[0], testData[1])
 	}
 
-	if err != nil {
-		slog.ErrorContext(ctx, "job can't be created: ignoring", "job_name", name, "error", err)
-		return
-	}
 	s.jobsChan <- jobAdd{name: name, job: j}
 }
 
@@ -145,6 +148,9 @@ func (s *Supervisor) Do(ctx context.Context) error {
 			switch j := x.(type) {
 			case jobAdd:
 				s.handleJobAdd(ctx, j)
+				if s.cfg.Mode == model.ServiceModeTimer {
+					slog.InfoContext(ctx, "adding new timer job", "job_name", j.job.Name(), "scheduled_in", s.duration.String())
+				}
 			case jobConfigure:
 				if j.config == nil {
 					slog.WarnContext(ctx, "can't configure job: config is nil", "job_name", j.name)
@@ -154,7 +160,7 @@ func (s *Supervisor) Do(ctx context.Context) error {
 			case jobStart:
 				err := s.callStart(ctx, j.name)
 				if err != nil {
-					if s.oneshot {
+					if s.cfg.Mode == model.ServiceModeManual {
 						return err
 					}
 					slog.ErrorContext(ctx, "start returned", "error", err)
@@ -178,7 +184,7 @@ func (s *Supervisor) Do(ctx context.Context) error {
 			}
 			slog.DebugContext(ctx, "scan succeeded: uploading")
 			err := s.upload(ctx, result.Stdout)
-			if s.oneshot {
+			if s.cfg.Mode == model.ServiceModeManual {
 				return err
 			}
 			if err != nil {
@@ -220,8 +226,7 @@ func (s *Supervisor) handleJobAdd(ctx context.Context, j jobAdd) {
 	}
 
 	s.wg.Go(func() {
-		slog.InfoContext(ctx, "adding new active job", "job_name", job.Name())
-		err := job.Run(ctx)
+		err := job.Activate(ctx)
 		if err != nil {
 			slog.ErrorContext(ctx, "job run failed", "job_name", job.Name(), "error", err)
 		}
@@ -274,43 +279,45 @@ func (s *Supervisor) upload(ctx context.Context, stdout []byte) error {
 	return errors.Join(errs...)
 }
 
-func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func()) (gocron.Scheduler, error) {
+func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func()) (time.Duration, gocron.Scheduler, error) {
 	if cfgp == nil {
-		return nil, fmt.Errorf("service.schedule is nil")
+		return 0, nil, fmt.Errorf("service.schedule is nil")
 	}
 	cfg := *cfgp
 	var job gocron.JobDefinition
+	var d time.Duration
+	var err error
 	switch {
 	case cfg.Cron != "":
-		err := ParseCron(cfg.Cron)
+		d, err = model.ParseCron(cfg.Cron)
 		if err != nil {
-			return nil, fmt.Errorf("parsing service.scheduler.cron: %w", err)
+			return 0, nil, fmt.Errorf("parsing service.scheduler.cron: %w", err)
 		}
 		job = gocron.CronJob(cfg.Cron, false)
 		slog.DebugContext(ctx, "successfully parsed", "cron", cfg.Cron, "job", job)
 	case cfg.Duration != "":
-		d, err := ParseISODuration(cfg.Duration)
+		d, err = model.ParseISODuration(cfg.Duration)
 		if err != nil {
-			return nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
+			return 0, nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
 		}
 		slog.DebugContext(ctx, "successfully parsed", "duration", d.String(), "job", job)
 		job = gocron.DurationJob(d)
 	default:
-		return nil, errors.New("both cron and duration are empty")
+		return 0, nil, errors.New("both cron and duration are empty")
 	}
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
-		return nil, fmt.Errorf("initializing gocron scheduler: %w", err)
+		return 0, nil, fmt.Errorf("initializing gocron scheduler: %w", err)
 	}
 	_, err = s.NewJob(
 		job,
 		gocron.NewTask(startFunc),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("initializing gocron job: %w", err)
+		return 0, nil, fmt.Errorf("initializing gocron job: %w", err)
 	}
-	return s, nil
+	return d, s, nil
 }
 
 func uploaders(_ context.Context, cfg model.Service) ([]model.Uploader, error) {
