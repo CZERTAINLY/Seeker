@@ -149,7 +149,7 @@ func (s *Supervisor) Do(ctx context.Context) error {
 			case jobAdd:
 				s.handleJobAdd(ctx, j)
 				if s.cfg.Mode == model.ServiceModeTimer {
-					slog.InfoContext(ctx, "adding new timer job", "job_name", j.job.Name(), "scheduled_in", s.duration.String())
+					slog.InfoContext(ctx, "adding new timer job", "job_name", j.job.Name(), "interval", s.duration.String())
 				}
 			case jobConfigure:
 				if j.config == nil {
@@ -300,8 +300,8 @@ func newScheduler(ctx context.Context, cfgp *model.TimerSchedule, startFunc func
 		if err != nil {
 			return 0, nil, fmt.Errorf("parsing service.scheduler.duration: %w", err)
 		}
-		slog.DebugContext(ctx, "successfully parsed", "duration", d.String(), "job", job)
 		job = gocron.DurationJob(d)
+		slog.DebugContext(ctx, "successfully parsed", "duration", d.String(), "job", job)
 	default:
 		return 0, nil, errors.New("both cron and duration are empty")
 	}
