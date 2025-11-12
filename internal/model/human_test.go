@@ -338,3 +338,107 @@ func TestTCPAddr_JSONRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestURL_Clone(t *testing.T) {
+	t.Run("clone nil URL", func(t *testing.T) {
+		original := model.URL{}
+		cloned := original.Clone()
+
+		require.Nil(t, cloned.URL)
+		require.Equal(t, original, cloned)
+	})
+
+	t.Run("clone simple URL", func(t *testing.T) {
+		original := model.URL{
+			URL: &url.URL{
+				Scheme: "https",
+				Host:   "example.com",
+				Path:   "/api/v1",
+			},
+		}
+		cloned := original.Clone()
+
+		require.NotNil(t, cloned.URL)
+		require.Equal(t, original.Scheme, cloned.Scheme)
+		require.Equal(t, original.Host, cloned.Host)
+		require.Equal(t, original.Path, cloned.Path)
+		require.NotSame(t, original.URL, cloned.URL)
+	})
+
+	t.Run("clone URL with all fields", func(t *testing.T) {
+		original := model.URL{
+			URL: &url.URL{
+				Scheme:      "https",
+				Opaque:      "opaque",
+				Host:        "example.com:8080",
+				Path:        "/path/to/resource",
+				RawPath:     "/path%2Fto%2Fresource",
+				RawQuery:    "key=value&foo=bar",
+				Fragment:    "section",
+				RawFragment: "section%20one",
+			},
+		}
+		cloned := original.Clone()
+
+		require.NotNil(t, cloned.URL)
+		require.Equal(t, original.Scheme, cloned.Scheme)
+		require.Equal(t, original.Opaque, cloned.Opaque)
+		require.Equal(t, original.Host, cloned.Host)
+		require.Equal(t, original.Path, cloned.Path)
+		require.Equal(t, original.RawPath, cloned.RawPath)
+		require.Equal(t, original.RawQuery, cloned.RawQuery)
+		require.Equal(t, original.Fragment, cloned.Fragment)
+		require.Equal(t, original.RawFragment, cloned.RawFragment)
+		require.NotSame(t, original.URL, cloned.URL)
+	})
+
+	t.Run("clone URL with user info without password", func(t *testing.T) {
+		original := model.URL{
+			URL: &url.URL{
+				Scheme: "https",
+				User:   url.User("username"),
+				Host:   "example.com",
+			},
+		}
+		cloned := original.Clone()
+
+		require.NotNil(t, cloned.User)
+		require.Equal(t, "username", cloned.User.Username())
+		_, hasPassword := cloned.User.Password()
+		require.False(t, hasPassword)
+		require.NotSame(t, original.User, cloned.User)
+	})
+
+	t.Run("clone URL with user info with password", func(t *testing.T) {
+		original := model.URL{
+			URL: &url.URL{
+				Scheme: "https",
+				User:   url.UserPassword("username", "secret"),
+				Host:   "example.com",
+			},
+		}
+		cloned := original.Clone()
+
+		require.NotNil(t, cloned.User)
+		require.Equal(t, "username", cloned.User.Username())
+		password, hasPassword := cloned.User.Password()
+		require.True(t, hasPassword)
+		require.Equal(t, "secret", password)
+		require.NotSame(t, original.User, cloned.User)
+	})
+
+	t.Run("modifications to clone do not affect original", func(t *testing.T) {
+		original := model.URL{
+			URL: &url.URL{
+				Scheme: "https",
+				Host:   "example.com",
+				Path:   "/original",
+			},
+		}
+		cloned := original.Clone()
+		cloned.Path = "/modified"
+
+		require.Equal(t, "/original", original.Path)
+		require.Equal(t, "/modified", cloned.Path)
+	})
+}
