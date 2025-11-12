@@ -16,14 +16,6 @@ import (
 )
 
 func TestNewBOMRepoUploaderFunc(t *testing.T) {
-	parse := func(t *testing.T, s string) model.URL {
-		t.Helper()
-		var u model.URL
-		err := u.UnmarshalText([]byte(s))
-		require.NoError(t, err)
-		return u
-	}
-
 	testCases := map[string]struct {
 		serverURL string
 		wantErr   bool
@@ -49,7 +41,7 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 
-			mu := parse(t, tc.serverURL)
+			mu := parseURL(t, tc.serverURL)
 			u, err := NewBOMRepoUploader(mu)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -333,14 +325,6 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	parse := func(t *testing.T, s string) model.URL {
-		t.Helper()
-		var u model.URL
-		err := u.UnmarshalText([]byte(s))
-		require.NoError(t, err)
-		return u
-	}
-
 	testCases := map[string]struct {
 		setup   func() (*httptest.Server, func())
 		wantErr bool
@@ -525,7 +509,7 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			s, closeFunc := tc.setup()
 			defer closeFunc()
 
-			mu := parse(t, s.URL)
+			mu := parseURL(t, s.URL)
 			u, err := NewBOMRepoUploader(mu)
 			require.NoError(t, err)
 			require.NotNil(t, u)
@@ -539,4 +523,12 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			}
 		})
 	}
+}
+
+func parseURL(t *testing.T, s string) model.URL {
+	t.Helper()
+	var u model.URL
+	err := u.UnmarshalText([]byte(s))
+	require.NoError(t, err)
+	return u
 }
