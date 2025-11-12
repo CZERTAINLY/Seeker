@@ -1,11 +1,11 @@
-package service_test
+package model_test
 
 import (
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/CZERTAINLY/Seeker/internal/service"
+	"github.com/CZERTAINLY/Seeker/internal/model"
 
 	"github.com/stretchr/testify/require"
 )
@@ -13,31 +13,33 @@ import (
 func TestParseCron(t *testing.T) {
 	t.Parallel()
 	type then struct {
-		err error
+		duration time.Duration
+		err      error
 	}
 	cases := []struct {
 		scenario string
 		given    string
 		then     then
 	}{
-		{"valid_5_fields", "*/15 * * * *", then{nil}},
-		{"macro_hourly", "@hourly", then{nil}},
-		{"macro_every", "@every 5m", then{nil}},
-		{"invalid_field_count_4", "* * * *", then{errors.New("expected exactly 5 fields, found 4: [* * * *]")}},
-		{"invalid_field_count_7", "* * * * * * *", then{errors.New("expected exactly 5 fields, found 7: [* * * * * * *]")}},
+		{"valid_5_fields", "*/15 * * * *", then{duration: 15 * time.Minute}},
+		{"macro_hourly", "@hourly", then{duration: 60 * time.Minute}},
+		{"macro_every", "@every 5m", then{duration: 5 * time.Minute}},
+		{"invalid_field_count_4", "* * * *", then{err: errors.New("expected exactly 5 fields, found 4: [* * * *]")}},
+		{"invalid_field_count_7", "* * * * * * *", then{err: errors.New("expected exactly 5 fields, found 7: [* * * * * * *]")}},
 
-		{"invalid_token_5_fields", "* * 32 * *", then{errors.New("end of range (32) above maximum (31): 32")}},
-		{"empty", "", then{errors.New("empty cron expression")}},
+		{"invalid_token_5_fields", "* * 32 * *", then{err: errors.New("end of range (32) above maximum (31): 32")}},
+		{"empty", "", then{err: errors.New("empty cron expression")}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.scenario, func(t *testing.T) {
-			err := service.ParseCron(tc.given)
+			got, err := model.ParseCron(tc.given)
 			if tc.then.err != nil {
 				require.Error(t, err)
 				require.EqualError(t, err, tc.then.err.Error())
 			} else {
 				require.NoError(t, err)
+				require.Equal(t, tc.then.duration, got)
 			}
 		})
 	}
@@ -118,7 +120,7 @@ func TestParseISODuration(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.scenario, func(t *testing.T) {
-			dur, err := service.ParseISODuration(tc.given)
+			dur, err := model.ParseISODuration(tc.given)
 			if tc.then == nil {
 				require.NoError(t, err)
 				exp, ok := expected[tc.given]

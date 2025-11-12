@@ -106,15 +106,21 @@ func (j *Job) MergeConfig(cfg model.Scan) {
 	j.config.Merge(cfg)
 }
 
-func (j *Job) Run(ctx context.Context) error {
+func (j *Job) LogAttrs() []slog.Attr {
+	attrs := []slog.Attr{
+		slog.String("name", j.name),
+		slog.Bool("oneshot", j.oneshot),
+	}
+	group := slog.GroupAttrs("job", attrs...)
+	return []slog.Attr{group}
+}
+
+func (j *Job) Activate(ctx context.Context) error {
 	if j.start == nil || j.runner == nil {
-		return errors.New("Run can't be called after Close")
+		return errors.New("method Activate can't be called after Close")
 	}
 
-	ctx = log.ContextAttrs(ctx,
-		slog.String("job_name", j.name),
-		slog.Bool("oneshot", j.oneshot),
-	)
+	ctx = log.ContextAttrs(ctx, j.LogAttrs()[0])
 
 	for {
 		select {

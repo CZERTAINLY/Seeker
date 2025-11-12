@@ -1,4 +1,4 @@
-package service
+package model
 
 import (
 	"errors"
@@ -13,24 +13,29 @@ import (
 )
 
 // ParseCron parses a cron expression that have 5 fields
-// return error if it fails
-func ParseCron(expr string) error {
+// returns error if it fails
+func ParseCron(expr string) (time.Duration, error) {
 	e := strings.TrimSpace(expr)
 	if e == "" {
-		return fmt.Errorf("empty cron expression")
+		return 0, fmt.Errorf("empty cron expression")
 	}
 
 	// Macros / @every handled by ParseStandard (it also supports plain 5-field specs).
+	var schedule cron.Schedule
+	var err error
 	if strings.HasPrefix(e, "@") {
-		_, err := cron.ParseStandard(e)
-		return err
+		schedule, err = cron.ParseStandard(e)
+	} else {
+		parser5 := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
+		schedule, err = parser5.Parse(e)
 	}
-
-	parser5 := cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
-	// len == 5
-	_, err := parser5.Parse(e)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	next1 := schedule.Next(time.Now())
+	next2 := schedule.Next(next1)
+	interval := next2.Sub(next1)
+	return interval, nil
 }
 
 var isoDurationRx = regexp.MustCompile(`^P((?P<day>\d+)D)?(T?(?:(?P<hour>[+-]?\d+)H)?(?:(?P<minute>[+-]?\d+)M)?(?:(?P<second>[+-]?\d+(?:[.,]\d+)?)S)?)?$`)
