@@ -473,16 +473,6 @@ func DefaultConfig(ctx context.Context) Config {
 	return cfg
 }
 
-// func (t *TimerSchedule) LogAttrs() []slog.Attr {
-// 	var typ string
-// 	var schedule string
-// 	if t == nil {
-// 		return nil
-// 	}
-// 	if t.Cron != "" {
-// 	}
-// }
-
 func containerConfig(ctx context.Context, typ string, sockPath string) (ContainerConfig, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
