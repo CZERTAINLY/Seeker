@@ -28,6 +28,8 @@ func (u URL) Clone() URL {
 		Host:        u.Host,
 		Path:        u.Path,
 		RawPath:     u.RawPath,
+		OmitHost:    u.OmitHost,
+		ForceQuery:  u.ForceQuery,
 		RawQuery:    u.RawQuery,
 		Fragment:    u.Fragment,
 		RawFragment: u.RawFragment,

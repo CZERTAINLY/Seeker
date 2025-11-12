@@ -116,10 +116,13 @@ type Repository struct {
 	URL URL `json:"base_url"`
 }
 
+// SeekerServer is configuration for the discovery mode server.
 type SeekerServer struct {
 	Addr    TCPAddr `json:"addr"` // :port or ip:port
 	BaseURL URL     `json:"base_url"`
 }
+
+// Core is configuration for CZERTAINLY Core API integration.
 type Core struct {
 	BaseURL URL `json:"base_url"`
 }
