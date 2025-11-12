@@ -314,7 +314,7 @@ func TestDecodeUploadResponse(t *testing.T) {
 	}
 }
 
-func TestBOMRepoUploadBadServerURLFunc(t *testing.T) {
+func TestBOMRepoUploadNetworkError(t *testing.T) {
 	var mu model.URL
 	err := mu.UnmarshalText([]byte("http://some-server.com"))
 	require.NoError(t, err)
