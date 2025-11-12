@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"os"
@@ -16,53 +17,120 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	yml := `
+	var testCases = []struct {
+		scenario     string
+		yml          string
+		expectedJSON string
+	}{
+		{
+			scenario: "manual mode with repository",
+			yml: `
 version: 0
 service:
   mode: manual
   log: stderr
   repository:
-    enabled: true
-    url: https://example.com/repo
-    auth:
-      type: token
-      token: ABC123
-`
-	abspath := saveYaml(t, yml)
-
-	var testCases = []struct {
-		scenario string
-		then     func() (model.Config, error)
-	}{
-		{
-			scenario: "reader",
-			then: func() (model.Config, error) {
-				return model.LoadConfig(strings.NewReader(yml))
-			},
+    base_url: https://example.com/repo
+`,
+			expectedJSON: `{
+				"version": 0,
+				"service": {
+					"mode": "manual",
+					"log": "stderr",
+					"repository": {
+						"base_url": "https://example.com/repo"
+					}
+				},
+				"containers": {
+					"enabled": false,
+					"Config": null
+				},
+				"filesystem": {
+					"enabled": false
+				},
+				"ports": {
+					"enabled": false,
+					"ipv4": false,
+					"ipv6": false
+				}
+			}`,
 		},
 		{
-			scenario: "path",
-			then: func() (model.Config, error) {
-				return model.LoadConfigFromPath(abspath)
-			},
+			scenario: "discovery mode with repository and core",
+			yml: `
+version: 0
+service:
+  mode: discovery
+  log: stderr
+  repository:
+    base_url: https://example.com/repo
+  seeker:
+    addr: :8080
+    base_url: https://seeker.example.net/api
+  core:
+    base_url: https://core-demo.example.net/api
+`,
+			expectedJSON: `{
+				"version": 0,
+				"service": {
+					"mode": "discovery",
+					"log": "stderr",
+					"repository": {
+						"base_url": "https://example.com/repo"
+					},
+					"seeker": {
+						"addr": ":8080",
+						"base_url": "https://seeker.example.net/api"
+					},
+					"core": {
+						"base_url": "https://core-demo.example.net/api"
+					}
+				},
+				"containers": {
+					"enabled": false,
+					"Config": null
+				},
+				"filesystem": {
+					"enabled": false
+				},
+				"ports": {
+					"enabled": false,
+					"ipv4": false,
+					"ipv6": false
+				}
+			}`,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.scenario, func(t *testing.T) {
-			cfg, err := tc.then()
-			require.NoError(t, err)
-			require.NotNil(t, cfg)
-			require.Equal(t, model.ServiceModeManual, cfg.Service.Mode)
-			require.Equal(t, model.LogStderr, cfg.Service.Log)
-			require.NotNil(t, cfg.Service.Repository)
-			require.True(t, cfg.Service.Repository.Enabled)
-			require.Equal(t, "https://example.com/repo", cfg.Service.Repository.URL)
-			require.Equal(t, "token", cfg.Service.Repository.Auth.Type)
-			require.Equal(t, "ABC123", cfg.Service.Repository.Auth.Token)
+			tmpDir := t.TempDir()
+
+			t.Run("reader", func(t *testing.T) {
+				cfg, err := model.LoadConfig(strings.NewReader(tc.yml))
+				require.NoError(t, err)
+				require.NotNil(t, cfg)
+
+				actualJSON, err := json.Marshal(cfg)
+				require.NoError(t, err)
+				require.JSONEq(t, tc.expectedJSON, string(actualJSON))
+			})
+
+			t.Run("path", func(t *testing.T) {
+				abspath := filepath.Join(tmpDir, "config.yml")
+				err := os.WriteFile(abspath, []byte(tc.yml), 0644)
+				require.NoError(t, err)
+
+				cfg, err := model.LoadConfigFromPath(abspath)
+				require.NoError(t, err)
+				require.NotNil(t, cfg)
+
+				actualJSON, err := json.Marshal(cfg)
+				require.NoError(t, err)
+				require.JSONEq(t, tc.expectedJSON, string(actualJSON))
+			})
 		})
 	}
-
 }
 
 func TestLoadScanConfig_Minimal(t *testing.T) {
@@ -297,13 +365,13 @@ service:
 				{
 					Path:    "service.mode",
 					Code:    model.CodeConflictingValues,
-					Message: "Conflicting values for mode: possible values (manual,timer) (default manual): got automatic_gear",
+					Message: "Conflicting values for mode: possible values (manual,timer,discovery) (default manual): got automatic_gear",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
 						Line:     4,
 						Column:   9,
 					},
-					Raw: "#Config.service.mode: 2 errors in empty disjunction: (and 2 more errors)",
+					Raw: "#Config.service.mode: 3 errors in empty disjunction: (and 3 more errors)",
 				},
 			},
 		},
@@ -465,176 +533,93 @@ service:
 			},
 		},
 		{
-			scenario: "service.repository url is missing",
+			scenario: "service.repository.base_url is missing",
 			given: `
 version: 0
 service:
   mode: manual
   repository:
-    enabled: true
 `,
 			then: []model.CueErrorDetail{
 				{
-					Path:    "service.repository.url",
-					Code:    model.CodeMissingRequired,
-					Message: "Field url is required",
-					Pos: model.CueErrorPosition{
-						Filename: "",
-						Line:     0,
-						Column:   0,
-					},
-					Raw: `#Config.service.repository.url: incomplete value =~"^https?://.+"`,
-				},
-			},
-		},
-		{
-			scenario: "service.repository.url not url",
-			given: `
-version: 0
-service:
-  mode: manual
-  repository:
-    enabled: true
-    url: ""
-`,
-			then: []model.CueErrorDetail{
-				{
-					Path:    "service.repository.url",
-					Code:    model.CodeValidationError,
-					Message: "Field url is invalid: value must be a valid http(s) URL",
+					Path:    "service.repository",
+					Code:    model.CodeConflictingValues,
+					Message: "Conflicting values for repository: expected type struct: got null",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
-						Line:     7,
-						Column:   10,
-					},
-					Raw: `#Config.service.repository.url: invalid value "" (out of bound =~"^https?://.+")`,
-				},
-			},
-		},
-		{
-			scenario: "service.repository.url is ftp",
-			given: `
-version: 0
-service:
-  mode: manual
-  repository:
-    enabled: true
-    url: "ftp://example.com"
-`,
-			then: []model.CueErrorDetail{
-				{
-					Path:    "service.repository.url",
-					Code:    model.CodeValidationError,
-					Message: "Field url is invalid: value must be a valid http(s) URL",
-					Pos: model.CueErrorPosition{
-						Filename: "config.yaml",
-						Line:     7,
-						Column:   10,
-					},
-					Raw: `#Config.service.repository.url: invalid value "ftp://example.com" (out of bound =~"^https?://.+")`,
-				},
-			},
-		},
-		{
-			scenario: "service.repository.url is prefix only",
-			given: `
-version: 0
-service:
-  mode: manual
-  repository:
-    enabled: true
-    url: "https://"
-`,
-			then: []model.CueErrorDetail{
-				{
-					Path:    "service.repository.url",
-					Code:    model.CodeValidationError,
-					Message: "Field url is invalid: value must be a valid http(s) URL",
-					Pos: model.CueErrorPosition{
-						Filename: "config.yaml",
-						Line:     7,
-						Column:   10,
-					},
-					Raw: `#Config.service.repository.url: invalid value "https://" (out of bound =~"^https?://.+")`,
-				},
-			},
-		},
-		{
-			scenario: "service.repository.auth.type token missing",
-			given: `
-version: 0
-service:
-  mode: manual
-  repository:
-    enabled: true
-    url: "https://example.com"
-    auth:
-      type: "token"
-`,
-			then: []model.CueErrorDetail{
-				{
-					Path:    "service.repository.auth.token",
-					Code:    model.CodeMissingRequired,
-					Message: "Field token is required",
-					Pos: model.CueErrorPosition{
-						Filename: "",
-						Line:     0,
-						Column:   0,
-					},
-					Raw: `#Config.service.repository.auth.token: incomplete value !=""`,
-				},
-			},
-		},
-		{
-			scenario: "service.repository.auth.type token empty",
-			given: `
-version: 0
-service:
-  mode: manual
-  repository:
-    enabled: true
-    url: "https://example.com"
-    auth:
-      type: "token"
-      token: ""
-`,
-			then: []model.CueErrorDetail{
-				{
-					Path:    "service.repository.auth.token",
-					Code:    model.CodeValidationError,
-					Message: "Field token is invalid: value must not be empty",
-					Pos: model.CueErrorPosition{
-						Filename: "config.yaml",
-						Line:     10,
+						Line:     5,
 						Column:   14,
 					},
-					Raw: `#Config.service.repository.auth.token: invalid value "" (out of bound !="")`,
+					Raw: "#Config.service.repository: conflicting values null and {base_url:#URL} (mismatched types null and struct)",
 				},
 			},
 		},
 		{
-			scenario: "service.repository.auth.type invalid",
+			scenario: "service.repository.base_url not url",
 			given: `
 version: 0
 service:
   mode: manual
   repository:
-    enabled: true
-    url: "https://example.com"
-    auth:
-      type: "invalid"
+    base_url: ""
 `,
 			then: []model.CueErrorDetail{
 				{
-					Path:    "service.repository.auth.type",
-					Code:    model.CodeConflictingValues,
-					Message: "Conflicting values for type: possible values (token): got invalid",
+					Path:    "service.repository.base_url",
+					Code:    model.CodeValidationError,
+					Message: "Field base_url is invalid: value must be a valid http(s) URL",
 					Pos: model.CueErrorPosition{
 						Filename: "config.yaml",
-						Line:     9,
-						Column:   13,
+						Line:     6,
+						Column:   15,
 					},
-					Raw: `#Config.service.repository.auth.type: conflicting values "token" and "invalid"`,
+					Raw: `#Config.service.repository.base_url: invalid value "" (out of bound =~"^https?://.+")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.base_url is ftp",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    base_url: "ftp://example.com"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.base_url",
+					Code:    model.CodeValidationError,
+					Message: "Field base_url is invalid: value must be a valid http(s) URL",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     6,
+						Column:   15,
+					},
+					Raw: `#Config.service.repository.base_url: invalid value "ftp://example.com" (out of bound =~"^https?://.+")`,
+				},
+			},
+		},
+		{
+			scenario: "service.repository.base_url is prefix only",
+			given: `
+version: 0
+service:
+  mode: manual
+  repository:
+    base_url: "https://"
+`,
+			then: []model.CueErrorDetail{
+				{
+					Path:    "service.repository.base_url",
+					Code:    model.CodeValidationError,
+					Message: "Field base_url is invalid: value must be a valid http(s) URL",
+					Pos: model.CueErrorPosition{
+						Filename: "config.yaml",
+						Line:     6,
+						Column:   15,
+					},
+					Raw: `#Config.service.repository.base_url: invalid value "https://" (out of bound =~"^https?://.+")`,
 				},
 			},
 		},

@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/CZERTAINLY/Seeker/internal/model"
 )
 
 const (
@@ -24,11 +26,8 @@ type BOMRepoUploader struct {
 	client     *http.Client
 }
 
-func NewBOMRepoUploader(serverURL string) (*BOMRepoUploader, error) {
-	parsedURL, err := url.Parse(serverURL)
-	if err != nil {
-		return nil, err
-	}
+func NewBOMRepoUploader(serverURL model.URL) (*BOMRepoUploader, error) {
+	parsedURL := serverURL.Clone().AsURL()
 	parsedURL.Path = strings.TrimRight(parsedURL.Path, "/")
 
 	if parsedURL.Scheme == "" || parsedURL.Host == "" || parsedURL.Path != "" {

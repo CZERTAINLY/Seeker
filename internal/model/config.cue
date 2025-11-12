@@ -61,10 +61,6 @@ service?: #ServiceFields
   ipv6?: bool | *true
 }
 
-#CronExpr: string & =~"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\S+\\s+){4}\\S+)$" & !=""
-#ISODuration: string &
-    =~"^P(?:\\d+W|(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?)$" & !=""
-
 // Schedule can be a cron 5 fields format, or macro like @yearly or a @every <duration>, which is string accepted by https://golang.org/pkg/time/#ParseDuration
 // or duration in ISO 8601 format
 #Schedule:
@@ -74,11 +70,17 @@ service?: #ServiceFields
 // Seeker service configuration.
 #Service: {
   #ServiceFields
-  mode: *"manual" | "timer"
+  mode: *"manual" | "timer" | "discovery"
   schedule?: null | #Schedule
   if mode == "timer" { schedule: #Schedule }
   dir?: string
   repository?: #Repository
+  seeker?: null | #SeekerServer
+  core?: null | #Core
+  if mode == "discovery" { 
+    seeker: #SeekerServer
+    core: #Core
+  }
 }
 
 // OutputFields specify common output for a scanner
@@ -92,13 +94,21 @@ service?: #ServiceFields
 }
 
 #Repository: {
-  enabled?: bool | *false
-  url: string & =~"^https?://.+"
-  auth?: #Auth
+  base_url: #URL
 }
 
-#Auth: {
-  type: "token"
-  token?: string
-  if type == "token" { token: string & !="" }
+#SeekerServer: {
+  addr: string
+  base_url: #URL
 }
+
+#Core: {
+  base_url: #URL
+}
+
+// Common fields
+
+#CronExpr: string & =~"^(@(yearly|annually|monthly|weekly|daily|midnight|hourly)|@every.*|(?:\\S+\\s+){4}\\S+)$" & !=""
+#ISODuration: string &
+    =~"^P(?:\\d+W|(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?)$" & !=""
+#URL: string & =~"^https?://.+"

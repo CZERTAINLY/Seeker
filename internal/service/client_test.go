@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	pd "github.com/kodeart/go-problem/v2"
+	"github.com/CZERTAINLY/Seeker/internal/model"
 
+	pd "github.com/kodeart/go-problem/v2"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewBOMRepoUploaderFunc(t *testing.T) {
-
 	testCases := map[string]struct {
 		serverURL string
 		wantErr   bool
@@ -41,7 +41,8 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 
-			u, err := NewBOMRepoUploader(tc.serverURL)
+			mu := parseURL(t, tc.serverURL)
+			u, err := NewBOMRepoUploader(mu)
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {
@@ -53,8 +54,11 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 }
 
 func TestDecodeUploadResponse(t *testing.T) {
+	var mu model.URL
+	err := mu.UnmarshalText([]byte("http://some-server.com"))
+	require.NoError(t, err)
 
-	u, err := NewBOMRepoUploader("http://some-server.com")
+	u, err := NewBOMRepoUploader(mu)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 
@@ -302,8 +306,12 @@ func TestDecodeUploadResponse(t *testing.T) {
 	}
 }
 
-func TestBOMRepoUploadBadServerURLFunc(t *testing.T) {
-	u, err := NewBOMRepoUploader("http://does-not-exist.yet")
+func TestBOMRepoUploadNetworkError(t *testing.T) {
+	var mu model.URL
+	err := mu.UnmarshalText([]byte("http://some-server.com"))
+	require.NoError(t, err)
+
+	u, err := NewBOMRepoUploader(mu)
 	require.NoError(t, err)
 	require.NotNil(t, u)
 
@@ -501,7 +509,8 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			s, closeFunc := tc.setup()
 			defer closeFunc()
 
-			u, err := NewBOMRepoUploader(s.URL)
+			mu := parseURL(t, s.URL)
+			u, err := NewBOMRepoUploader(mu)
 			require.NoError(t, err)
 			require.NotNil(t, u)
 
@@ -514,4 +523,12 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			}
 		})
 	}
+}
+
+func parseURL(t *testing.T, s string) model.URL {
+	t.Helper()
+	var u model.URL
+	err := u.UnmarshalText([]byte(s))
+	require.NoError(t, err)
+	return u
 }
