@@ -33,6 +33,7 @@ const (
 	AuthTypeStaticToken = "static_token"
 
 	ServiceModeManual = "manual"
+	ServiceModeTimer  = "timer"
 
 	LogStderr  = "stderr"
 	LogStdout  = "stdout"
