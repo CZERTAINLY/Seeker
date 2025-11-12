@@ -258,7 +258,7 @@ service:
 
 ## CZERTAINLY discovery
 
-> !WARNING
+> [!WARNING]
 > CZERTAINLY core integration is in development at the moment. This part describes the configuration, which is only one part implemented atm.
 
 ```yaml
