@@ -259,7 +259,7 @@ service:
 ## CZERTAINLY discovery
 
 > !WARNING
-> CZERTAINLY core integration is in development at the moment. This part describes the configuration, but nothing more.
+> CZERTAINLY core integration is in development at the moment. This part describes the configuration, which is only one part implemented atm.
 
 ```yaml
 version: 0
