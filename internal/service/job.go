@@ -117,7 +117,7 @@ func (j *Job) LogAttrs() []slog.Attr {
 
 func (j *Job) Activate(ctx context.Context) error {
 	if j.start == nil || j.runner == nil {
-		return errors.New("method Run can't be called after Close")
+		return errors.New("method Activate can't be called after Close")
 	}
 
 	ctx = log.ContextAttrs(ctx, j.LogAttrs()[0])
