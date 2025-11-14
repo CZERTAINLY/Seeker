@@ -1,87 +1,14 @@
 package cdxtest
 
 import (
-	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/pem"
 	"fmt"
-	"math/big"
 	"path/filepath"
 	"strings"
-	"time"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
-
-type SelfSignedCert struct {
-	Der  []byte
-	Cert *x509.Certificate
-	Key  *rsa.PrivateKey
-}
-
-// GenSelfSignedCert generates a self-signed certificate for testing
-func GenSelfSignedCert() (SelfSignedCert, error) {
-	var ret SelfSignedCert
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return ret, err
-	}
-
-	templ := &x509.Certificate{
-		SerialNumber:          big.NewInt(time.Now().UnixNano()),
-		Subject:               pkix.Name{CommonName: "Test Cert"},
-		NotBefore:             time.Now().Add(-time.Minute),
-		NotAfter:              time.Now().Add(2 * time.Hour),
-		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-	}
-
-	der, err := x509.CreateCertificate(rand.Reader, templ, templ, &key.PublicKey, key)
-	if err != nil {
-		return ret, err
-	}
-
-	cert, err := x509.ParseCertificate(der)
-	if err != nil {
-		return ret, err
-	}
-	return SelfSignedCert{
-		Der:  der,
-		Cert: cert,
-		Key:  key,
-	}, nil
-}
-
-// CertPEM encodes certificate in PEM format
-func (s SelfSignedCert) CertPEM() ([]byte, error) {
-	var buf bytes.Buffer
-	err := pem.Encode(&buf, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: s.Der,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode certificate: %w", err)
-	}
-	return buf.Bytes(), nil
-}
-
-// PrivKeyPEM encodes private key in PEM format
-func (s SelfSignedCert) PrivKeyPEM() ([]byte, error) {
-	var buf bytes.Buffer
-	err := pem.Encode(&buf, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(s.Key),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode private key: %w", err)
-	}
-	return buf.Bytes(), nil
-}
 
 // getProp gets a property value from a CDX component
 func GetProp(comp cdx.Component, name string) string {

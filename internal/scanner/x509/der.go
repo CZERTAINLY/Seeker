@@ -27,7 +27,7 @@ func (d derScanner) scan(ctx context.Context, b []byte) []certHit {
 
 	// If that fails, check if it's DER PKCS#7
 	if sniffPKCS7DER(b) {
-		if cs := parsePKCS7Safe(ctx, b, false /*strict*/); len(cs) > 0 {
+		if cs := ParsePKCS7Safe(ctx, b, false /*strict*/); len(cs) > 0 {
 			for _, c := range cs {
 				if c != nil {
 					out = append(out, certHit{Cert: c, Source: "PKCS7-DER"})

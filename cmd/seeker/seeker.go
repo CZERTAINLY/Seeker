@@ -11,12 +11,12 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/bom"
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
-	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/gitleaks"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/x509"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
-	"github.com/CZERTAINLY/Seeker/internal/x509"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"golang.org/x/sync/errgroup"

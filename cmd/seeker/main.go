@@ -10,11 +10,12 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/CZERTAINLY/Seeker/internal/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/gitleaks"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/pem"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/x509"
 	"github.com/CZERTAINLY/Seeker/internal/service"
-	"github.com/CZERTAINLY/Seeker/internal/x509"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -23,6 +24,7 @@ import (
 var (
 	leaksScanner *gitleaks.Scanner
 	x509Scanner  x509.Scanner
+	pemScanner   pem.Scanner
 
 	userConfigPath string // /default/config/path/seeker on given OS
 	configPath     string // actual config file used (if loaded)
@@ -168,7 +170,7 @@ func doScan(cmd *cobra.Command, args []string) error {
 	slog.DebugContext(ctx, "_scan", "configPath", configPath)
 	slog.DebugContext(ctx, "_scan", "config", config)
 
-	seeker, err := NewSeeker(ctx, x509Scanner, leaksScanner, config)
+	seeker, err := NewSeeker(ctx, x509Scanner, leaksScanner, pemScanner, config)
 	if err != nil {
 		return err
 	}

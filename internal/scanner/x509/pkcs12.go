@@ -31,6 +31,14 @@ func (d pkcs12Scanner) scan(ctx context.Context, b []byte) []certHit {
 	return out
 }
 
+func ParsePKCS12(ctx context.Context, b []byte) []*x509.Certificate {
+	if !sniffPKCS12(b) {
+		return nil
+	}
+	return pkcs12All(b)
+
+}
+
 // --- Strict PKCS#12 sniff ---
 // Validates top-level PFX structure: SEQUENCE { version INTEGER, authSafe ContentInfo (...id-data or id-signedData...) , ... }
 func sniffPKCS12(b []byte) bool {

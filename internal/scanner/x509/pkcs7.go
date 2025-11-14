@@ -59,7 +59,7 @@ func sniffPKCS7DER(b []byte) bool {
 }
 
 // Make the parser optionally "permissive" (e.g., for PEM blocks explicitly labeled PKCS7/CMS)
-func parsePKCS7Safe(ctx context.Context, b []byte, permissive bool) []*x509.Certificate {
+func ParsePKCS7Safe(ctx context.Context, b []byte, permissive bool) []*x509.Certificate {
 	// Only gate by sniff when not in permissive mode
 	if !permissive && !sniffPKCS7DER(b) {
 		return nil

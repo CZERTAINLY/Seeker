@@ -11,7 +11,7 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	"github.com/CZERTAINLY/Seeker/internal/x509"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/x509"
 
 	"github.com/Ullaakut/nmap/v3"
 )
