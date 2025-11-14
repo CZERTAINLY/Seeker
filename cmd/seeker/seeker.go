@@ -15,6 +15,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
 	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/scanner/gitleaks"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/pem"
 	"github.com/CZERTAINLY/Seeker/internal/scanner/x509"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
@@ -31,7 +32,7 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitleaks.Scanner, config model.Scan) (Seeker, error) {
+func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitleaks.Scanner, pemScanner pem.Scanner, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}
@@ -45,11 +46,12 @@ func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitl
 	containers := containers(ctx, config.Containers)
 	nmaps, ips := nmaps(ctx, config.Ports)
 
-	detectors := make([]scan.Detector, 0, 2)
+	detectors := make([]scan.Detector, 0, 3)
 	detectors = append(detectors, x509Detector{s: x509Scanner})
 	if leaksScanner != nil {
 		detectors = append(detectors, leaksDetector{s: leaksScanner})
 	}
+	detectors = append(detectors, pemDetector{s: pemScanner})
 
 	return Seeker{
 		detectors:   detectors,
@@ -271,5 +273,34 @@ func (d x509Detector) Detect(ctx context.Context, b []byte, path string) ([]mode
 func (s x509Detector) LogAttrs() []slog.Attr {
 	return []slog.Attr{
 		slog.String("detector", "x509"),
+	}
+}
+
+type pemDetector struct {
+	s pem.Scanner
+}
+
+func (d pemDetector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
+	bundle, err := d.s.Scan(ctx, b, path)
+	if err != nil {
+		return nil, err
+	}
+
+	compos, err := cdxprops.PEMBundleToCDX(ctx, bundle, path)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(compos) == 0 {
+		return nil, nil
+	}
+	return []model.Detection{
+		{Components: compos},
+	}, nil
+}
+
+func (d pemDetector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "pem"),
 	}
 }
