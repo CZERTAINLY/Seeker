@@ -50,61 +50,31 @@ func TestDetector(t *testing.T) {
 			then: nil,
 		},
 		{
-			scenario: "certificate with RSA PKCS#1 private key",
+			scenario: "PKCS#8 private key (Ed25519)",
 			given: func(t *testing.T) given {
-				cert, err := cdxtest.GenSelfSignedCert()
+				cb := cdxtest.CertBuilder{}.WithSignatureAlgorithm(x509.PureEd25519)
+				cert, err := cb.Generate()
 				require.NoError(t, err)
 
-				keyBytes := cdxtest.EncodePKCS1(cert.Key)
+				pemBytes, err := cert.PrivKeyPEM()
+				require.NoError(t, err)
 
-				var buf bytes.Buffer
-				buf.Write(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Der}))
-				buf.Write(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: keyBytes}))
+				block, _ := pem.Decode(pemBytes)
+				require.NotNil(t, block)
 
 				return given{
-					data: buf.Bytes(),
-					bundle: model.PEMBundle{
-						Certificates: []model.CertHit{{Cert: cert.Cert, Source: "PEM", Location: "test.pem"}},
-						PrivateKeys: []model.PrivateKeyInfo{{
-							Key:      cert.Key,
-							Type:     "RSA",
-							Source:   "PKCS1-PEM",
-							Location: "test.pem",
-						}},
-						RawBlocks: []model.PEMBlock{
-							{Type: "CERTIFICATE", Order: 0, Bytes: cert.Der, Headers: map[string]string{}},
-							{Type: "RSA PRIVATE KEY", Order: 1, Bytes: keyBytes, Headers: map[string]string{}},
-						},
-						Location: "test.pem",
-					},
-				}
-			},
-			then: nil,
-		},
-		{
-			scenario: "PKCS#8 private key (RSA)",
-			given: func(t *testing.T) given {
-				cert, err := cdxtest.GenSelfSignedCert()
-				require.NoError(t, err)
-
-				pkcs8, err := cdxtest.EncodePKCS8(cert.Key)
-				require.NoError(t, err)
-
-				pemData := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: pkcs8})
-
-				return given{
-					data: pemData,
+					data: pemBytes,
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{
 							{
 								Key:      cert.Key,
-								Type:     "RSA",
+								Type:     "Ed25519",
 								Source:   "PKCS8-PEM",
 								Location: "test.pem",
 							},
 						},
 						RawBlocks: []model.PEMBlock{
-							{Type: "PRIVATE KEY", Order: 0, Bytes: pkcs8, Headers: map[string]string{}},
+							{Type: "PRIVATE KEY", Order: 0, Bytes: block.Bytes, Headers: map[string]string{}},
 						},
 					},
 				}
@@ -112,28 +82,30 @@ func TestDetector(t *testing.T) {
 			then: nil,
 		},
 		{
-			scenario: "EC private key",
+			scenario: "EC private key (ECDSAWithSHA256)",
 			given: func(t *testing.T) given {
-				key, err := cdxtest.GenECPrivateKey()
+				cb := cdxtest.CertBuilder{}.WithSignatureAlgorithm(x509.ECDSAWithSHA256)
+				cert, err := cb.Generate()
 				require.NoError(t, err)
 
-				der, err := cdxtest.EncodeECPrivateKey(key)
+				pemBytes, err := cert.PrivKeyPEM()
 				require.NoError(t, err)
 
-				pemData := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: der})
+				block, _ := pem.Decode(pemBytes)
+				require.NotNil(t, block)
 
 				return given{
-					data: pemData,
+					data: pemBytes,
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{
 							{
-								Key:      key,
+								Key:      cert.Key,
 								Type:     "ECDSA",
 								Source:   "EC-PEM",
 								Location: "test.pem",
 							}},
 						RawBlocks: []model.PEMBlock{
-							{Type: "EC PRIVATE KEY", Order: 0, Bytes: der, Headers: map[string]string{}},
+							{Type: "EC PRIVATE KEY", Order: 0, Bytes: block.Bytes, Headers: map[string]string{}},
 						},
 					},
 				}
@@ -195,7 +167,7 @@ func TestDetector(t *testing.T) {
 				cert, err := cdxtest.GenSelfSignedCert()
 				require.NoError(t, err)
 
-				pubDER, err := x509.MarshalPKIXPublicKey(&cert.Key.PublicKey)
+				pubDER, err := x509.MarshalPKIXPublicKey(cert.PublicKey())
 				require.NoError(t, err)
 
 				pemData := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
@@ -203,7 +175,7 @@ func TestDetector(t *testing.T) {
 				return given{
 					data: pemData,
 					bundle: model.PEMBundle{
-						PublicKeys: []crypto.PublicKey{&cert.Key.PublicKey},
+						PublicKeys: []crypto.PublicKey{cert.PublicKey()},
 						RawBlocks: []model.PEMBlock{
 							{Type: "PUBLIC KEY", Order: 0, Bytes: pubDER, Headers: map[string]string{}},
 						},
@@ -221,7 +193,7 @@ func TestDetector(t *testing.T) {
 				cert, err := b.Generate()
 				require.NoError(t, err)
 
-				crl, crlDER, err := cdxtest.GenCRL(cert.Cert, cert.Key)
+				crl, crlDER, err := cdxtest.GenCRL(cert.Cert, cert.Key.(crypto.Signer))
 				require.NoError(t, err)
 
 				pemData := pem.EncodeToMemory(&pem.Block{Type: "X509 CRL", Bytes: crlDER})

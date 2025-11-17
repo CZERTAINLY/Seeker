@@ -17,17 +17,23 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"software.sslmate.com/src/go-pkcs12"
 )
+
+// Password is a Password used for PKCS#12, JKS and other keysotes
+const Password = "changeit"
 
 type CertBuilder struct {
 	keyUsage x509.KeyUsage
 	isCA     bool
+	algo     x509.SignatureAlgorithm
 }
 
 type SelfSignedCert struct {
+	Algo x509.SignatureAlgorithm
 	Der  []byte
 	Cert *x509.Certificate
-	Key  *rsa.PrivateKey
+	Key  crypto.PrivateKey
 }
 
 func (c CertBuilder) WithKeyUsage(keyUsage x509.KeyUsage) CertBuilder {
@@ -40,6 +46,13 @@ func (c CertBuilder) WithIsCA(isCA bool) CertBuilder {
 	return c
 }
 
+func (c CertBuilder) WithSignatureAlgorithm(algo x509.SignatureAlgorithm) CertBuilder {
+	c.algo = algo
+	return c
+}
+
+// GenSelfSignedCert generates a RSA self-signed certificate with default parameters.
+// Use CertBuilder directly if you need to customize key usage, CA status, or signature algorithm.
 func GenSelfSignedCert() (SelfSignedCert, error) {
 	return CertBuilder{}.Generate()
 }
@@ -47,18 +60,46 @@ func GenSelfSignedCert() (SelfSignedCert, error) {
 // GenSelfSignedCert generates a RSA self-signed certificate for testing
 func (b CertBuilder) Generate() (SelfSignedCert, error) {
 	var ret SelfSignedCert
+	var algo x509.SignatureAlgorithm
+	if int(b.algo) == 0 {
+		algo = x509.SignatureAlgorithm(x509.RSA)
+	}
 
 	var keyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 	if b.keyUsage != 0 {
 		keyUsage = b.keyUsage
 	}
 
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return ret, err
+	var key crypto.PrivateKey
+	var publicKey crypto.PublicKey
+
+	// Generate appropriate key type based on signature algorithm
+	switch b.algo {
+	case x509.ECDSAWithSHA1, x509.ECDSAWithSHA256, x509.ECDSAWithSHA384, x509.ECDSAWithSHA512:
+		ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			return ret, err
+		}
+		key = ecKey
+		publicKey = &ecKey.PublicKey
+	case x509.PureEd25519:
+		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return ret, err
+		}
+		key = privKey
+		publicKey = pubKey
+	default:
+		// RSA for all RSA-based algorithms and unknown/default cases
+		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return ret, err
+		}
+		key = rsaKey
+		publicKey = &rsaKey.PublicKey
 	}
 
-	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
 	if err != nil {
 		return SelfSignedCert{}, err
 	}
@@ -77,7 +118,7 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 		SubjectKeyId:          subjectKeyId,
 	}
 
-	der, err := x509.CreateCertificate(rand.Reader, templ, templ, &key.PublicKey, key)
+	der, err := x509.CreateCertificate(rand.Reader, templ, templ, publicKey, key)
 	if err != nil {
 		return ret, err
 	}
@@ -87,10 +128,15 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 		return ret, err
 	}
 	return SelfSignedCert{
+		Algo: algo,
 		Der:  der,
 		Cert: cert,
 		Key:  key,
 	}, nil
+}
+
+func (s SelfSignedCert) PublicKey() crypto.PublicKey {
+	return s.Cert.PublicKey
 }
 
 // CertPEM encodes certificate in PEM format
@@ -106,17 +152,56 @@ func (s SelfSignedCert) CertPEM() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// PrivKeyPEM encodes private key in PEM format
+// PrivKeyMarshal marshals a private key to its appropriate format (PKCS#1 for RSA, SEC1 for ECDSA, PKCS#8 for others)
+func (s SelfSignedCert) PrivKeyMarshal() ([]byte, error) {
+	switch k := s.Key.(type) {
+	case *rsa.PrivateKey:
+		return x509.MarshalPKCS1PrivateKey(k), nil
+	case *ecdsa.PrivateKey:
+		return x509.MarshalECPrivateKey(k)
+	case ed25519.PrivateKey:
+		return x509.MarshalPKCS8PrivateKey(k)
+	default:
+		return nil, fmt.Errorf("unsupported private key type: %T", s.Key)
+	}
+}
+
 func (s SelfSignedCert) PrivKeyPEM() ([]byte, error) {
+	var block *pem.Block
+
+	switch s.Key.(type) {
+	case *rsa.PrivateKey:
+		block = &pem.Block{
+			Type: "RSA PRIVATE KEY",
+		}
+	case *ecdsa.PrivateKey:
+		block = &pem.Block{
+			Type: "EC PRIVATE KEY",
+		}
+	case ed25519.PrivateKey:
+		block = &pem.Block{
+			Type: "PRIVATE KEY",
+		}
+	default:
+		return nil, fmt.Errorf("unsupported private key type: %T", s.Key)
+	}
+
 	var buf bytes.Buffer
-	err := pem.Encode(&buf, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(s.Key),
-	})
+	b, err := s.PrivKeyMarshal()
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode private key: %w", err)
+		return nil, fmt.Errorf("marshaling private key: %w", err)
+	}
+	block.Bytes = b
+	err = pem.Encode(&buf, block)
+	if err != nil {
+		return nil, fmt.Errorf("encoding private key: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// PKCS12 creates PKCS#12 with certificate and private key
+func (s SelfSignedCert) PKCS12() ([]byte, error) {
+	return pkcs12.LegacyRC2.Encode(s.Key, s.Cert, nil, Password)
 }
 
 // GenECPrivateKey generates an ECDSA private key for testing
@@ -187,19 +272,4 @@ func GenOpenSSHPrivateKey() (ed25519.PrivateKey, []byte, error) {
 	}
 
 	return priv, pem.EncodeToMemory(pemBytes), nil
-}
-
-// EncodePKCS8 encodes a private key to PKCS#8 format
-func EncodePKCS8(key crypto.PrivateKey) ([]byte, error) {
-	return x509.MarshalPKCS8PrivateKey(key)
-}
-
-// EncodePKCS1 encodes an RSA private key to PKCS#1 format
-func EncodePKCS1(key *rsa.PrivateKey) []byte {
-	return x509.MarshalPKCS1PrivateKey(key)
-}
-
-// EncodeECPrivateKey encodes an ECDSA private key to SEC1 format
-func EncodeECPrivateKey(key *ecdsa.PrivateKey) ([]byte, error) {
-	return x509.MarshalECPrivateKey(key)
 }
