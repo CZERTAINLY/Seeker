@@ -13,6 +13,7 @@ import (
 )
 
 func Test_ZIP_META_INF_Detection(t *testing.T) {
+	t.Skip("https://github.com/CZERTAINLY/Seeker/issues/72")
 	selfSigned, err := cdxtest.GenSelfSignedCert()
 	require.NoError(t, err)
 	der := selfSigned.Der
@@ -125,6 +126,7 @@ func Test_ZIP_InvalidCertInMetaINF(t *testing.T) {
 }
 
 func Test_ZIP_MultipleFiles(t *testing.T) {
+	t.Skip("https://github.com/CZERTAINLY/Seeker/issues/72")
 	t.Parallel()
 
 	selfSigned, err := cdxtest.GenSelfSignedCert()

@@ -1,22 +1,25 @@
 package x509_test
 
 import (
+	"bytes"
+	"crypto/rand"
 	"crypto/x509"
-	"encoding/pem"
 	"testing"
+	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	czX509 "github.com/CZERTAINLY/Seeker/internal/scanner/x509"
+	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
+	pkcs12 "software.sslmate.com/src/go-pkcs12"
+
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Component_Various_Algorithms(t *testing.T) {
 	t.Parallel()
-
 	// Test various signature algorithms and key types by generating certificates
 	// This test primarily exists to improve coverage of readSignatureAlgorithmRef
 	// and readSubjectPublicKeyRef functions
-
 	tests := []struct {
 		name string
 		alg  x509.SignatureAlgorithm
@@ -39,22 +42,120 @@ func Test_Component_Various_Algorithms(t *testing.T) {
 		{"UnknownSignatureAlgorithm", x509.UnknownSignatureAlgorithm}, // For testing default case
 	}
 
+	formats := []struct {
+		name    string
+		prepare func(*cdxtest.SelfSignedCert) ([]byte, error)
+	}{
+		{
+			name: "DER",
+			prepare: func(selfSigned *cdxtest.SelfSignedCert) ([]byte, error) {
+				return selfSigned.Der, nil
+			},
+		},
+		{
+			name: "PKCS12",
+			prepare: func(selfSigned *cdxtest.SelfSignedCert) ([]byte, error) {
+				// Create PKCS#12 with certificate and private key
+				return pkcs12.LegacyRC2.Encode(selfSigned.Key, selfSigned.Cert, nil, "changeit")
+			},
+		},
+		{
+			name: "JKS",
+			prepare: func(selfSigned *cdxtest.SelfSignedCert) ([]byte, error) {
+				ks := keystore.New()
+				// Add certificate to keystore
+				if err := ks.SetTrustedCertificateEntry("test-cert", keystore.TrustedCertificateEntry{
+					CreationTime: time.Now(),
+					Certificate: keystore.Certificate{
+						Type:    "X.509",
+						Content: selfSigned.Der,
+					},
+				}); err != nil {
+					return nil, err
+				}
+				var buf bytes.Buffer
+				if err := ks.Store(&buf, []byte("password")); err != nil {
+					return nil, err
+				}
+				return buf.Bytes(), nil
+			},
+		},
+		{
+			name: "JCEKS",
+			prepare: func(selfSigned *cdxtest.SelfSignedCert) ([]byte, error) {
+				ks := keystore.New(keystore.WithOrderedAliases())
+				// Add certificate to JCEKS keystore
+				if err := ks.SetTrustedCertificateEntry("test-cert", keystore.TrustedCertificateEntry{
+					CreationTime: time.Now(),
+					Certificate: keystore.Certificate{
+						Type:    "X.509",
+						Content: selfSigned.Der,
+					},
+				}); err != nil {
+					return nil, err
+				}
+				var buf bytes.Buffer
+				if err := ks.Store(&buf, []byte("password")); err != nil {
+					return nil, err
+				}
+				return buf.Bytes(), nil
+			},
+		},
+	}
+
 	// Generate a basic RSA cert that we can modify the signature algorithm for testing
 	selfSigned, err := cdxtest.GenSelfSignedCert()
 	require.NoError(t, err)
-	cert := selfSigned.Cert
+
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Modify the signature algorithm for testing purposes
-			cert.SignatureAlgorithm = tt.alg
+		for _, format := range formats {
+			t.Run(tt.name+"/"+format.name, func(t *testing.T) {
+				var modifiedSelfSigned *cdxtest.SelfSignedCert
 
-			// Convert to PEM and run detection
-			pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw})
+				// Some algorithms are not supported by x509.CreateCertificate
+				// For these, we'll just use the original cert for format testing
+				unsupportedAlgorithms := map[x509.SignatureAlgorithm]bool{
+					x509.MD5WithRSA:                true,
+					x509.DSAWithSHA1:               true,
+					x509.DSAWithSHA256:             true,
+					x509.UnknownSignatureAlgorithm: true,
+				}
 
-			var d czX509.Scanner
-			got, err := d.Scan(t.Context(), pemBytes, "testpath")
-			require.NoError(t, err)
-			require.Len(t, got, 1)
-		})
+				if unsupportedAlgorithms[tt.alg] {
+					// Skip re-creating the certificate, use original for format testing only
+					modifiedSelfSigned = &selfSigned
+				} else {
+					// Parse the DER to get a modifiable certificate
+					cert, err := x509.ParseCertificate(selfSigned.Der)
+					require.NoError(t, err)
+
+					// Modify the signature algorithm for testing purposes
+					cert.SignatureAlgorithm = tt.alg
+
+					// Re-create the DER with the modified signature algorithm
+					modifiedDer, err := x509.CreateCertificate(rand.Reader, cert, cert, &selfSigned.Key.PublicKey, selfSigned.Key)
+					require.NoError(t, err)
+
+					modifiedCert, err := x509.ParseCertificate(modifiedDer)
+					require.NoError(t, err)
+
+					modifiedSelfSigned = &cdxtest.SelfSignedCert{
+						Der:  modifiedDer,
+						Cert: modifiedCert,
+						Key:  selfSigned.Key,
+					}
+				}
+
+				// Convert to the desired format
+				data, err := format.prepare(modifiedSelfSigned)
+				require.NoError(t, err)
+
+				// Run detection
+				var d czX509.Scanner
+				got, err := d.Scan(t.Context(), data, "testpath")
+				require.NoError(t, err)
+				require.NotEmpty(t, got, "should detect at least one certificate")
+			})
+		}
 	}
 }
