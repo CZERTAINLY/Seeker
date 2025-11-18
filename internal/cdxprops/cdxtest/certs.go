@@ -21,7 +21,7 @@ import (
 )
 
 // Password is a Password used for PKCS#12, JKS and other keystores
-const Password = "changeit"
+const Password = "changeit" // NOSONAR - test fixture password, never used in production
 
 type CertBuilder struct {
 	keyUsage x509.KeyUsage
@@ -102,7 +102,7 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 	if err != nil {
 		return SelfSignedCert{}, err
 	}
-	hash := sha1.Sum(pubKeyBytes)
+	hash := sha1.Sum(pubKeyBytes) // NOSONAR - sha1 is fine in this context
 	subjectKeyId := hash[:]
 
 	templ := &x509.Certificate{
@@ -115,6 +115,7 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 		BasicConstraintsValid: true,
 		IsCA:                  b.isCA,
 		SubjectKeyId:          subjectKeyId,
+		SignatureAlgorithm:    b.algo,
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, templ, templ, publicKey, key)
