@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"maps"
@@ -39,23 +38,23 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	}
 
 	// Convert private keys
-	for i, key := range bundle.PrivateKeys {
-		components = append(components, privateKeyToCDX(key.Key, bundle.RawBlocks, i, location))
+	for _, key := range bundle.PrivateKeys {
+		components = append(components, privateKeyToCDX(key.Key, location))
 	}
 
 	// Convert certificate requests
-	for i, csr := range bundle.CertificateRequests {
-		components = append(components, csrToCDX(csr, bundle.RawBlocks[findBlockIndex(bundle.RawBlocks, "CERTIFICATE REQUEST", i)], location))
+	for _, csr := range bundle.CertificateRequests {
+		components = append(components, csrToCDX(csr, location))
 	}
 
 	// Convert public keys
-	for i, pubKey := range bundle.PublicKeys {
-		components = append(components, publicKeyToCDX(pubKey, bundle.RawBlocks[findBlockIndex(bundle.RawBlocks, "PUBLIC KEY", i)], location))
+	for _, pubKey := range bundle.PublicKeys {
+		components = append(components, publicKeyToCDX(pubKey, location))
 	}
 
 	// Convert CRLs
-	for i, crl := range bundle.CRLs {
-		components = append(components, crlToCDX(crl, bundle.RawBlocks[findBlockIndex(bundle.RawBlocks, "X509 CRL", i)], location))
+	for _, crl := range bundle.CRLs {
+		components = append(components, crlToCDX(crl, location))
 	}
 
 	// try to parse unrecognized parts of a PEM
@@ -73,11 +72,10 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	return components, errors.Join(errs...)
 }
 
-func privateKeyToCDX(key crypto.PrivateKey, blocks []model.PEMBlock, index int, location string) cdx.Component {
+func privateKeyToCDX(key crypto.PrivateKey, location string) cdx.Component {
 	keyType, algorithmRef, size := getPrivateKeyInfo(key)
-	block := findPrivateKeyBlock(blocks, index)
 
-	return cdx.Component{
+	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
 		Name: fmt.Sprintf("%s Private Key", keyType),
 		CryptoProperties: &cdx.CryptoProperties{
@@ -92,38 +90,37 @@ func privateKeyToCDX(key crypto.PrivateKey, blocks []model.PEMBlock, index int, 
 		},
 		Properties: &[]cdx.Property{
 			{Name: "location", Value: location},
-			{Name: "pem_type", Value: block.Type},
-			{Name: "order", Value: fmt.Sprintf("%d", block.Order)},
 			{Name: "key_type", Value: keyType},
 			{Name: "key_size", Value: fmt.Sprintf("%d", size)},
 		},
 	}
+	AddEvidenceLocation(&compo, location)
+	return compo
 }
 
-func csrToCDX(csr *x509.CertificateRequest, block model.PEMBlock, location string) cdx.Component {
-	return cdx.Component{
+func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
+	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
 		Name: fmt.Sprintf("CSR: %s", csr.Subject.CommonName),
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
 			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:  cdx.RelatedCryptoMaterialTypeOther,
-				Value: string(pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: block.Bytes})),
+				Type: cdx.RelatedCryptoMaterialTypeOther,
 			},
 		},
 		Properties: &[]cdx.Property{
-			{Name: "location", Value: location},
-			{Name: "pem_type", Value: block.Type},
-			{Name: "order", Value: fmt.Sprintf("%d", block.Order)},
+			{Name: "pem_type", Value: "CSR"},
 			{Name: "subject", Value: csr.Subject.String()},
 		},
 	}
+	AddEvidenceLocation(&compo, location)
+	return compo
 }
 
-func publicKeyToCDX(pubKey crypto.PublicKey, block model.PEMBlock, location string) cdx.Component {
+func publicKeyToCDX(pubKey crypto.PublicKey, location string) cdx.Component {
 	keyType, algorithmRef, size := getPublicKeyInfo(pubKey)
 
-	return cdx.Component{
+	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
 		Name: fmt.Sprintf("%s Public Key", keyType),
 		CryptoProperties: &cdx.CryptoProperties{
@@ -137,35 +134,34 @@ func publicKeyToCDX(pubKey crypto.PublicKey, block model.PEMBlock, location stri
 		},
 		Properties: &[]cdx.Property{
 			{Name: "location", Value: location},
-			{Name: "pem_type", Value: block.Type},
-			{Name: "order", Value: fmt.Sprintf("%d", block.Order)},
 			{Name: "key_type", Value: keyType},
 			{Name: "key_size", Value: fmt.Sprintf("%d", size)},
 		},
 	}
+	AddEvidenceLocation(&compo, location)
+	return compo
 }
 
-func crlToCDX(crl *x509.RevocationList, block model.PEMBlock, location string) cdx.Component {
-	return cdx.Component{
+func crlToCDX(crl *x509.RevocationList, location string) cdx.Component {
+	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
 		Name: "Certificate Revocation List",
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
 			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:  cdx.RelatedCryptoMaterialTypeOther,
-				Value: string(pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: block.Bytes})),
+				Type: cdx.RelatedCryptoMaterialTypeOther,
 			},
 		},
 		Properties: &[]cdx.Property{
 			{Name: "location", Value: location},
-			{Name: "pem_type", Value: block.Type},
-			{Name: "order", Value: fmt.Sprintf("%d", block.Order)},
 			{Name: "issuer", Value: crl.Issuer.String()},
 			{Name: "this_update", Value: crl.ThisUpdate.Format(time.RFC3339)},
 			{Name: "next_update", Value: crl.NextUpdate.Format(time.RFC3339)},
 			{Name: "revoked_count", Value: fmt.Sprintf("%d", len(crl.RevokedCertificateEntries))},
 		},
 	}
+	AddEvidenceLocation(&compo, location)
+	return compo
 }
 
 // Helper functions
@@ -194,36 +190,6 @@ func getPublicKeyInfo(key crypto.PublicKey) (keyType string, algorithmRef string
 	default:
 		return "Unknown", "Unknown", 0
 	}
-}
-
-func findBlockIndex(blocks []model.PEMBlock, blockType string, occurrence int) int {
-	count := 0
-	for i, block := range blocks {
-		if block.Type == blockType || (blockType == "CERTIFICATE REQUEST" && block.Type == "NEW CERTIFICATE REQUEST") {
-			if count == occurrence {
-				return i
-			}
-			count++
-		}
-	}
-	return -1
-}
-
-func findPrivateKeyBlock(blocks []model.PEMBlock, index int) model.PEMBlock {
-	privateKeyTypes := []string{"PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY"}
-	count := 0
-	for _, block := range blocks {
-		for _, pkType := range privateKeyTypes {
-			if block.Type == pkType {
-				if count == index {
-					return block
-				}
-				count++
-				break
-			}
-		}
-	}
-	return model.PEMBlock{}
 }
 
 func analyzeParseError(block model.PEMBlock, parseErr error) (cdx.Component, error) {
