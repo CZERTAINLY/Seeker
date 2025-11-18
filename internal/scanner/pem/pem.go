@@ -71,7 +71,7 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 				bundle.Certificates = append(bundle.Certificates, hits(cs, "PKCS7-PEM")...)
 			}
 		case "PKCS12":
-			if cs := czx509.ParsePKCS12(ctx, b); len(cs) > 0 {
+			if cs := czx509.ParsePKCS12(ctx, block.Bytes); len(cs) > 0 {
 				bundle.Certificates = append(bundle.Certificates, hits(cs, "PKCS12-PEM")...)
 			}
 
