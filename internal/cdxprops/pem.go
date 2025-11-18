@@ -193,13 +193,17 @@ func getPublicKeyInfo(key crypto.PublicKey) (keyType string, algorithmRef string
 }
 
 func analyzeParseError(block model.PEMBlock, parseErr error) (cdx.Component, error) {
-	const mlkemPrefix = "2.16.840.1.101.3.4.3.18"
-	if block.Type == "PRIVATE KEY" && strings.Contains(parseErr.Error(), mlkemPrefix) {
-		compo, err := mlkemToComponent(block.Bytes)
-		if err != nil {
-			return cdx.Component{}, errors.Join(parseErr, err)
+	const mlkemOID = "2.16.840.1.101.3.4.3.18"
+	if block.Type == "PRIVATE KEY" {
+		var pkcs8Key pkcs8
+		_, err := asn1.Unmarshal(block.Bytes, &pkcs8Key)
+		if err == nil && pkcs8Key.Algo.Algorithm.String() == mlkemOID {
+			compo, err := mlkemToComponent(block.Bytes)
+			if err != nil {
+				return cdx.Component{}, errors.Join(parseErr, err)
+			}
+			return compo, nil
 		}
-		return compo, nil
 	}
 	return cdx.Component{}, parseErr
 }

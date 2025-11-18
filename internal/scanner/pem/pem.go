@@ -158,7 +158,7 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 				bundle.ParseErrors[order] =
 					fmt.Errorf("failed to parse OpenSSH private key at position %d: %w", order, err)
 			} else {
-				// x/crypto/ssh returns a pointer in a case of ed25519, which is wrong and not idiomatic.
+				// x/crypto/ssh returns a pointer for ed25519 keys; we normalize it to a value type for consistency.
 				if keyp, ok := key.(*ed25519.PrivateKey); ok {
 					key = *keyp
 				}
