@@ -68,10 +68,9 @@ func TestDetector(t *testing.T) {
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{
 							{
-								Key:      cert.Key,
-								Type:     "Ed25519",
-								Source:   "PKCS8-PEM",
-								Location: "test.pem",
+								Key:    cert.Key,
+								Type:   "Ed25519",
+								Source: "PKCS8-PEM",
 							},
 						},
 						RawBlocks: []model.PEMBlock{
@@ -100,10 +99,9 @@ func TestDetector(t *testing.T) {
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{
 							{
-								Key:      cert.Key,
-								Type:     "ECDSA",
-								Source:   "EC-PEM",
-								Location: "test.pem",
+								Key:    cert.Key,
+								Type:   "ECDSA",
+								Source: "EC-PEM",
 							}},
 						RawBlocks: []model.PEMBlock{
 							{Type: "EC PRIVATE KEY", Order: 0, Bytes: block.Bytes, Headers: map[string]string{}},
@@ -126,10 +124,9 @@ func TestDetector(t *testing.T) {
 					data: pemBytes,
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{{
-							Key:      key,
-							Type:     "Ed25519",
-							Source:   "PEM",
-							Location: "test.pem",
+							Key:    key,
+							Type:   "Ed25519",
+							Source: "PEM",
 						}},
 						RawBlocks: []model.PEMBlock{
 							{Type: "OPENSSH PRIVATE KEY", Order: 0, Bytes: block.Bytes, Headers: map[string]string{}},

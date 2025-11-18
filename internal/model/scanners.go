@@ -62,9 +62,8 @@ type PEMBlock struct {
 
 // PrivateKeyInfo wraps a private key with its type information
 type PrivateKeyInfo struct {
-	Key      crypto.PrivateKey // Actual key (*rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey)
-	Type     string            // "RSA", "ECDSA", "Ed25519", etc.
-	Source   string            // "PEM"
-	Location string
-	Block    *PEMBlock // Original PEM block for reference
+	Key    crypto.PrivateKey // Actual key (*rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey)
+	Type   string            // "RSA", "ECDSA", "Ed25519", etc.
+	Source string            // "PEM"
+	Block  *PEMBlock         // Original PEM block for reference
 }
