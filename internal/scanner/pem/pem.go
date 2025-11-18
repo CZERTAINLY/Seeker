@@ -36,7 +36,9 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 		return ret
 	}
 
-	bundle := model.PEMBundle{}
+	bundle := model.PEMBundle{
+		ParseErrors: make(map[int]error),
+	}
 
 	order := 0
 	rest := b
@@ -59,8 +61,8 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 		/*********** CERTIFICATES ***********/
 		case "CERTIFICATE", "TRUSTED CERTIFICATE":
 			if cs, err := x509.ParseCertificates(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse certificate at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse certificate at position %d: %w", order, err)
 			} else {
 				bundle.Certificates = append(bundle.Certificates, hits(cs, "PEM")...)
 			}
@@ -77,8 +79,8 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 		case "PRIVATE KEY":
 			// PKCS#8 format - can be RSA, ECDSA, Ed25519
 			if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse PKCS#8 private key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse PKCS#8 private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
 					Key:      key,
@@ -93,8 +95,8 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 		case "RSA PRIVATE KEY":
 			// PKCS#1 RSA format
 			if key, err := x509.ParsePKCS1PrivateKey(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse RSA private key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse RSA private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
 					Key:      key,
@@ -109,8 +111,8 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 		case "EC PRIVATE KEY":
 			// SEC 1 EC format
 			if key, err := x509.ParseECPrivateKey(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse EC private key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse EC private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
 					Key:      key,
@@ -124,40 +126,40 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 
 		case "CERTIFICATE REQUEST", "NEW CERTIFICATE REQUEST":
 			if csr, err := x509.ParseCertificateRequest(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse certificate request at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse certificate request at position %d: %w", order, err)
 			} else {
 				bundle.CertificateRequests = append(bundle.CertificateRequests, csr)
 			}
 
 		case "PUBLIC KEY":
 			if pubKey, err := x509.ParsePKIXPublicKey(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse public key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse public key at position %d: %w", order, err)
 			} else {
 				bundle.PublicKeys = append(bundle.PublicKeys, pubKey)
 			}
 
 		case "RSA PUBLIC KEY":
 			if pubKey, err := x509.ParsePKCS1PublicKey(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse RSA public key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse RSA public key at position %d: %w", order, err)
 			} else {
 				bundle.PublicKeys = append(bundle.PublicKeys, pubKey)
 			}
 
 		case "X509 CRL":
 			if crl, err := x509.ParseRevocationList(block.Bytes); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse CRL at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse CRL at position %d: %w", order, err)
 			} else {
 				bundle.CRLs = append(bundle.CRLs, crl)
 			}
 
 		case "OPENSSH PRIVATE KEY":
 			if key, err := ssh.ParseRawPrivateKey(pem.EncodeToMemory(block)); err != nil {
-				bundle.ParseErrors = append(bundle.ParseErrors,
-					fmt.Errorf("failed to parse OpenSSH private key at position %d: %w", order, err))
+				bundle.ParseErrors[order] =
+					fmt.Errorf("failed to parse OpenSSH private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
 					Key:      key,
@@ -170,10 +172,9 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 			}
 
 		default:
-			slog.WarnContext(ctx, "PEM type not supported by this detector", "type", block.Type)
 			// Unknown block type - already stored in RawBlocks
-			bundle.ParseErrors = append(bundle.ParseErrors,
-				fmt.Errorf("unknown PEM block type at position %d: %s", order, block.Type))
+			bundle.ParseErrors[order] =
+				fmt.Errorf("unknown PEM block type at position %d: %s", order, block.Type)
 		}
 
 		rest = r
@@ -185,6 +186,9 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 	}
 
 	bundle.Location = path
+	if len(bundle.ParseErrors) == 0 {
+		bundle.ParseErrors = nil
+	}
 	return bundle, nil
 }
 

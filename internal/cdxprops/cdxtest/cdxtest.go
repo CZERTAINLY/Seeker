@@ -2,6 +2,7 @@ package cdxtest
 
 import (
 	"crypto/x509"
+	"embed"
 	"encoding/base64"
 	"fmt"
 	"path/filepath"
@@ -9,6 +10,15 @@ import (
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
+
+//go:embed testdata/*
+var data embed.FS
+
+const MLKEM1024PrivateKey = "testdata/ml-kem-1024-private-key.pem"
+
+func TestData(path string) ([]byte, error) {
+	return data.ReadFile(path)
+}
 
 // getProp gets a property value from a CDX component
 func GetProp(comp cdx.Component, name string) string {

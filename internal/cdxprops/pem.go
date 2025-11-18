@@ -7,9 +7,15 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -50,6 +56,18 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	// Convert CRLs
 	for i, crl := range bundle.CRLs {
 		components = append(components, crlToCDX(crl, bundle.RawBlocks[findBlockIndex(bundle.RawBlocks, "X509 CRL", i)], location))
+	}
+
+	// try to parse unrecognized parts of a PEM
+	for _, i := range slices.Sorted(maps.Keys(bundle.ParseErrors)) {
+		parseErr := bundle.ParseErrors[i]
+		block := bundle.RawBlocks[i]
+		compo, err := analyzeParseError(block, parseErr)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		components = append(components, compo)
 	}
 
 	return components, errors.Join(errs...)
@@ -206,4 +224,70 @@ func findPrivateKeyBlock(blocks []model.PEMBlock, index int) model.PEMBlock {
 		}
 	}
 	return model.PEMBlock{}
+}
+
+func analyzeParseError(block model.PEMBlock, parseErr error) (cdx.Component, error) {
+	const mlkemPrefix = "2.16.840.1.101.3.4.3.18"
+	if block.Type == "PRIVATE KEY" && strings.Contains(parseErr.Error(), mlkemPrefix) {
+		compo, err := mlkemToComponent(block.Bytes)
+		if err != nil {
+			return cdx.Component{}, errors.Join(parseErr, err)
+		}
+		return compo, nil
+	}
+	return cdx.Component{}, parseErr
+}
+
+// ********** PQC support **********
+
+// PKCS#8 PrivateKeyInfo structure
+type pkcs8 struct {
+	Version    int
+	Algo       pkix.AlgorithmIdentifier
+	PrivateKey []byte
+}
+
+// ML-KEM private key structure
+type mlkemPrivateKey struct {
+	Seed       []byte
+	PrivateKey []byte
+}
+
+func mlkemToComponent(b []byte) (cdx.Component, error) {
+	var pkcs8Key pkcs8
+	_, err := asn1.Unmarshal(b, &pkcs8Key)
+	if err != nil {
+		return cdx.Component{}, fmt.Errorf("parsing PKCS#8 via ASN.1: %w", err)
+	}
+
+	var mlkemKey mlkemPrivateKey
+	_, err = asn1.Unmarshal(pkcs8Key.PrivateKey, &mlkemKey)
+	if err != nil {
+		return cdx.Component{}, fmt.Errorf("parsing ML-KEM via ASN.1: %w", err)
+	}
+
+	var size int
+	if len(mlkemKey.PrivateKey) >= 3168 {
+		size = 1024
+	} else if len(mlkemKey.PrivateKey) >= 2400 {
+		size = 768
+	} else {
+		size = 512
+	}
+
+	compo := cdx.Component{
+		BOMRef: string(spkiOIDRef[pkcs8Key.Algo.Algorithm.String()]),
+		Type:   cdx.ComponentTypeCryptographicAsset,
+		Name:   "ML-KEM-" + strconv.Itoa(size),
+		CryptoProperties: &cdx.CryptoProperties{
+			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
+			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
+				Type:   cdx.RelatedCryptoMaterialTypePrivateKey,
+				Size:   &size,
+				Format: "PEM",
+			},
+			OID: pkcs8Key.Algo.Algorithm.String(),
+		},
+	}
+	return compo, nil
 }

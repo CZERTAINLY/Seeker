@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
@@ -263,6 +264,34 @@ func TestDetector(t *testing.T) {
 			},
 			then: model.ErrNoMatch,
 		},
+		{
+			scenario: "ML-KEM-1024-PRIVATE-KEY (PQC, PKCS#8)",
+			given: func(t *testing.T) given {
+				pk, err := cdxtest.TestData(cdxtest.MLKEM1024PrivateKey)
+				require.NoError(t, err)
+
+				block, _ := pem.Decode(pk)
+				require.NotNil(t, block)
+
+				return given{
+					data: pk,
+					bundle: model.PEMBundle{
+						ParseErrors: map[int]error{
+							0: errors.New("failed to parse PKCS#8 private key at position 0: x509: PKCS#8 wrapping contained private key with unknown algorithm: 2.16.840.1.101.3.4.3.18"),
+						},
+						RawBlocks: []model.PEMBlock{
+							{
+								Type:    "PRIVATE KEY",
+								Headers: map[string]string{},
+								Bytes:   block.Bytes,
+								Order:   0,
+							},
+						},
+					},
+				}
+			},
+			then: nil,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -280,13 +309,22 @@ func TestDetector(t *testing.T) {
 				require.Equal(t, tc.then.Error(), err.Error())
 			} else {
 				require.NoError(t, err)
-				require.Empty(t, bundle.ParseErrors)
 
 				for idx, pkey := range bundle.PrivateKeys {
 					require.NotNil(t, pkey.Block)
 					// lets not compare pointers to raw blocks
 					bundle.PrivateKeys[idx].Block = nil
 				}
+
+				for idx, gotErr := range bundle.ParseErrors {
+					expectedErr, ok := given.bundle.ParseErrors[idx]
+					require.True(t, ok)
+					require.NotNil(t, gotErr)
+					require.NotNil(t, expectedErr)
+					require.EqualError(t, gotErr, expectedErr.Error())
+				}
+				given.bundle.ParseErrors = nil
+				bundle.ParseErrors = nil
 
 				require.Equal(t, given.bundle, bundle)
 			}

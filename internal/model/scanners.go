@@ -38,12 +38,16 @@ type PEMBundle struct {
 	// CRLs (Certificate Revocation Lists)
 	CRLs []*x509.RevocationList
 
-	// Raw PEM blocks for any unrecognized or special types
-	// Preserves order and original encoding
+	// RawBlocks contains PEM blocks that couldn't be parsed into strongly-typed structures
+	// or blocks with unrecognized types. The slice preserves the original order and encoding
+	// from the source data, enabling round-trip serialization.
 	RawBlocks []PEMBlock
 
-	// Metadata about parsing
-	ParseErrors []error // Non-fatal errors during parsing
+	// ParseErrors maps indices in RawBlocks to their corresponding parse errors.
+	// These are non-fatal errors encountered during parsing, such as unsupported
+	// cryptographic algorithms or malformed key data. A block at RawBlocks[i] will
+	// have its error (if any) stored at ParseErrors[i].
+	ParseErrors map[int]error
 
 	Location string
 }
