@@ -57,7 +57,8 @@ func GenSelfSignedCert() (SelfSignedCert, error) {
 	return CertBuilder{}.Generate()
 }
 
-// GenSelfSignedCert generates a RSA self-signed certificate for testing
+// Generate generates a self-signed certificate for testing with the configured parameters.
+// Defaults to RSA if no signature algorithm is specified.
 func (b CertBuilder) Generate() (SelfSignedCert, error) {
 	var ret SelfSignedCert
 	var algo x509.SignatureAlgorithm
