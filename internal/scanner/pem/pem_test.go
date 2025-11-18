@@ -126,7 +126,7 @@ func TestDetector(t *testing.T) {
 					data: pemBytes,
 					bundle: model.PEMBundle{
 						PrivateKeys: []model.PrivateKeyInfo{{
-							Key:      &key,
+							Key:      key,
 							Type:     "Ed25519",
 							Source:   "PEM",
 							Location: "test.pem",
