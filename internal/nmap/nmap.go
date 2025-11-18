@@ -230,7 +230,7 @@ func sslCerts(ctx context.Context, s nmap.Script) []model.CertHit {
 			// empty path is fine, this will be added in a upper layer
 			bundle, err := pem.Scanner{}.Scan(ctx, []byte(val), "")
 			if err != nil {
-				slog.WarnContext(ctx, "failed to scan x509 certificate: ignoring", "error", err)
+				slog.WarnContext(ctx, "failed to scan PEM data: ignoring", "error", err)
 				continue
 			}
 			certs = append(certs, bundle.Certificates...)
