@@ -307,12 +307,6 @@ func TestDetector(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 
-				for idx, pkey := range bundle.PrivateKeys {
-					require.NotNil(t, pkey.Block)
-					// lets not compare pointers to raw blocks
-					bundle.PrivateKeys[idx].Block = nil
-				}
-
 				for idx, gotErr := range bundle.ParseErrors {
 					expectedErr, ok := given.bundle.ParseErrors[idx]
 					require.True(t, ok)

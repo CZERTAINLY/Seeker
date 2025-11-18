@@ -83,10 +83,10 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 					fmt.Errorf("failed to parse PKCS#8 private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
-					Key:    key,
-					Type:   keyType(key),
-					Source: "PKCS8-PEM",
-					Block:  &rawBlock,
+					Key:        key,
+					Type:       keyType(key),
+					Source:     "PKCS8-PEM",
+					BlockIndex: len(bundle.RawBlocks) - 1,
 				}
 				bundle.PrivateKeys = append(bundle.PrivateKeys, pki)
 			}
@@ -98,10 +98,10 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 					fmt.Errorf("failed to parse RSA private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
-					Key:    key,
-					Type:   keyType(key),
-					Source: "PKCS1-PEM",
-					Block:  &rawBlock,
+					Key:        key,
+					Type:       keyType(key),
+					Source:     "PKCS1-PEM",
+					BlockIndex: len(bundle.RawBlocks) - 1,
 				}
 				bundle.PrivateKeys = append(bundle.PrivateKeys, pki)
 			}
@@ -113,10 +113,10 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 					fmt.Errorf("failed to parse EC private key at position %d: %w", order, err)
 			} else {
 				pki := model.PrivateKeyInfo{
-					Key:    key,
-					Type:   keyType(key),
-					Source: "EC-PEM",
-					Block:  &rawBlock,
+					Key:        key,
+					Type:       keyType(key),
+					Source:     "EC-PEM",
+					BlockIndex: len(bundle.RawBlocks) - 1,
 				}
 				bundle.PrivateKeys = append(bundle.PrivateKeys, pki)
 			}
@@ -163,10 +163,10 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 					key = *keyp
 				}
 				pki := model.PrivateKeyInfo{
-					Key:    key,
-					Type:   keyType(key),
-					Source: "PEM",
-					Block:  &rawBlock,
+					Key:        key,
+					Type:       keyType(key),
+					Source:     "PEM",
+					BlockIndex: len(bundle.RawBlocks) - 1,
 				}
 				bundle.PrivateKeys = append(bundle.PrivateKeys, pki)
 			}
