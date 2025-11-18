@@ -20,7 +20,7 @@ import (
 // Scanner handles PEM block detection for all possible data
 type Scanner struct{}
 
-// scan finds all certificates in PEM blocks
+// Scan parses all PEM blocks and returns a comprehensive bundle containing certificates, keys, and other cryptographic materials
 func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBundle, error) {
 	slog.DebugContext(ctx, "Detecting ALL PEM blocks anywhere in the blob (handles leading text)")
 

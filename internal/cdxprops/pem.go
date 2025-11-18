@@ -241,8 +241,13 @@ func mlkemToComponent(b []byte) (cdx.Component, error) {
 		size = 512
 	}
 
+	bomRef, ok := spkiOIDRef[pkcs8Key.Algo.Algorithm.String()]
+	if !ok {
+		bomRef = ""
+	}
+
 	compo := cdx.Component{
-		BOMRef: string(spkiOIDRef[pkcs8Key.Algo.Algorithm.String()]),
+		BOMRef: string(bomRef),
 		Type:   cdx.ComponentTypeCryptographicAsset,
 		Name:   "ML-KEM-" + strconv.Itoa(size),
 		CryptoProperties: &cdx.CryptoProperties{

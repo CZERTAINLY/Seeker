@@ -156,7 +156,7 @@ service:
 	require.ElementsMatch(t, []string{
 		"CN=Test Cert",
 		"aws-access-token",
-		"Unknown Private Key",
+		"RSA Private Key",
 	}, names)
 }
 
@@ -245,7 +245,7 @@ service:
 	}
 	require.ElementsMatch(t, []string{
 		"CN=Test Cert",
-		"Unknown Private Key",
+		"RSA Private Key",
 		"aws-access-token",
 	}, names)
 }
