@@ -40,7 +40,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 
 	// Convert private keys
 	for i, key := range bundle.PrivateKeys {
-		components = append(components, privateKeyToCDX(key, bundle.RawBlocks, i, location))
+		components = append(components, privateKeyToCDX(key.Key, bundle.RawBlocks, i, location))
 	}
 
 	// Convert certificate requests
