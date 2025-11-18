@@ -74,7 +74,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 		}
 	}()
 
-	// TODO: configure a paralelism
+	// TODO: configure a parallelism
 	// filesystem scanners
 	if s.filesystems != nil {
 		scanner := service.New(4, s.detectors)
