@@ -19,7 +19,7 @@ func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool)
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
 	case leak.RuleID == "private-key":
-		cryptoType = cdx.RelatedCryptoMaterialTypePrivateKey
+		return cdx.Component{}, true
 	case strings.Contains(leak.RuleID, "jwt"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeToken
 	case strings.Contains(leak.RuleID, "token"):

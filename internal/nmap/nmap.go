@@ -11,7 +11,7 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	"github.com/CZERTAINLY/Seeker/internal/x509"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/pem"
 
 	"github.com/Ullaakut/nmap/v3"
 )
@@ -228,12 +228,12 @@ func sslCerts(ctx context.Context, s nmap.Script) []model.CertHit {
 		if row.Key == "pem" {
 			val := html.UnescapeString(row.Value)
 			// empty path is fine, this will be added in a upper layer
-			hits, err := x509.Scanner{}.Scan(ctx, []byte(val), "")
+			bundle, err := pem.Scanner{}.Scan(ctx, []byte(val), "")
 			if err != nil {
-				slog.WarnContext(ctx, "failed to scan x509 certificate: ignoring", "error", err)
+				slog.WarnContext(ctx, "failed to scan PEM data: ignoring", "error", err)
 				continue
 			}
-			certs = append(certs, hits...)
+			certs = append(certs, bundle.Certificates...)
 		}
 	}
 	return certs

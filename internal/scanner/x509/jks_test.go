@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
-	czX509 "github.com/CZERTAINLY/Seeker/internal/x509"
+	czX509 "github.com/CZERTAINLY/Seeker/internal/scanner/x509"
 	keystore "github.com/pavlo-v-chernykh/keystore-go/v4"
 	"github.com/stretchr/testify/require"
 )

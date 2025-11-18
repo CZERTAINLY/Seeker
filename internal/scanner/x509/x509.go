@@ -49,7 +49,6 @@ func findAllCerts(ctx context.Context, b []byte) []model.CertHit {
 
 	// Initialize all scanners
 	scanners := []scanner{
-		pemScanner{},    // 1) PEM blocks (handles certificates, PKCS7, PKCS12 in PEM)
 		jksScanner{},    // 2) JKS / JCEKS (Java keystores)
 		pkcs12Scanner{}, // 3) PKCS#12 (PFX)
 		derScanner{},    // 4) Raw DER (single/concatenated certs, or DER-encoded PKCS#7)
