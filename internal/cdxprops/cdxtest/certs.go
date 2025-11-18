@@ -20,7 +20,7 @@ import (
 	"software.sslmate.com/src/go-pkcs12"
 )
 
-// Password is a Password used for PKCS#12, JKS and other keysotes
+// Password is a Password used for PKCS#12, JKS and other keystores
 const Password = "changeit"
 
 type CertBuilder struct {
