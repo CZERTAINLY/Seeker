@@ -198,7 +198,7 @@ func keyType(key crypto.PrivateKey) string {
 		return "RSA"
 	case *ecdsa.PrivateKey:
 		return "ECDSA"
-	case ed25519.PrivateKey, *ed25519.PrivateKey:
+	case ed25519.PrivateKey:
 		return "Ed25519"
 	default:
 		return fmt.Sprintf("Unknown (%T)", key)
