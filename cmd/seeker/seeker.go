@@ -13,10 +13,10 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/nmap"
-	"github.com/CZERTAINLY/Seeker/internal/scan"
 	"github.com/CZERTAINLY/Seeker/internal/scanner/gitleaks"
 	"github.com/CZERTAINLY/Seeker/internal/scanner/pem"
 	"github.com/CZERTAINLY/Seeker/internal/scanner/x509"
+	"github.com/CZERTAINLY/Seeker/internal/service"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -25,7 +25,7 @@ import (
 
 // Seeker is a component, which encapsulates the scan functionality and executes it.
 type Seeker struct {
-	detectors   []scan.Detector
+	detectors   []service.Detector
 	filesystems iter.Seq2[walk.Entry, error]
 	containers  iter.Seq2[walk.Entry, error]
 	nmaps       []nmap.Scanner
@@ -46,7 +46,7 @@ func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitl
 	containers := containers(ctx, config.Containers)
 	nmaps, ips := nmaps(ctx, config.Ports)
 
-	detectors := make([]scan.Detector, 0, 3)
+	detectors := make([]service.Detector, 0, 3)
 	detectors = append(detectors, x509Detector{s: x509Scanner})
 	if leaksScanner != nil {
 		detectors = append(detectors, leaksDetector{s: leaksScanner})
@@ -77,7 +77,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 	// TODO: configure a paralelism
 	// filesystem scanners
 	if s.filesystems != nil {
-		scanner := scan.New(4, s.detectors)
+		scanner := service.New(4, s.detectors)
 		g.Go(func() error {
 			goScan(ctx, scanner, s.filesystems, detections)
 			return nil
@@ -86,7 +86,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 
 	// containers scanners
 	if s.containers != nil {
-		scanner := scan.New(2, s.detectors)
+		scanner := service.New(2, s.detectors)
 		g.Go(func() error {
 			goScan(ctx, scanner, s.containers, detections)
 			return nil
@@ -113,7 +113,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 	return nil
 }
 
-func goScan(ctx context.Context, scanner *scan.Scan, seq iter.Seq2[walk.Entry, error], detections chan<- model.Detection) {
+func goScan(ctx context.Context, scanner *service.Scan, seq iter.Seq2[walk.Entry, error], detections chan<- model.Detection) {
 	for results, err := range scanner.Do(ctx, seq) {
 		if err != nil {
 			slog.DebugContext(ctx, "error on filesystem scan", "error", err)

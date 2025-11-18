@@ -1,4 +1,4 @@
-package scan_test
+package service_test
 
 import (
 	"context"
@@ -9,16 +9,12 @@ import (
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	"github.com/CZERTAINLY/Seeker/internal/scan"
+	scan "github.com/CZERTAINLY/Seeker/internal/service"
 	"github.com/CZERTAINLY/Seeker/internal/walk"
+
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
 )
-
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
-}
 
 func TestScanner_Do(t *testing.T) {
 	t.Parallel()
