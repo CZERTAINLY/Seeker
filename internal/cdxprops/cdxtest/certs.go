@@ -30,7 +30,6 @@ type CertBuilder struct {
 }
 
 type SelfSignedCert struct {
-	Algo x509.SignatureAlgorithm
 	Der  []byte
 	Cert *x509.Certificate
 	Key  crypto.PrivateKey
@@ -61,9 +60,8 @@ func GenSelfSignedCert() (SelfSignedCert, error) {
 // Defaults to RSA if no signature algorithm is specified.
 func (b CertBuilder) Generate() (SelfSignedCert, error) {
 	var ret SelfSignedCert
-	var algo x509.SignatureAlgorithm
 	if int(b.algo) == 0 {
-		algo = x509.SignatureAlgorithm(x509.RSA)
+		b.algo = x509.SHA256WithRSA
 	}
 
 	var keyUsage = x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
@@ -129,7 +127,6 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 		return ret, err
 	}
 	return SelfSignedCert{
-		Algo: algo,
 		Der:  der,
 		Cert: cert,
 		Key:  key,
