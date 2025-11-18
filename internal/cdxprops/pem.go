@@ -14,7 +14,6 @@ import (
 	"maps"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -224,6 +223,8 @@ type mlkemPrivateKey struct {
 }
 
 func mlkemToComponent(b []byte) (cdx.Component, error) {
+	const MLKEM1024PKeySize = 3168
+	const MLKEM768PKeySize = 2400
 	var pkcs8Key pkcs8
 	_, err := asn1.Unmarshal(b, &pkcs8Key)
 	if err != nil {
@@ -237,9 +238,9 @@ func mlkemToComponent(b []byte) (cdx.Component, error) {
 	}
 
 	var size int
-	if len(mlkemKey.PrivateKey) >= 3168 {
+	if len(mlkemKey.PrivateKey) >= MLKEM1024PKeySize {
 		size = 1024
-	} else if len(mlkemKey.PrivateKey) >= 2400 {
+	} else if len(mlkemKey.PrivateKey) >= MLKEM768PKeySize {
 		size = 768
 	} else {
 		size = 512
