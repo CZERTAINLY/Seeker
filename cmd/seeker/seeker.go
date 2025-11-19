@@ -32,9 +32,16 @@ type Seeker struct {
 	ips         []netip.Addr
 }
 
-func NewSeeker(ctx context.Context, x509Scanner x509.Scanner, leaksScanner *gitleaks.Scanner, pemScanner pem.Scanner, config model.Scan) (Seeker, error) {
+func NewSeeker(ctx context.Context, config model.Scan) (Seeker, error) {
 	if config.Version != 0 {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
+	}
+
+	x509Scanner := x509.Scanner{}
+	pemScanner := pem.Scanner{}
+	leaksScanner, err := gitleaks.NewScanner()
+	if err != nil {
+		return Seeker{}, fmt.Errorf("can't create gitleaks scanner: %w", err)
 	}
 
 	filesystems, err := filesystems(ctx, config.Filesystem)
