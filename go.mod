@@ -22,7 +22,7 @@ require (
 	github.com/zricethezav/gitleaks/v8 v8.28.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.42.0
-	golang.org/x/sync v0.17.0
+	golang.org/x/sync v0.18.0
 	gopkg.in/yaml.v3 v3.0.1
 	software.sslmate.com/src/go-pkcs12 v0.6.0
 )
