@@ -75,8 +75,8 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 func privateKeyToCDX(key crypto.PrivateKey, source, location string) cdx.Component {
 	keyType, algorithmRef, size := PrivateKeyInfo(key)
 	var oid string
-	if strings.Contains(algorithmRef, "@") {
-		_, oid, _ = strings.Cut(algorithmRef, "@")
+	if _, after, found := strings.Cut(algorithmRef, "@"); found {
+		oid = after
 	}
 
 	compo := cdx.Component{
