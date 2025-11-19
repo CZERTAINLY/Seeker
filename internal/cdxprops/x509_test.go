@@ -90,7 +90,8 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -100,7 +101,7 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -133,7 +134,8 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -142,7 +144,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -167,7 +169,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp384.Type)
-	err = cdxtest.HasEvidencePath(comp384)
+	err = cdxtest.HasEvidencePath(comp384, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp384)
 
@@ -192,7 +194,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp521.Type)
-	err = cdxtest.HasEvidencePath(comp521)
+	err = cdxtest.HasEvidencePath(comp521, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp521)
 
@@ -283,7 +285,8 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 			require.NoError(t, err)
 			cert, err := x509.ParseCertificate(certDER)
 			require.NoError(t, err)
-			testPath, _ := filepath.Abs("testpath")
+			testPath, err := filepath.Abs("testpath")
+			require.NoError(t, err)
 
 			comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 				Cert:     cert,
@@ -293,7 +296,7 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-			err = cdxtest.HasEvidencePath(comp)
+			err = cdxtest.HasEvidencePath(comp, testPath)
 			require.NoError(t, err)
 			requireFormatAndDERBase64(t, comp)
 
@@ -327,7 +330,8 @@ func Test_Component_UnknownAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -337,7 +341,7 @@ func Test_Component_UnknownAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -369,7 +373,8 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -378,7 +383,7 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 

@@ -10,7 +10,6 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -108,9 +107,6 @@ func TestGetProp(t *testing.T) {
 }
 
 func TestHasEvidencePath(t *testing.T) {
-	absPath, err := filepath.Abs("testpath")
-	require.NoError(t, err)
-
 	tests := []struct {
 		name    string
 		comp    cdx.Component
@@ -154,19 +150,7 @@ func TestHasEvidencePath(t *testing.T) {
 			errMsg:  "location is empty",
 		},
 		{
-			name: "relative path location",
-			comp: cdx.Component{
-				Evidence: &cdx.Evidence{
-					Occurrences: &[]cdx.EvidenceOccurrence{
-						{Location: "relative/path"},
-					},
-				},
-			},
-			wantErr: true,
-			errMsg:  "location path is not absolute: relative/path",
-		},
-		{
-			name: "wrong suffix",
+			name: "wrong path",
 			comp: cdx.Component{
 				Evidence: &cdx.Evidence{
 					Occurrences: &[]cdx.EvidenceOccurrence{
@@ -175,14 +159,14 @@ func TestHasEvidencePath(t *testing.T) {
 				},
 			},
 			wantErr: true,
-			errMsg:  "location /absolute/wrong/path does not have expected suffix " + filepath.Clean(absPath),
+			errMsg:  "unexpected location: got /absolute/wrong/path, expected: testdata",
 		},
 		{
 			name: "valid evidence path",
 			comp: cdx.Component{
 				Evidence: &cdx.Evidence{
 					Occurrences: &[]cdx.EvidenceOccurrence{
-						{Location: filepath.Join("/some/path", filepath.Clean(absPath))},
+						{Location: "testdata"},
 					},
 				},
 			},
@@ -192,7 +176,7 @@ func TestHasEvidencePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := cdxtest.HasEvidencePath(tt.comp)
+			err := cdxtest.HasEvidencePath(tt.comp, "testdata")
 			if tt.wantErr {
 				require.Error(t, err)
 				require.Equal(t, tt.errMsg, err.Error())
@@ -543,7 +527,7 @@ func TestSelfSignedCert_PKCS12_WithDifferentKeyTypes(t *testing.T) {
 }
 
 func TestGenECPrivateKey(t *testing.T) {
-	key, err := cdxtest.GenECPrivateKey()
+	key, err := cdxtest.GenECPrivateKey(elliptic.P256())
 	require.NoError(t, err)
 	require.NotNil(t, key)
 
@@ -552,7 +536,7 @@ func TestGenECPrivateKey(t *testing.T) {
 }
 
 func TestGenEd25519PrivateKey(t *testing.T) {
-	pubKey, privKey, err := cdxtest.GenEd25519PrivateKey()
+	pubKey, privKey, err := cdxtest.GenEd25519Keys()
 	require.NoError(t, err)
 	require.NotNil(t, pubKey)
 	require.NotNil(t, privKey)
@@ -580,13 +564,13 @@ func TestGenCSR(t *testing.T) {
 		{
 			name: "ECDSA",
 			keyGen: func() (crypto.PrivateKey, error) {
-				return cdxtest.GenECPrivateKey()
+				return cdxtest.GenECPrivateKey(elliptic.P224())
 			},
 		},
 		{
 			name: "Ed25519",
 			keyGen: func() (crypto.PrivateKey, error) {
-				_, priv, err := cdxtest.GenEd25519PrivateKey()
+				_, priv, err := cdxtest.GenEd25519Keys()
 				return priv, err
 			},
 		},
