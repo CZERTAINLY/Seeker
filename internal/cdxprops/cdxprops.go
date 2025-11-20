@@ -1,8 +1,13 @@
 package cdxprops
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
+	"strings"
 
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
@@ -15,6 +20,44 @@ const (
 	CzertainlyPrivateKeyType                        = "czertainly:component:private_key:type"
 	CzertainlyPrivateKeyBase64Content               = "czertainly:component:private_key:base64_content"
 )
+
+type Converter struct {
+	czertainly   bool
+	bomRefHasher func([]byte) string
+}
+
+func NewConverter() Converter {
+	return Converter{
+		czertainly: false,
+		bomRefHasher: func(b []byte) string {
+			hash := sha256.Sum256(b)
+			return "sha256:" + hex.EncodeToString(hash[:])
+		},
+	}
+}
+
+func (c Converter) WithCzertainlyExtenstions(czertainly bool) Converter {
+	c.czertainly = true
+	return c
+}
+
+// Leak converts the finding to detection.
+// Supports jwt, token, key and password.
+// Returns nil if given Leak should be ignored
+// safe to be used by different go routines
+func (c Converter) Leak(ctx context.Context, leak model.Leak) *model.Detection {
+	compo, skip := c.leakToComponent(ctx, leak)
+	if skip {
+		return nil
+	}
+	typ := strings.ToUpper(string(compo.CryptoProperties.RelatedCryptoMaterialProperties.Type))
+	return &model.Detection{
+		Source:     "LEAKS",
+		Type:       model.DetectionType(typ),
+		Location:   leak.File,
+		Components: []cdx.Component{compo},
+	}
+}
 
 // Set (or upsert) a CycloneDX component property.
 func SetComponentProp(c *cdx.Component, name, value string) {

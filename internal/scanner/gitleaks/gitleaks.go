@@ -52,16 +52,12 @@ func (d *Scanner) Scan(ctx context.Context, b []byte, path string) ([]model.Leak
 
 	var ret []model.Leak
 	for _, finding := range detector.DetectString(string(b)) {
-		var content string
-		if finding.Fragment != nil {
-			content = finding.Fragment.Raw
-		}
 		leak := model.Leak{
 			RuleID:      finding.RuleID,
 			Description: finding.Description,
 			File:        path,
 			StartLine:   finding.StartLine,
-			Content:     content,
+			Content:     finding.Match,
 		}
 		ret = append(ret, leak)
 	}

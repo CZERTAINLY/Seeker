@@ -37,6 +37,8 @@ func NewSeeker(ctx context.Context, config model.Scan) (Seeker, error) {
 		return Seeker{}, fmt.Errorf("config version %d is not supported, expected 0", config.Version)
 	}
 
+	converter := cdxprops.NewConverter()
+
 	x509Scanner := x509.Scanner{}
 	pemScanner := pem.Scanner{}
 	leaksScanner, err := gitleaks.NewScanner()
@@ -56,7 +58,10 @@ func NewSeeker(ctx context.Context, config model.Scan) (Seeker, error) {
 	detectors := make([]service.Detector, 0, 3)
 	detectors = append(detectors, x509Detector{s: x509Scanner})
 	if leaksScanner != nil {
-		detectors = append(detectors, leaksDetector{s: leaksScanner})
+		detectors = append(detectors, leaksDetector{
+			s: leaksScanner,
+			c: converter,
+		})
 	}
 	detectors = append(detectors, pemDetector{s: pemScanner})
 
@@ -77,7 +82,6 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 	go func() {
 		for d := range detections { // will be closed after g.Wait()
 			b.AppendComponents(d.Components...)
-			b.AppendDependencies(d.Dependencies...)
 		}
 	}()
 
@@ -138,7 +142,7 @@ func nmapScan(ctx context.Context, scanner nmap.Scanner, ip netip.Addr, detectio
 		slog.ErrorContext(ctx, "nmap scan failed", "error", err)
 	}
 	compos := cdxprops.ParseNmap(ctx, nmapScan)
-	detections <- model.Detection{Path: "nmap", Components: compos}
+	detections <- model.Detection{Location: "nmap", Components: compos}
 }
 
 func filesystems(ctx context.Context, cfg model.Filesystem) (iter.Seq2[walk.Entry, error], error) {
@@ -216,6 +220,7 @@ func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr) {
 
 type leaksDetector struct {
 	s *gitleaks.Scanner
+	c cdxprops.Converter
 }
 
 func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]model.Detection, error) {
@@ -223,23 +228,15 @@ func (d leaksDetector) Detect(ctx context.Context, b []byte, path string) ([]mod
 	if err != nil {
 		return nil, err
 	}
-	compos := make([]cdx.Component, 0, len(leaks))
+
+	ret := make([]model.Detection, 0, len(leaks))
 	for _, leak := range leaks {
-		if leak.RuleID == "" {
-			continue
+		d := d.c.Leak(ctx, leak)
+		if d != nil {
+			ret = append(ret, *d)
 		}
-		compo, ignored := cdxprops.LeakToComponent(ctx, leak)
-		if ignored {
-			continue
-		}
-		compos = append(compos, compo)
 	}
-	if len(compos) == 0 {
-		return nil, nil
-	}
-	return []model.Detection{
-		{Components: compos},
-	}, nil
+	return ret, nil
 }
 
 func (d leaksDetector) LogAttrs() []slog.Attr {

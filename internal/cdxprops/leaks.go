@@ -2,9 +2,7 @@ package cdxprops
 
 import (
 	"context"
-	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -12,10 +10,7 @@ import (
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// LeakToComponent converts the finding to a component.
-// Private keys are now processed and converted to components,
-// with their content base64-encoded.
-func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool) {
+func (c Converter) leakToComponent(_ context.Context, leak model.Leak) (cdx.Component, bool) {
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
 	case leak.RuleID == "private-key":
@@ -32,7 +27,10 @@ func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool)
 		cryptoType = cdx.RelatedCryptoMaterialTypeUnknown
 	}
 
+	bomRef := fmt.Sprintf("crypto/%s/%s", string(cryptoType), c.bomRefHasher([]byte(leak.Content)))
+
 	compo := cdx.Component{
+		BOMRef:      bomRef,
 		Name:        leak.RuleID,
 		Description: leak.Description,
 		Type:        cdx.ComponentTypeCryptographicAsset,
@@ -52,24 +50,5 @@ func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool)
 		},
 	}
 
-	if leak.RuleID == "private-key" && leak.Content != "" {
-		err := setCzertainlyProps(leak, &compo)
-		if err != nil {
-			slog.WarnContext(ctx, "can't process private-key leak: ignoring", "error", err)
-			return cdx.Component{}, true
-		}
-	}
 	return compo, false
-}
-
-func setCzertainlyProps(leak model.Leak, compop *cdx.Component) error {
-	raw := []byte(leak.Content)
-	block, _ := pem.Decode(raw)
-	if block == nil {
-		return fmt.Errorf("failed to decode PEM block")
-	}
-
-	SetComponentProp(compop, CzertainlyPrivateKeyType, block.Type)
-	SetComponentBase64Prop(compop, CzertainlyPrivateKeyBase64Content, raw)
-	return nil
 }
