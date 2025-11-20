@@ -12,6 +12,7 @@ const (
 	DetectionTypeLeakTOKEN    DetectionType = "TOKEN"
 	DetectionTypeLeakKEY      DetectionType = "KEY"
 	DetectionTypeLeakPASSWORD DetectionType = "PASSWORD"
+	DetectionTypeCertificate  DetectionType = "CERTIFICATE"
 )
 
 // Detection is CycloneDX data converted from scanners

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"log/slog"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -22,7 +23,10 @@ const (
 )
 
 type Converter struct {
-	czertainly   bool
+	// czertainly control if extra czertainly properties will be included or not
+	czertainly bool
+	// bomRefHasher controls which algorithm will be used
+	// to generate non-algorithm BOMRef. Defaults to sha256
 	bomRefHasher func([]byte) string
 }
 
@@ -36,6 +40,8 @@ func NewConverter() Converter {
 	}
 }
 
+// WithCzertainlyExtenstions configures the mode in which CZERTAINLY specific properties will be included in Components or not
+// Default is no
 func (c Converter) WithCzertainlyExtenstions(czertainly bool) Converter {
 	c.czertainly = true
 	return c
@@ -56,6 +62,30 @@ func (c Converter) Leak(ctx context.Context, leak model.Leak) *model.Detection {
 		Type:       model.DetectionType(typ),
 		Location:   leak.File,
 		Components: []cdx.Component{compo},
+	}
+}
+
+func (c Converter) Certificate(ctx context.Context, hit model.CertHit) *model.Detection {
+	if hit.Cert == nil {
+		return nil
+	}
+
+	compos, deps, err := c.certHitToComponents(ctx, hit)
+	// TODO: figure out the PQC
+	if err != nil {
+		slog.ErrorContext(ctx, "can't parse certificate", "error", err)
+		return nil
+	}
+	if compos == nil {
+		return nil
+	}
+
+	return &model.Detection{
+		Source:       hit.Source,
+		Type:         model.DetectionTypeCertificate,
+		Location:     hit.Location,
+		Components:   compos,
+		Dependencies: deps,
 	}
 }
 
