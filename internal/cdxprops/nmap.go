@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/czertainly"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -45,36 +46,36 @@ var (
 	}
 )
 
-func ParseNmap(ctx context.Context, nmap model.Nmap) []cdx.Component {
-	compos := make([]cdx.Component, 0, len(nmap.Ports))
+func (c Converter) parseNmap(ctx context.Context, nmap model.Nmap) (compos []cdx.Component, deps []cdx.Dependency, services []cdx.Service, err error) {
 	for _, port := range nmap.Ports {
 		switch port.Service.Name {
 		case "ssh":
-			compos = append(compos, sshToCompos(ctx, port)...)
-		case "ssl":
-			compos = append(compos, tlsToCompos(ctx, port)...)
+			compos = append(compos, c.sshToCompos(ctx, port)...)
+		case "ssl", "http", "https":
+			c, d := c.tlsToCompos(ctx, port)
+			compos = append(compos, c...)
+			deps = append(deps, d...)
 		default:
-			slog.WarnContext(ctx, "unsupported service: skipping", "service_name", port.Service.Name)
+			err = fmt.Errorf("can't parse unsupported nmap service: %s", port.Service.Name)
+			return
 		}
 	}
-	return compos
+	// FIXME: handle cdx services too
+	return
 }
 
-func sshToCompos(ctx context.Context, port model.NmapPort) []cdx.Component {
+func (c Converter) sshToCompos(_ context.Context, port model.NmapPort) []cdx.Component {
 	ret := make([]cdx.Component, 0, len(port.SSHHostKeys))
 	for _, hkey := range port.SSHHostKeys {
-		compo, err := ParseSSHHostKey(hkey)
-		if err != nil {
-			slog.ErrorContext(ctx, "cannot parse SSH host key: ignoring", "error", err)
-			continue
-		}
+		compo := c.parseSSHHostKey(hkey)
 		ret = append(ret, compo)
 	}
 	return ret
 }
 
-func tlsToCompos(ctx context.Context, port model.NmapPort) []cdx.Component {
-	ret := make([]cdx.Component, 0, len(port.Ciphers)+len(port.TLSCerts))
+func (c Converter) tlsToCompos(ctx context.Context, port model.NmapPort) ([]cdx.Component, []cdx.Dependency) {
+	compos := make([]cdx.Component, 0, len(port.Ciphers)+len(port.TLSCerts))
+	var dependencies []cdx.Dependency
 
 	for _, cipher := range port.Ciphers {
 		proto, ver := ParseTLSVersion(cipher.Name)
@@ -91,18 +92,19 @@ func tlsToCompos(ctx context.Context, port model.NmapPort) []cdx.Component {
 				},
 			},
 		}
-		ret = append(ret, compo)
+		compos = append(compos, compo)
 	}
 
 	for _, certHit := range port.TLSCerts {
-		compo, err := CertHitToComponent(ctx, certHit)
-		if err != nil {
-			slog.WarnContext(ctx, "can't convert certHit to component: ignoring", "location", certHit.Location, "source", certHit.Source)
+		detection := c.CertHit(ctx, certHit)
+		if detection == nil {
+			slog.WarnContext(ctx, "can't convert nmap TLS certificate to components: ignoring", "location", certHit.Location, "source", certHit.Source)
 			continue
 		}
-		ret = append(ret, compo)
+		compos = append(compos, detection.Components...)
+		dependencies = append(dependencies, detection.Dependencies...)
 	}
-	return ret
+	return compos, dependencies
 }
 
 func ParseTLSVersion(input string) (string, string) {
@@ -162,21 +164,23 @@ func ParseTLSCiphers(ctx context.Context, ciphers []string) *[]cdx.CipherSuite {
 
 // ParseSSHAlgorithm returns CycloneDX crypto algorithm properties for a known SSH
 // host key algorithm string. It reports ok=false if the algorithm is unsupported.
-func ParseSSHAlgorithm(algo string) (cdx.CryptoAlgorithmProperties, bool) {
+func parseSSHAlgorithm(algo string) cdx.CryptoAlgorithmProperties {
 	p, ok := algoMap[algo]
-	p.Primitive = cdx.CryptoPrimitiveSignature
-	p.CryptoFunctions = cryptoFunctions
-	return p, ok
-}
 
-func ParseSSHHostKey(key model.SSHHostKey) (cdx.Component, error) {
-	algoProp, ok := ParseSSHAlgorithm(key.Type)
 	if !ok {
-		return cdx.Component{}, fmt.Errorf("unsupported ssh algorithm %s", key.Type)
+		p.ParameterSetIdentifier = "unknown"
+		p.Curve = ""
 	}
 
+	p.Primitive = cdx.CryptoPrimitiveSignature
+	p.CryptoFunctions = cryptoFunctions
+	return p
+}
+
+func (c Converter) parseSSHHostKey(key model.SSHHostKey) cdx.Component {
+	algoProp := parseSSHAlgorithm(key.Type)
 	compo := cdx.Component{
-		BOMRef: "crypto/ssh-hostkey/" + key.Type + "@" + key.Bits,
+		BOMRef: "crypto/algorithm/" + key.Type + "@" + key.Bits,
 		Name:   key.Type,
 		Type:   cdx.ComponentTypeCryptographicAsset,
 		CryptoProperties: &cdx.CryptoProperties{
@@ -185,7 +189,11 @@ func ParseSSHHostKey(key model.SSHHostKey) (cdx.Component, error) {
 			OID:                 algoProp.ParameterSetIdentifier,
 		},
 	}
-	SetComponentProp(&compo, CzertainlyComponentSSHHostKeyContent, key.Key)
-	SetComponentProp(&compo, CzertainlyComponentSSHHostKeyFingerprintContent, key.Fingerprint)
-	return compo, nil
+
+	if c.czertainly {
+		props := czertainly.SSHHostKeyProperties(nil, key)
+		compo.Properties = &props
+	}
+
+	return compo
 }

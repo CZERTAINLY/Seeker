@@ -5,8 +5,6 @@ import (
 	"embed"
 	"encoding/base64"
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
@@ -34,7 +32,7 @@ func GetProp(comp cdx.Component, name string) string {
 }
 
 // HasEvidencePath checks that the component has the expected evidence path
-func HasEvidencePath(comp cdx.Component) error {
+func HasEvidencePath(comp cdx.Component, location string) error {
 	if comp.Evidence == nil {
 		return fmt.Errorf("evidence is nil")
 	}
@@ -50,17 +48,8 @@ func HasEvidencePath(comp cdx.Component) error {
 		return fmt.Errorf("location is empty")
 	}
 
-	abs, err := filepath.Abs("testpath")
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
-	}
-
-	if !filepath.IsAbs(loc) {
-		return fmt.Errorf("location path is not absolute: %s", loc)
-	}
-
-	if !strings.HasSuffix(loc, filepath.Clean(abs)) {
-		return fmt.Errorf("location %s does not have expected suffix %s", loc, filepath.Clean(abs))
+	if loc != location {
+		return fmt.Errorf("unexpected location: got %s, expected: %s", loc, location)
 	}
 
 	return nil

@@ -1,60 +1,147 @@
 package cdxprops
 
 import (
-	"encoding/base64"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"log/slog"
+	"os"
+	"runtime"
+	"strings"
 
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// Exported so tests and other packages can reference the same strings.
-const (
-	CzertainlyComponentCertificateSourceFormat      = "czertainly:component:certificate:source_format"
-	CzertainlyComponentCertificateBase64Content     = "czertainly:component:certificate:base64_content"
-	CzertainlyComponentSSHHostKeyFingerprintContent = "czertainly:component:ssh_hostkey:fingerprint_content"
-	CzertainlyComponentSSHHostKeyContent            = "czertainly:component:ssh_hostkey:content"
-	CzertainlyPrivateKeyType                        = "czertainly:component:private_key:type"
-	CzertainlyPrivateKeyBase64Content               = "czertainly:component:private_key:base64_content"
-)
+type Converter struct {
+	// czertainly control if extra czertainly properties will be included or not
+	czertainly bool
+	// bomRefHasher controls which algorithm will be used
+	// to generate non-algorithm BOMRef. Defaults to sha256
+	bomRefHasher func([]byte) string
+}
 
-// Set (or upsert) a CycloneDX component property.
-func SetComponentProp(c *cdx.Component, name, value string) {
-	if name == "" || value == "" || c == nil {
-		return
+func NewConverter() Converter {
+	return Converter{
+		czertainly: true,
+		bomRefHasher: func(b []byte) string {
+			hash := sha256.Sum256(b)
+			return "sha256:" + hex.EncodeToString(hash[:])
+		},
 	}
-	if c.Properties == nil {
-		c.Properties = &[]cdx.Property{{Name: name, Value: value}}
-		return
+}
+
+// WithCzertainlyExtenstions configures the mode in which CZERTAINLY specific properties will be included in Components or not
+// Default is no
+func (c Converter) WithCzertainlyExtenstions(czertainly bool) Converter {
+	c.czertainly = czertainly
+	return c
+}
+
+// Leak converts the finding to detection.
+// Supports jwt, token, key and password.
+// Returns nil if given Leak should be ignored
+// safe to be used by different go routines
+func (c Converter) Leak(ctx context.Context, leak model.Leak) *model.Detection {
+	compo, skip := c.leakToComponent(ctx, leak)
+	if skip {
+		return nil
 	}
-	props := *c.Properties
-	for i := range props {
-		if props[i].Name == name {
-			props[i].Value = value
-			*c.Properties = props
-			return
+	typ := strings.ToUpper(string(compo.CryptoProperties.RelatedCryptoMaterialProperties.Type))
+	return &model.Detection{
+		Source:     "LEAKS",
+		Type:       model.DetectionType(typ),
+		Location:   leak.File,
+		Components: []cdx.Component{compo},
+	}
+}
+
+func (c Converter) CertHit(ctx context.Context, hit model.CertHit) *model.Detection {
+	if hit.Cert == nil {
+		return nil
+	}
+
+	compos, deps, err := c.certHitToComponents(ctx, hit)
+	// TODO: figure out the PQC
+	if err != nil {
+		slog.ErrorContext(ctx, "can't parse certificate", "error", err)
+		return nil
+	}
+	if compos == nil {
+		return nil
+	}
+
+	return &model.Detection{
+		Source:       hit.Source,
+		Type:         model.DetectionTypeCertificate,
+		Location:     hit.Location,
+		Components:   compos,
+		Dependencies: deps,
+	}
+}
+
+func (c Converter) Nmap(ctx context.Context, nmap model.Nmap) *model.Detection {
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "N/A"
+	}
+
+	compos, deps, services, err := c.parseNmap(ctx, nmap)
+	if err != nil {
+		slog.WarnContext(ctx, "failed to parse nmap", "error", err)
+		return nil
+	}
+
+	return &model.Detection{
+		Source:       "NMAP",
+		Type:         model.DetectionTypePort,
+		Location:     hostname,
+		Components:   compos,
+		Dependencies: deps,
+		Services:     services,
+	}
+}
+
+func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model.Detection {
+	var compos []cdx.Component
+	var deps []cdx.Dependency
+
+	for _, cert := range bundle.Certificates {
+		d := c.CertHit(ctx, cert)
+		if d == nil {
+			continue
 		}
+		compos = append(compos, d.Components...)
+		deps = append(deps, d.Dependencies...)
 	}
-	props = append(props, cdx.Property{Name: name, Value: value})
-	*c.Properties = props
+
+	bundleCompos, err := PEMBundleToCDX(ctx, bundle, bundle.Location)
+	if err != nil {
+		slog.WarnContext(ctx, "analyzing bundle returned an error", "error", err)
+	}
+	compos = append(compos, bundleCompos...)
+
+	return &model.Detection{
+		Source:       "PEM",
+		Type:         model.DetectionTypePort,
+		Location:     bundle.Location,
+		Components:   compos,
+		Dependencies: deps,
+	}
 }
 
-func SetComponentBase64Prop(c *cdx.Component, name string, value []byte) {
-	SetComponentProp(c, name, base64.StdEncoding.EncodeToString(value))
-}
-
-// Add (append) an evidence.occurrence location if non-empty.
-func AddEvidenceLocation(c *cdx.Component, loc string) {
-	if loc == "" || c == nil {
-		return
+func (c Converter) ImplementationPlatform() cdx.ImplementationPlatform {
+	switch runtime.GOARCH {
+	case "amd64":
+		return cdx.ImplementationPlatformX86_64
+	case "386":
+		return cdx.ImplementationPlatformX86_32
+	case "ppc64", "ppc64le":
+		return cdx.ImplementationPlatformPPC64
+	case "s390x":
+		return cdx.ImplementationPlatformS390x
+	default:
+		return cdx.ImplementationPlatform(runtime.GOARCH)
 	}
-	occ := cdx.EvidenceOccurrence{Location: loc}
-	if c.Evidence == nil {
-		c.Evidence = &cdx.Evidence{Occurrences: &[]cdx.EvidenceOccurrence{occ}}
-		return
-	}
-	if c.Evidence.Occurrences == nil {
-		c.Evidence.Occurrences = &[]cdx.EvidenceOccurrence{occ}
-		return
-	}
-	occs := append(*c.Evidence.Occurrences, occ)
-	c.Evidence.Occurrences = &occs
 }

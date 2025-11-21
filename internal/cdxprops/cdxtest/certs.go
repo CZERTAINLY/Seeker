@@ -12,6 +12,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -90,7 +91,7 @@ func (b CertBuilder) Generate() (SelfSignedCert, error) {
 		publicKey = pubKey
 	default:
 		// RSA for all RSA-based algorithms and unknown/default cases
-		rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		rsaKey, err := GenRSAPrivateKey(2048)
 		if err != nil {
 			return ret, err
 		}
@@ -203,13 +204,20 @@ func (s SelfSignedCert) PKCS12() ([]byte, error) {
 	return pkcs12.LegacyRC2.Encode(s.Key, s.Cert, nil, Password)
 }
 
-// GenECPrivateKey generates an ECDSA private key for testing
-func GenECPrivateKey() (*ecdsa.PrivateKey, error) {
-	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func GenRSAPrivateKey(size int) (*rsa.PrivateKey, error) {
+	return rsa.GenerateKey(rand.Reader, size)
 }
 
-// GenEd25519PrivateKey generates an Ed25519 private key for testing
-func GenEd25519PrivateKey() (ed25519.PublicKey, ed25519.PrivateKey, error) {
+// GenECPrivateKey generates an ECDSA private key for testing
+func GenECPrivateKey(curve elliptic.Curve) (*ecdsa.PrivateKey, error) {
+	if curve == nil {
+		return nil, errors.New("curve is nil")
+	}
+	return ecdsa.GenerateKey(curve, rand.Reader)
+}
+
+// GenEd25519Keys generates an Ed25519 private key for testing
+func GenEd25519Keys() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	return ed25519.GenerateKey(rand.Reader)
 }
 
