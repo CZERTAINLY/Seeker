@@ -99,7 +99,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 	detections := make(chan model.Detection)
 	go func() {
 		for d := range detections { // will be closed after g.Wait()
-			b.AppendComponents(d.Components...)
+			b.AppendDetections(ctx, d)
 		}
 	}()
 

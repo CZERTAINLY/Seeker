@@ -32,7 +32,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 
 	// Convert private keys
 	for _, key := range bundle.PrivateKeys {
-		components = append(components, privateKeyToCDX(key.Key, "PEM", location))
+		components = append(components, privateKeyToCDX(key.Key, "PEM"))
 	}
 
 	// Convert certificate requests
@@ -65,7 +65,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	return components, errors.Join(errs...)
 }
 
-func privateKeyToCDX(key crypto.PrivateKey, source, location string) cdx.Component {
+func privateKeyToCDX(key crypto.PrivateKey, source string) cdx.Component {
 	keyType, algorithmRef, size := PrivateKeyInfo(key)
 	var oid string
 	if _, after, found := strings.Cut(algorithmRef, "@"); found {
@@ -88,7 +88,6 @@ func privateKeyToCDX(key crypto.PrivateKey, source, location string) cdx.Compone
 			OID: oid,
 		},
 	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 
@@ -107,7 +106,6 @@ func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
 			{Name: "subject", Value: csr.Subject.String()},
 		},
 	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 
@@ -127,7 +125,6 @@ func publicKeyToCDX(pubKey crypto.PublicKey, location string) cdx.Component {
 			},
 		},
 	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 
@@ -149,7 +146,6 @@ func crlToCDX(crl *x509.RevocationList, location string) cdx.Component {
 			{Name: "revoked_count", Value: fmt.Sprintf("%d", len(crl.RevokedCertificateEntries))},
 		},
 	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 

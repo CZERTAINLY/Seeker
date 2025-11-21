@@ -3,7 +3,6 @@ package cdxprops
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"log/slog"
 	"os"
@@ -145,47 +144,4 @@ func (c Converter) ImplementationPlatform() cdx.ImplementationPlatform {
 	default:
 		return cdx.ImplementationPlatform(runtime.GOARCH)
 	}
-}
-
-// Set (or upsert) a CycloneDX component property.
-func SetComponentProp(c *cdx.Component, name, value string) {
-	if name == "" || value == "" || c == nil {
-		return
-	}
-	if c.Properties == nil {
-		c.Properties = &[]cdx.Property{{Name: name, Value: value}}
-		return
-	}
-	props := *c.Properties
-	for i := range props {
-		if props[i].Name == name {
-			props[i].Value = value
-			*c.Properties = props
-			return
-		}
-	}
-	props = append(props, cdx.Property{Name: name, Value: value})
-	*c.Properties = props
-}
-
-func SetComponentBase64Prop(c *cdx.Component, name string, value []byte) {
-	SetComponentProp(c, name, base64.StdEncoding.EncodeToString(value))
-}
-
-// Add (append) an evidence.occurrence location if non-empty.
-func AddEvidenceLocation(c *cdx.Component, loc string) {
-	if loc == "" || c == nil {
-		return
-	}
-	occ := cdx.EvidenceOccurrence{Location: loc}
-	if c.Evidence == nil {
-		c.Evidence = &cdx.Evidence{Occurrences: &[]cdx.EvidenceOccurrence{occ}}
-		return
-	}
-	if c.Evidence.Occurrences == nil {
-		c.Evidence.Occurrences = &[]cdx.EvidenceOccurrence{occ}
-		return
-	}
-	occs := append(*c.Evidence.Occurrences, occ)
-	c.Evidence.Occurrences = &occs
 }
