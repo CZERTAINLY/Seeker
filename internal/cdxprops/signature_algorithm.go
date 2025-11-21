@@ -92,66 +92,150 @@ var spkiOIDRef = map[string]cdx.BOMReference{
 	"1.3.9999.6.1.3": "crypto/key/hqc-256@1.3.9999.6.1.3",
 }
 
-func buildSignatureAlgorithmProperties(sigAlg x509.SignatureAlgorithm) []cdx.Property {
-	var props []cdx.Property
+// getAlgorithmProperties generates crypto algorithm properties for a signature algorithm
+func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.CryptoAlgorithmProperties, []cdx.Property) {
+	var algorithmFamily string
+	var hash string
+	var paramSetID string
+	var cryptoFunctions []cdx.CryptoFunction
+	var padding cdx.CryptoPadding
+	var nistQuantumSecurityLevel int
 
-	// Algorithm name
-	algName := sigAlg.String()
-	if algName != "" {
-		props = append(props, cdx.Property{
-			Name:  "algorithm",
-			Value: algName,
-		})
+	cryptoFunctions = []cdx.CryptoFunction{
+		cdx.CryptoFunctionSign,
+		cdx.CryptoFunctionVerify,
 	}
 
-	// Algorithm type and hash function
-	algType, hashFunc := getAlgorithmInfo(sigAlg)
-	if algType != "" {
-		props = append(props, cdx.Property{
-			Name:  "algorithmType",
-			Value: algType,
-		})
-	}
-	if hashFunc != "" {
-		props = append(props, cdx.Property{
-			Name:  "hashFunction",
-			Value: hashFunc,
-		})
-	}
-
-	return props
-}
-
-// getAlgorithmInfo returns the algorithm type and hash function for a signature algorithm
-func getAlgorithmInfo(sigAlg x509.SignatureAlgorithm) (algType, hashFunc string) {
 	switch sigAlg {
 	case x509.MD2WithRSA:
-		return "RSA", "MD2"
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "128" // MD2 digest size
+		hash = "MD2"
+
 	case x509.MD5WithRSA:
-		return "RSA", "MD5"
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "128" // MD5 digest size
+		hash = "MD5"
+
 	case x509.SHA1WithRSA:
-		return "RSA", "SHA1"
-	case x509.SHA256WithRSA, x509.SHA256WithRSAPSS:
-		return "RSA", "SHA256"
-	case x509.SHA384WithRSA, x509.SHA384WithRSAPSS:
-		return "RSA", "SHA384"
-	case x509.SHA512WithRSA, x509.SHA512WithRSAPSS:
-		return "RSA", "SHA512"
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "160" // SHA-1 digest size
+		hash = "SHA-1"
+
+	case x509.SHA256WithRSA:
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "256" // SHA-256 digest size
+		padding = cdx.CryptoPaddingPKCS1v15
+		hash = "SHA-256"
+
+	case x509.SHA384WithRSA:
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "384" // SHA-384 digest size
+		padding = cdx.CryptoPaddingPKCS1v15
+		hash = "SHA-384"
+
+	case x509.SHA512WithRSA:
+		algorithmFamily = "RSASSA-PKCS1"
+		paramSetID = "512" // SHA-512 digest size
+		padding = cdx.CryptoPaddingPKCS1v15
+		hash = "SHA-256"
+
+	case x509.SHA256WithRSAPSS:
+		algorithmFamily = "RSASSA-PSS"
+		paramSetID = "256" // SHA-256 digest size
+		hash = "SHA-256"
+
+	case x509.SHA384WithRSAPSS:
+		algorithmFamily = "RSASSA-PSS"
+		paramSetID = "384" // SHA-384 digest size
+		hash = "SHA-384"
+
+	case x509.SHA512WithRSAPSS:
+		algorithmFamily = "RSASSA-PSS"
+		paramSetID = "512" // SHA-512 digest size
+		hash = "SHA-512"
+
 	case x509.ECDSAWithSHA1:
-		return "ECDSA", "SHA1"
+		algorithmFamily = "ECDSA"
+		paramSetID = "160" // SHA-1 digest size
+		hash = "SHA-1"
+
 	case x509.ECDSAWithSHA256:
-		return "ECDSA", "SHA256"
+		algorithmFamily = "ECDSA"
+		paramSetID = "256" // SHA-256 digest size
+		hash = "SHA-256"
+
 	case x509.ECDSAWithSHA384:
-		return "ECDSA", "SHA384"
+		algorithmFamily = "ECDSA"
+		paramSetID = "384" // SHA-384 digest size
+		hash = "SHA-384"
+
 	case x509.ECDSAWithSHA512:
-		return "ECDSA", "SHA512"
+		algorithmFamily = "ECDSA"
+		paramSetID = "512" // SHA-512 digest size
+		hash = "SHA-512"
+
 	case x509.DSAWithSHA1:
-		return "DSA", "SHA1"
+		algorithmFamily = "DSA"
+		paramSetID = "160" // SHA-1 digest size
+		hash = "SHA-1"
+
 	case x509.DSAWithSHA256:
-		return "DSA", "SHA256"
+		algorithmFamily = "DSA"
+		paramSetID = "256" // SHA-256 digest size
+		hash = "SHA-256"
+
 	case x509.PureEd25519:
-		return "Ed25519", ""
+		algorithmFamily = "EdDSA"
+		paramSetID = "256" // Ed25519 key size
+		// not a parameter https://www.rfc-editor.org/rfc/rfc8032
+		hash = "SHA-512"
+
 	default:
-		return "", ""
+		algorithmFamily = "Unknown"
+		paramSetID = "0"
+		cryptoFunctions = nil
+	}
+
+	execEnv := cdx.CryptoExecutionEnvironmentSoftwarePlainRAM
+	// TODO: support for FIPS mode https://go.dev/doc/security/fips140
+	certLevel := []cdx.CryptoCertificationLevel{cdx.CryptoCertificationLevelNone}
+
+	cryptoProps := cdx.CryptoAlgorithmProperties{
+		Primitive:                cdx.CryptoPrimitiveSignature,
+		ParameterSetIdentifier:   paramSetID,
+		ExecutionEnvironment:     execEnv,
+		CertificationLevel:       &certLevel,
+		CryptoFunctions:          &cryptoFunctions,
+		ImplementationPlatform:   c.ImplementationPlatform(),
+		Padding:                  padding,
+		Curve:                    curveInformation(sigAlg),
+		ClassicalSecurityLevel:   nil,
+		NistQuantumSecurityLevel: &nistQuantumSecurityLevel,
+	}
+	props := []cdx.Property{
+		{
+			Name:  "sigalg:algorithm_family",
+			Value: algorithmFamily,
+		},
+		{
+			Name:  "sigalg:hash",
+			Value: hash,
+		},
+	}
+	return cryptoProps, props
+}
+
+// curveInformation returns the curve name for ECDSA signature algorithms
+func curveInformation(sigAlg x509.SignatureAlgorithm) string {
+	switch sigAlg {
+	case x509.ECDSAWithSHA1, x509.ECDSAWithSHA256:
+		return "secp256r1" // P-256
+	case x509.ECDSAWithSHA384:
+		return "secp384r1" // P-384
+	case x509.ECDSAWithSHA512:
+		return "secp521r1" // P-521
+	default:
+		return ""
 	}
 }

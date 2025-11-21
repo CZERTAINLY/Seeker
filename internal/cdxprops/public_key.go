@@ -3,7 +3,7 @@ package cdxprops
 import (
 	"context"
 	"crypto"
-	"crypto/dsa"
+	"crypto/dsa" //nolint: staticcheck
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
@@ -14,7 +14,7 @@ import (
 )
 
 // publicKeyAlgComponent creates a CycloneDX component for a public key algorithm
-func publicKeyAlgComponents(ctx context.Context, pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) (algo, key cdx.Component) {
+func (c Converter) publicKeyComponents(_ context.Context, certBomRef string, pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) (algo, key cdx.Component) {
 	var name string
 	var oid string
 	var paramSetID string
@@ -122,7 +122,12 @@ func publicKeyAlgComponents(ctx context.Context, pubKeyAlg x509.PublicKeyAlgorit
 	}
 
 	// public key properties
-	bomRef := fmt.Sprintf("crypto/key/%s@%s", strings.ToLower(name), oid)
+	var bomRef string
+	if certBomRef != "" {
+		bomRef = strings.Replace(certBomRef, "certificate", "key", 1)
+	} else {
+		bomRef = fmt.Sprintf("crypto/key/name@%s", c.hashPublicKey(pubKey))
+	}
 
 	relatedProps := &cdx.RelatedCryptoMaterialProperties{
 		Type:         cdx.RelatedCryptoMaterialTypePublicKey,
@@ -133,7 +138,7 @@ func publicKeyAlgComponents(ctx context.Context, pubKeyAlg x509.PublicKeyAlgorit
 		relatedProps.Size = &keySize
 	}
 
-	pubKey = cdx.Component{
+	key = cdx.Component{
 		Type:   cdx.ComponentTypeCryptographicAsset,
 		Name:   name,
 		BOMRef: bomRef,
@@ -144,4 +149,14 @@ func publicKeyAlgComponents(ctx context.Context, pubKeyAlg x509.PublicKeyAlgorit
 		},
 	}
 	return
+}
+
+func (c Converter) hashPublicKey(pubKey crypto.PublicKey) string {
+	// Marshal to PKIX/SPKI format (standard DER encoding)
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		return ""
+	}
+	// Hash the bytes
+	return c.bomRefHasher(pubKeyBytes)
 }

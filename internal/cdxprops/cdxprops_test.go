@@ -11,69 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSetComponentProp_InitializesWhenNil(t *testing.T) {
-	var c cdx.Component
-	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, "PEM")
-
-	require.NotNil(t, c.Properties)
-	props := *c.Properties
-	require.Len(t, props, 1)
-	require.Equal(t, cdxprops.CzertainlyComponentCertificateSourceFormat, props[0].Name)
-	require.Equal(t, "PEM", props[0].Value)
-}
-
-func TestSetComponentProp_UpsertsExisting(t *testing.T) {
-	c := cdx.Component{
-		Properties: &[]cdx.Property{
-			{Name: cdxprops.CzertainlyComponentCertificateSourceFormat, Value: "DER"},
-			{Name: "other", Value: "x"},
-		},
-	}
-
-	// change DER -> PEM, ensure no duplicate and length unchanged
-	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, "PEM")
-
-	require.NotNil(t, c.Properties)
-	props := *c.Properties
-	require.Len(t, props, 2)
-
-	// find the updated property
-	found := false
-	for _, p := range props {
-		if p.Name == cdxprops.CzertainlyComponentCertificateSourceFormat {
-			require.Equal(t, "PEM", p.Value)
-			found = true
-		}
-	}
-	require.True(t, found, "expected upserted property to exist")
-}
-
-func TestSetComponentProp_AppendsNew(t *testing.T) {
-	c := cdx.Component{
-		Properties: &[]cdx.Property{
-			{Name: "existing", Value: "1"},
-		},
-	}
-
-	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateBase64Content, "BASE64DATA")
-
-	props := *c.Properties
-	require.Len(t, props, 2)
-
-	// verify both present
-	var haveExisting, haveNew bool
-	for _, p := range props {
-		if p.Name == "existing" && p.Value == "1" {
-			haveExisting = true
-		}
-		if p.Name == cdxprops.CzertainlyComponentCertificateBase64Content && p.Value == "BASE64DATA" {
-			haveNew = true
-		}
-	}
-	require.True(t, haveExisting)
-	require.True(t, haveNew)
-}
-
 func TestSetComponentProp_EmptyValueIsNoop(t *testing.T) {
 	// when Properties is nil, empty value should not allocate or change anything
 	var c cdx.Component

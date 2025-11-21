@@ -148,15 +148,19 @@ service:
 	err = dec.Decode(&bom)
 	require.NoError(t, err)
 
-	require.Len(t, *bom.Components, 3)
+	require.Len(t, *bom.Components, 6)
 	names := make([]string, len(*bom.Components))
 	for i, compo := range *bom.Components {
 		names[i] = compo.Name
 	}
+
 	require.ElementsMatch(t, []string{
-		"CN=Test Cert",
-		"aws-access-token",
+		"Test Cert",
+		"SHA256-RSA",
 		"RSA-2048",
+		"RSA-2048",
+		"RSA-2048",
+		"aws-access-token",
 	}, names)
 }
 
@@ -238,13 +242,16 @@ service:
 	// validate result against JSON schema
 	require.NoError(t, validator.ValidateBytes(buf.Bytes()))
 
-	require.Len(t, *bom.Components, 3)
+	require.Len(t, *bom.Components, 6)
 	names := make([]string, len(*bom.Components))
 	for i, compo := range *bom.Components {
 		names[i] = compo.Name
 	}
 	require.ElementsMatch(t, []string{
-		"CN=Test Cert",
+		"Test Cert",
+		"SHA256-RSA",
+		"RSA-2048",
+		"RSA-2048",
 		"RSA-2048",
 		"aws-access-token",
 	}, names)

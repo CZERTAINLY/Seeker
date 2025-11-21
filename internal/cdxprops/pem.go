@@ -28,14 +28,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	var errs []error
 
 	// Convert certificates
-	for _, cert := range bundle.Certificates {
-		compo, err := CertHitToComponent(ctx, cert)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		components = append(components, compo)
-	}
+	// moved to Converter.PEMBundle for now
 
 	// Convert private keys
 	for _, key := range bundle.PrivateKeys {
