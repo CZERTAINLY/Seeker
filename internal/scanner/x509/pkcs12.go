@@ -31,6 +31,21 @@ func (d pkcs12Scanner) scan(ctx context.Context, b []byte) []certHit {
 	return out
 }
 
+// ParsePKCS12 extracts X.509 certificates from DER-encoded PKCS#12/PFX data.
+// It first validates the input has a valid PKCS#12 structure, then attempts to
+// decode certificates using common passwords (changeit, empty, password).
+// Returns nil if the data is not valid PKCS#12 or no certificates could be extracted.
+// The function tries both trust-store format (certificates only) and full chain
+// format (private key + certificates), returning the first successful decode.
+// Note: Input must be DER-encoded; PEM-wrapped PKCS#12 is not supported.
+func ParsePKCS12(ctx context.Context, b []byte) []*x509.Certificate {
+	if !sniffPKCS12(b) {
+		return nil
+	}
+	return pkcs12All(b)
+
+}
+
 // --- Strict PKCS#12 sniff ---
 // Validates top-level PFX structure: SEQUENCE { version INTEGER, authSafe ContentInfo (...id-data or id-signedData...) , ... }
 func sniffPKCS12(b []byte) bool {

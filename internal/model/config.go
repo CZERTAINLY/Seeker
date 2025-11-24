@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"runtime"
 	"strings"
 	"time"
 
@@ -156,6 +157,7 @@ func (c Service) IsZero() bool {
 func (s *Scan) Merge(newCfg Scan) {
 	if !newCfg.Containers.Config.IsZero() {
 		s.Containers.Config = newCfg.Containers.Config
+		fixContainersConfig(s.Containers.Config)
 	}
 	if !newCfg.Filesystem.IsZero() {
 		s.Filesystem = newCfg.Filesystem
@@ -297,6 +299,7 @@ func LoadConfig(r io.Reader) (Config, error) {
 	if err := loadConfig1(r, &ret, cueConfig); err != nil {
 		return ret, err
 	}
+	fixContainersConfig(ret.Containers.Config)
 	return ret, nil
 }
 
@@ -305,6 +308,7 @@ func LoadConfigFromPath(path string) (Config, error) {
 	if err := loadConfigFromFile1(path, &ret, cueConfig); err != nil {
 		return ret, err
 	}
+	fixContainersConfig(ret.Containers.Config)
 	return ret, nil
 }
 
@@ -315,6 +319,7 @@ func LoadScanConfig(r io.Reader) (Scan, error) {
 	if err := loadConfig1(r, &ret, cueScan); err != nil {
 		return ret, err
 	}
+	fixContainersConfig(ret.Containers.Config)
 	return ret, nil
 }
 
@@ -323,6 +328,7 @@ func LoadScanConfigFromPath(path string) (Scan, error) {
 	if err := loadConfigFromFile1(path, &ret, cueScan); err != nil {
 		return ret, err
 	}
+	fixContainersConfig(ret.Containers.Config)
 	return ret, nil
 }
 
@@ -484,32 +490,46 @@ func containerConfig(ctx context.Context, typ string, sockPath string) (Containe
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	sockPath = os.ExpandEnv(sockPath)
-	if err := probeDockerLikeSocket(ctx, sockPath); err != nil {
+	realHost, err := probeDockerLikeSocket(ctx, sockPath)
+	if err != nil {
 		return ContainerConfig{}, err
 	}
 	return ContainerConfig{
 		Name:   typ,
 		Type:   typ,
-		Host:   sockPath,
+		Host:   realHost,
 		Images: []string{},
 	}, nil
 }
 
-func probeDockerLikeSocket(ctx context.Context, sockPath string) error {
-	// Build host URL
-	var host string
-	if !strings.Contains(sockPath, "://") {
-		host = "unix://" + sockPath
-	} else {
-		host = sockPath
+func fixDockerHost(sockPath string) string {
+	// Only apply unix:// prefix on Unix-like systems
+	if runtime.GOOS == "windows" {
+		return sockPath
 	}
+	if strings.HasPrefix(sockPath, "/") && !strings.Contains(sockPath, "://") {
+		return "unix://" + sockPath
+	}
+	return sockPath
+}
+
+func fixContainersConfig(configs ContainersConfig) {
+	for idx := range configs {
+		host := configs[idx].Host
+		configs[idx].Host = fixDockerHost(host)
+	}
+}
+
+func probeDockerLikeSocket(ctx context.Context, sockPath string) (string, error) {
+	// Build host URL
+	var host = fixDockerHost(sockPath)
 
 	cli, err := client.NewClientWithOpts(
 		client.WithHost(host),
 		client.WithAPIVersionNegotiation(), // negotiate highest mutually supported
 	)
 	if err != nil {
-		return fmt.Errorf("new client: %w", err)
+		return "", fmt.Errorf("new client: %w", err)
 	}
 	defer func() { _ = cli.Close() }()
 
@@ -517,12 +537,12 @@ func probeDockerLikeSocket(ctx context.Context, sockPath string) error {
 		// Distinguish dial errors
 		var netErr net.Error
 		if errors.As(err, &netErr) && netErr.Timeout() {
-			return fmt.Errorf("ping timeout: %w", err)
+			return "", fmt.Errorf("ping timeout: %w", err)
 		}
-		return fmt.Errorf("ping failed: %w", err)
+		return "", fmt.Errorf("ping failed: %w", err)
 	}
 
-	return nil
+	return host, nil
 }
 
 func isZero[T any](v T) bool {

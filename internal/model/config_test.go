@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -17,6 +18,10 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("not supported on Windows")
+	}
+
 	var testCases = []struct {
 		scenario     string
 		yml          string
@@ -32,7 +37,8 @@ service:
   repository:
     base_url: https://example.com/repo
 `,
-			expectedJSON: `{
+			expectedJSON: `
+				{
 				"version": 0,
 				"service": {
 					"mode": "manual",
@@ -147,6 +153,45 @@ service:
 					"ipv6": false
 				}
 			}`,
+		},
+		{
+			scenario: "fix docker socket",
+			yml: `
+version: 0
+service:
+  mode: manual
+  log: stderr
+containers:
+  enabled: true
+  config:
+    - name: docker
+      type: docker
+      host: /var/run/docker.sock
+`,
+			expectedJSON: `{
+"containers": {
+    "Config": [
+      {
+        "host": "unix:///var/run/docker.sock",
+        "name": "docker",
+        "type": "docker"
+      }
+    ],
+    "enabled": true
+  },
+  "filesystem": {
+    "enabled": false
+  },
+  "ports": {
+    "enabled": false,
+    "ipv4": false,
+    "ipv6": false
+  },
+  "service": {
+    "log": "stderr",
+    "mode": "manual"
+  },
+  "version": 0}`,
 		},
 	}
 

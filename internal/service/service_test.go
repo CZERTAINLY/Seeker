@@ -14,6 +14,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/service"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
@@ -34,6 +35,7 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 
+	goleak.VerifyTestMain(m)
 	os.Exit(m.Run())
 }
 

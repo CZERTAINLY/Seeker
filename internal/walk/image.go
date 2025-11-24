@@ -71,12 +71,13 @@ func Images(parentContext context.Context, configs model.ContainersConfig) iter.
 			ctx := log.ContextAttrs(parentContext, slog.String("host", cc.Host))
 			cli, err := newClient(ctx, cc)
 			if err != nil {
-				slog.WarnContext(ctx, "can't connect, skipping", "error", err)
+				slog.WarnContext(ctx, "can't connect to container host, skipping", "error", err)
 				if !yield(nil, err) {
 					return
 				}
+				continue
 			}
-			slog.DebugContext(ctx, "connected")
+			slog.DebugContext(ctx, "connected to container host")
 			defer func() {
 				if cli != nil {
 					_ = cli.Close()

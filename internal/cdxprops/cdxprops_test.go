@@ -1,7 +1,11 @@
-package cdxprops
+package cdxprops_test
 
 import (
 	"testing"
+
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
+	"github.com/CZERTAINLY/Seeker/internal/scanner/pem"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
@@ -9,25 +13,25 @@ import (
 
 func TestSetComponentProp_InitializesWhenNil(t *testing.T) {
 	var c cdx.Component
-	SetComponentProp(&c, CzertainlyComponentCertificateSourceFormat, "PEM")
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, "PEM")
 
 	require.NotNil(t, c.Properties)
 	props := *c.Properties
 	require.Len(t, props, 1)
-	require.Equal(t, CzertainlyComponentCertificateSourceFormat, props[0].Name)
+	require.Equal(t, cdxprops.CzertainlyComponentCertificateSourceFormat, props[0].Name)
 	require.Equal(t, "PEM", props[0].Value)
 }
 
 func TestSetComponentProp_UpsertsExisting(t *testing.T) {
 	c := cdx.Component{
 		Properties: &[]cdx.Property{
-			{Name: CzertainlyComponentCertificateSourceFormat, Value: "DER"},
+			{Name: cdxprops.CzertainlyComponentCertificateSourceFormat, Value: "DER"},
 			{Name: "other", Value: "x"},
 		},
 	}
 
 	// change DER -> PEM, ensure no duplicate and length unchanged
-	SetComponentProp(&c, CzertainlyComponentCertificateSourceFormat, "PEM")
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateSourceFormat, "PEM")
 
 	require.NotNil(t, c.Properties)
 	props := *c.Properties
@@ -36,7 +40,7 @@ func TestSetComponentProp_UpsertsExisting(t *testing.T) {
 	// find the updated property
 	found := false
 	for _, p := range props {
-		if p.Name == CzertainlyComponentCertificateSourceFormat {
+		if p.Name == cdxprops.CzertainlyComponentCertificateSourceFormat {
 			require.Equal(t, "PEM", p.Value)
 			found = true
 		}
@@ -51,7 +55,7 @@ func TestSetComponentProp_AppendsNew(t *testing.T) {
 		},
 	}
 
-	SetComponentProp(&c, CzertainlyComponentCertificateBase64Content, "BASE64DATA")
+	cdxprops.SetComponentProp(&c, cdxprops.CzertainlyComponentCertificateBase64Content, "BASE64DATA")
 
 	props := *c.Properties
 	require.Len(t, props, 2)
@@ -62,7 +66,7 @@ func TestSetComponentProp_AppendsNew(t *testing.T) {
 		if p.Name == "existing" && p.Value == "1" {
 			haveExisting = true
 		}
-		if p.Name == CzertainlyComponentCertificateBase64Content && p.Value == "BASE64DATA" {
+		if p.Name == cdxprops.CzertainlyComponentCertificateBase64Content && p.Value == "BASE64DATA" {
 			haveNew = true
 		}
 	}
@@ -73,18 +77,18 @@ func TestSetComponentProp_AppendsNew(t *testing.T) {
 func TestSetComponentProp_EmptyValueIsNoop(t *testing.T) {
 	// when Properties is nil, empty value should not allocate or change anything
 	var c cdx.Component
-	SetComponentProp(nil, "anything", "")
+	cdxprops.SetComponentProp(nil, "anything", "")
 	require.Nil(t, c.Properties)
-	SetComponentProp(&c, "anything", "")
+	cdxprops.SetComponentProp(&c, "anything", "")
 	require.Nil(t, c.Properties)
-	SetComponentProp(&c, "", "anything")
+	cdxprops.SetComponentProp(&c, "", "anything")
 	require.Nil(t, c.Properties)
 
 	// when Properties already exists, empty value should not modify
 	c = cdx.Component{
 		Properties: &[]cdx.Property{{Name: "keep", Value: "me"}},
 	}
-	SetComponentProp(&c, "new", "")
+	cdxprops.SetComponentProp(&c, "new", "")
 	props := *c.Properties
 	require.Len(t, props, 1)
 	require.Equal(t, "keep", props[0].Name)
@@ -93,7 +97,7 @@ func TestSetComponentProp_EmptyValueIsNoop(t *testing.T) {
 
 func TestAddEvidenceLocation_InitializesWhenNil(t *testing.T) {
 	var c cdx.Component
-	AddEvidenceLocation(&c, "/abs/path")
+	cdxprops.AddEvidenceLocation(&c, "/abs/path")
 	require.NotNil(t, c.Evidence)
 	require.NotNil(t, c.Evidence.Occurrences)
 
@@ -110,7 +114,7 @@ func TestAddEvidenceLocation_Appends(t *testing.T) {
 			},
 		},
 	}
-	AddEvidenceLocation(&c, "/second")
+	cdxprops.AddEvidenceLocation(&c, "/second")
 
 	occs := *c.Evidence.Occurrences
 	require.Len(t, occs, 2)
@@ -121,7 +125,7 @@ func TestAddEvidenceLocation_Appends(t *testing.T) {
 func TestAddEvidenceLocation_NoOpOnEmpty(t *testing.T) {
 	// case 1: empty on nil evidence
 	var c1 cdx.Component
-	AddEvidenceLocation(&c1, "")
+	cdxprops.AddEvidenceLocation(&c1, "")
 	require.Nil(t, c1.Evidence)
 
 	// case 2: empty on existing occurrences
@@ -130,7 +134,7 @@ func TestAddEvidenceLocation_NoOpOnEmpty(t *testing.T) {
 			Occurrences: &[]cdx.EvidenceOccurrence{{Location: "/keep"}},
 		},
 	}
-	AddEvidenceLocation(&c2, "")
+	cdxprops.AddEvidenceLocation(&c2, "")
 	require.NotNil(t, c2.Evidence)
 	require.NotNil(t, c2.Evidence.Occurrences)
 	occs := *c2.Evidence.Occurrences
@@ -178,7 +182,7 @@ func TestSetComponentBase64Prop(t *testing.T) {
 			require := require.New(t)
 
 			// When
-			SetComponentBase64Prop(s.given, s.whenName, s.whenValue)
+			cdxprops.SetComponentBase64Prop(s.given, s.whenName, s.whenValue)
 
 			// Then
 			if s.thenValue == "" {
@@ -200,4 +204,18 @@ func TestSetComponentBase64Prop(t *testing.T) {
 			require.Equal(s.thenValue, foundProp.Value, "Property value should match expected base64 value")
 		})
 	}
+}
+
+func TestMLMKEMPrivateKey(t *testing.T) {
+	pk, err := cdxtest.TestData(cdxtest.MLKEM1024PrivateKey)
+	require.NoError(t, err)
+
+	bundle, err := pem.Scanner{}.Scan(t.Context(), pk, cdxtest.MLKEM1024PrivateKey)
+	require.NoError(t, err)
+
+	compos, err := cdxprops.PEMBundleToCDX(t.Context(), bundle, cdxtest.MLKEM1024PrivateKey)
+	require.NoError(t, err)
+
+	require.Len(t, compos, 1)
+	require.Equal(t, "ML-KEM-1024", compos[0].Name)
 }
