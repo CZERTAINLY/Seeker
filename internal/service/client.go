@@ -21,9 +21,13 @@ const (
 	contentType = "application/vnd.cyclonedx+json; version = 1.6"
 )
 
+type UploadCallbackFunc func(error, string, string)
+
 type BOMRepoUploader struct {
 	requestURL *url.URL
 	client     *http.Client
+
+	uploadCallback UploadCallbackFunc
 }
 
 func NewBOMRepoUploader(serverURL model.URL) (*BOMRepoUploader, error) {
@@ -46,7 +50,12 @@ func NewBOMRepoUploader(serverURL model.URL) (*BOMRepoUploader, error) {
 	return c, nil
 }
 
-func (c *BOMRepoUploader) Upload(ctx context.Context, raw []byte) error {
+func (c *BOMRepoUploader) WithUploadCallback(fn UploadCallbackFunc) *BOMRepoUploader {
+	c.uploadCallback = fn
+	return c
+}
+
+func (c *BOMRepoUploader) Upload(ctx context.Context, jobName string, raw []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.requestURL.String(), bytes.NewReader(raw))
 	if err != nil {
 		return err
@@ -58,6 +67,9 @@ func (c *BOMRepoUploader) Upload(ctx context.Context, raw []byte) error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		if c.uploadCallback != nil {
+			c.uploadCallback(err, jobName, "")
+		}
 		return err
 	}
 	defer func() {
@@ -66,7 +78,13 @@ func (c *BOMRepoUploader) Upload(ctx context.Context, raw []byte) error {
 
 	createResp, err := c.decodeUploadResponse(resp)
 	if err != nil {
+		if c.uploadCallback != nil {
+			c.uploadCallback(err, jobName, "")
+		}
 		return err
+	}
+	if c.uploadCallback != nil {
+		c.uploadCallback(nil, jobName, fmt.Sprintf("%s-%d", createResp.SerialNumber, createResp.Version))
 	}
 	slog.InfoContext(ctx, "BOM uploaded successfully.",
 		slog.String("urn", createResp.SerialNumber),

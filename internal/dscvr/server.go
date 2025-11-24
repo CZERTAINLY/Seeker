@@ -1,0 +1,247 @@
+package dscvr
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
+	"sync"
+
+	"github.com/CZERTAINLY/Seeker/internal/dscvr/store"
+	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/CZERTAINLY/Seeker/internal/service"
+)
+
+type Server struct {
+	cfg model.Service
+	sv  *service.Supervisor
+
+	kind          string
+	funcGroupCode string
+	jobName       string
+	db            *sql.DB
+
+	mx          sync.RWMutex
+	runningFlag bool
+	uuid        string
+}
+
+func New(ctx context.Context, cfg model.Service, sv *service.Supervisor, jobName string) (*Server, error) {
+	// config assertions
+	switch {
+	case cfg.Mode != model.ServiceModeDiscovery:
+		return nil, fmt.Errorf(
+			"mode %q not compatible with CZERTAINLY Core integration, please provide correct configuration using %q mode",
+			cfg.Mode, model.ServiceModeDiscovery)
+
+	case cfg.Repository == nil:
+		return nil, fmt.Errorf("configuration section 'repository' is required with mode %q", model.ServiceModeDiscovery)
+
+	case cfg.Seeker == nil:
+		return nil, fmt.Errorf("configuration section 'seeker' is required with mode %q", model.ServiceModeDiscovery)
+
+	case cfg.Core == nil:
+		return nil, fmt.Errorf("configuration section 'core' is required with mode %q", model.ServiceModeDiscovery)
+	}
+
+	cfg.Seeker.BaseURL.Path = strings.TrimSuffix(cfg.Seeker.BaseURL.Path, "/")
+	cfg.Core.BaseURL.Path = strings.TrimSuffix(cfg.Core.BaseURL.Path, "/")
+
+	var kind string
+	if cfg.Seeker.BaseURL.Port() == "" {
+		kind = fmt.Sprintf("%s-%s", cfg.Seeker.BaseURL.Hostname(), "default")
+	} else {
+		kind = fmt.Sprintf("%s-%s", cfg.Seeker.BaseURL.Hostname(), cfg.Seeker.BaseURL.Port())
+	}
+
+	// init new or read-in the existing sqlite state file
+	db, err := store.InitDB(ctx, cfg.Seeker.StateFile)
+	if err != nil {
+		return nil, fmt.Errorf("failure initializing sqlite database: %w", err)
+	}
+
+	return &Server{
+		cfg:           cfg,
+		sv:            sv,
+		kind:          kind,
+		funcGroupCode: functionalGroupCode,
+		jobName:       jobName,
+		db:            db,
+	}, nil
+}
+
+// when there is no discovery in progress, startIf stores 'dscvrUUID`,
+// sets the running flag and returns true,
+// false otherwise
+func (s *Server) startIf(ctx context.Context, dscvrUUID string) (bool, error) {
+	s.mx.RLock()
+	defer s.mx.RUnlock()
+
+	if s.runningFlag {
+		return false, nil
+	}
+
+	s.runningFlag = true
+	s.uuid = dscvrUUID
+
+	if err := store.Start(ctx, s.db, s.uuid); err != nil {
+		s.runningFlag = false
+		s.uuid = ""
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (s *Server) UploadedCallback(err error, jobName, id string) {
+	if jobName != s.jobName {
+		return
+	}
+
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	if err == nil {
+		if err := store.FinishOK(context.Background(), s.db, s.uuid, id); err != nil {
+			slog.Error("`store.FinishOK()` failed", slog.String("error", err.Error()))
+		}
+	} else {
+		if err := store.FinishErr(context.Background(), s.db, s.uuid, err.Error()); err != nil {
+			slog.Error("`store.FinishErr()` failed", slog.String("error", err.Error()))
+		}
+	}
+
+	s.runningFlag = false
+	s.uuid = ""
+}
+
+func (s *Server) Handler() *http.ServeMux {
+
+	mux := http.NewServeMux()
+
+	for k, v := range DiscoveryProviderEndpoints() {
+		var handler func(http.ResponseWriter, *http.Request)
+		switch k {
+		case "checkHealth":
+			handler = s.checkHealth
+		case "listSupportedFunctions":
+			handler = s.listSupportedFunctions
+		case "listAttributeDefinitions":
+			handler = s.listAttributeDefinitions
+		case "validateAttributes":
+			handler = s.validateAttributes
+		case "deleteDiscovery":
+			handler = s.deleteDiscovery
+		case "discoverCertificate":
+			handler = s.discoverCertificate
+		case "getDiscovery":
+			handler = s.getDiscovery
+
+		default:
+			// safeguard against Core protocol changes not being mapped here
+			// since this is a programmer's mistake, panic is deliberate
+			panic("function 'DiscoveryProviderEndpoints' was extended, but route was not added to Handler() in `internal/dscvr/server.go`")
+		}
+		mux.HandleFunc(fmt.Sprintf("%s %s%s", v.Method, s.cfg.Seeker.BaseURL.Path, v.Path), handler)
+	}
+
+	return mux
+}
+
+func (s *Server) RegisterConnector(ctx context.Context) error {
+	endpoint := DiscoveryRegisterEndpoint()
+
+	reqUrl := fmt.Sprintf("%s%s", s.cfg.Core.BaseURL, endpoint.Path)
+	reqBody := registerConnectorRequest{
+		Name:     fmt.Sprintf("seeker-%s", s.cfg.Seeker.BaseURL),
+		Url:      s.cfg.Seeker.BaseURL.String(),
+		AuthType: "none",
+	}
+
+	b, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+	slog.DebugContext(ctx, "Registering czertainly core connector.",
+		slog.String("request-url", reqUrl), slog.String("request-body", string(b)))
+
+	req, err := http.NewRequestWithContext(ctx, endpoint.Method, reqUrl, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	if req.Header == nil {
+		req.Header = make(http.Header)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if err := decodeRegisterResponse(ctx, resp); err != nil {
+		return fmt.Errorf("registering czertainly core connector failed: %w", err)
+	}
+	slog.DebugContext(ctx, "Czertainly core connector successfully registered.")
+
+	return nil
+}
+
+func decodeRegisterResponse(ctx context.Context, resp *http.Response) error {
+	// Note: When registering an already previously registered connector, the czertainly core
+	// will return message with a text similar to:
+	//	`["Connector(s) with same kinds already exists:<name-of-kind>"]`
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusBadRequest:
+		fallthrough
+	case http.StatusNotFound:
+		if resp.Header.Get("Content-Type") == "application/json" {
+			type registerResp struct {
+				Message string `json:"message"`
+			}
+			var rr registerResp
+			if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
+				slog.ErrorContext(ctx, "Decoding response json failed", slog.String("error", err.Error()))
+				return fmt.Errorf("status code %d", resp.StatusCode)
+			}
+			if strings.Contains(rr.Message, "already exists") {
+				return nil
+			}
+
+			return fmt.Errorf("status code: %d, message: %s", resp.StatusCode, rr.Message)
+		}
+		return fmt.Errorf("status code %d", resp.StatusCode)
+
+	case http.StatusUnprocessableEntity:
+		if resp.Header.Get("Content-Type") == "application/json" {
+			type registerResp []string
+			var rr registerResp
+			if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
+				slog.ErrorContext(ctx, "Decoding response json failed", slog.String("error", err.Error()))
+				return fmt.Errorf("status code %d", resp.StatusCode)
+			}
+			var sb strings.Builder
+			for _, cpy := range rr {
+				if strings.Contains(cpy, "already exists") {
+					return nil
+				}
+				sb.WriteString(fmt.Sprintf("%s ", cpy))
+			}
+			return fmt.Errorf("status code: %d, message: %s", resp.StatusCode, sb.String())
+		}
+		return fmt.Errorf("status code %d", resp.StatusCode)
+
+	default:
+		return fmt.Errorf("unexpected status code returned: %d", resp.StatusCode)
+	}
+}

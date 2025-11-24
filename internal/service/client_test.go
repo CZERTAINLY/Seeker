@@ -315,7 +315,7 @@ func TestBOMRepoUploadNetworkError(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, u)
 
-	err = u.Upload(context.Background(), []byte(`abcd`))
+	err = u.Upload(context.Background(), "seeker.yaml", []byte(`abcd`))
 	require.Error(t, err)
 }
 
@@ -514,7 +514,7 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, u)
 
-			err = u.Upload(context.Background(), []byte(`abcd`))
+			err = u.Upload(context.Background(), "seeker.yaml", []byte(`abcd`))
 			if tc.wantErr {
 				require.Error(t, err)
 				t.Log(err)
@@ -523,6 +523,56 @@ func TestBOMRepoUploadFunc(t *testing.T) {
 			}
 		})
 	}
+}
+
+type helper struct {
+	count int
+}
+
+func (h *helper) C(e error, j, i string) {
+	h.count = h.count + 1
+}
+
+func TestBOMRepoUploadFuncWithCallbackSucces(t *testing.T) {
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"version":1,"serialNumber":"urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79"}`))
+	}))
+	defer ts.Close()
+
+	mu := parseURL(t, ts.URL)
+	u, err := NewBOMRepoUploader(mu)
+	require.NoError(t, err)
+	require.NotNil(t, u)
+
+	x := &helper{count: 0}
+	u = u.WithUploadCallback(x.C)
+	err = u.Upload(context.Background(), "seeker.yaml", []byte(`abcd`))
+	require.NoError(t, err)
+	require.Equal(t, 1, x.count)
+}
+
+func TestBOMRepoUploadFuncWithCallbackFail(t *testing.T) {
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"Message":"something failed"}`))
+	}))
+	defer ts.Close()
+
+	mu := parseURL(t, ts.URL)
+	u, err := NewBOMRepoUploader(mu)
+	require.NoError(t, err)
+	require.NotNil(t, u)
+
+	x := &helper{count: 0}
+	u = u.WithUploadCallback(x.C)
+	err = u.Upload(context.Background(), "seeker.yaml", []byte(`abcd`))
+	require.Error(t, err)
+	require.Equal(t, 1, x.count)
 }
 
 func parseURL(t *testing.T, s string) model.URL {
