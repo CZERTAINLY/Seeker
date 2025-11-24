@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"runtime"
@@ -144,4 +145,19 @@ func (c Converter) ImplementationPlatform() cdx.ImplementationPlatform {
 	default:
 		return cdx.ImplementationPlatform(runtime.GOARCH)
 	}
+}
+
+// BOMRefHash generates a unique BOM reference for components that lack inherent
+// identification (e.g., crypto/algorithm, crypto/hash). The reference is computed
+// by hashing the JSON representation of the component itself (with BOMRef cleared)
+// and formatting it as "name@hash". This ensures deterministic, collision-resistant
+// identifiers for components defined solely by their properties.
+func (c Converter) BOMRefHash(compo *cdx.Component, name string) {
+	if compo == nil {
+		return
+	}
+	compo.BOMRef = ""
+	b, _ := json.Marshal(compo)
+	h := c.bomRefHasher(b)
+	compo.BOMRef = name + "@" + h
 }

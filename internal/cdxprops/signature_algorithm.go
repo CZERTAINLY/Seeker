@@ -3,6 +3,8 @@ package cdxprops
 import (
 	"crypto/x509"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/czertainly"
+
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
@@ -93,12 +95,13 @@ var spkiOIDRef = map[string]cdx.BOMReference{
 }
 
 // getAlgorithmProperties generates crypto algorithm properties for a signature algorithm
-func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.CryptoAlgorithmProperties, []cdx.Property) {
+func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.CryptoAlgorithmProperties, []cdx.Property, string) {
 	var algorithmFamily string
 	var hash string
 	var paramSetID string
 	var cryptoFunctions []cdx.CryptoFunction
 	var padding cdx.CryptoPadding
+	var classicalSecurityLevel int
 	var nistQuantumSecurityLevel int
 
 	cryptoFunctions = []cdx.CryptoFunction{
@@ -127,33 +130,39 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 		paramSetID = "256" // SHA-256 digest size
 		padding = cdx.CryptoPaddingPKCS1v15
 		hash = "SHA-256"
+		classicalSecurityLevel = 112
 
 	case x509.SHA384WithRSA:
 		algorithmFamily = "RSASSA-PKCS1"
 		paramSetID = "384" // SHA-384 digest size
 		padding = cdx.CryptoPaddingPKCS1v15
 		hash = "SHA-384"
+		classicalSecurityLevel = 128
 
 	case x509.SHA512WithRSA:
 		algorithmFamily = "RSASSA-PKCS1"
 		paramSetID = "512" // SHA-512 digest size
 		padding = cdx.CryptoPaddingPKCS1v15
 		hash = "SHA-256"
+		classicalSecurityLevel = 128
 
 	case x509.SHA256WithRSAPSS:
 		algorithmFamily = "RSASSA-PSS"
 		paramSetID = "256" // SHA-256 digest size
 		hash = "SHA-256"
+		classicalSecurityLevel = 112
 
 	case x509.SHA384WithRSAPSS:
 		algorithmFamily = "RSASSA-PSS"
 		paramSetID = "384" // SHA-384 digest size
 		hash = "SHA-384"
+		classicalSecurityLevel = 128
 
 	case x509.SHA512WithRSAPSS:
 		algorithmFamily = "RSASSA-PSS"
 		paramSetID = "512" // SHA-512 digest size
 		hash = "SHA-512"
+		classicalSecurityLevel = 128
 
 	case x509.ECDSAWithSHA1:
 		algorithmFamily = "ECDSA"
@@ -164,16 +173,19 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 		algorithmFamily = "ECDSA"
 		paramSetID = "256" // SHA-256 digest size
 		hash = "SHA-256"
+		classicalSecurityLevel = 128
 
 	case x509.ECDSAWithSHA384:
 		algorithmFamily = "ECDSA"
 		paramSetID = "384" // SHA-384 digest size
 		hash = "SHA-384"
+		classicalSecurityLevel = 192
 
 	case x509.ECDSAWithSHA512:
 		algorithmFamily = "ECDSA"
 		paramSetID = "512" // SHA-512 digest size
 		hash = "SHA-512"
+		classicalSecurityLevel = 256
 
 	case x509.DSAWithSHA1:
 		algorithmFamily = "DSA"
@@ -184,17 +196,20 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 		algorithmFamily = "DSA"
 		paramSetID = "256" // SHA-256 digest size
 		hash = "SHA-256"
+		classicalSecurityLevel = 112
 
 	case x509.PureEd25519:
 		algorithmFamily = "EdDSA"
 		paramSetID = "256" // Ed25519 key size
 		// not a parameter https://www.rfc-editor.org/rfc/rfc8032
 		hash = "SHA-512"
+		classicalSecurityLevel = 128
 
 	default:
 		algorithmFamily = "Unknown"
 		paramSetID = "0"
 		cryptoFunctions = nil
+		classicalSecurityLevel = 0
 	}
 
 	execEnv := cdx.CryptoExecutionEnvironmentSoftwarePlainRAM
@@ -210,20 +225,20 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 		ImplementationPlatform:   c.ImplementationPlatform(),
 		Padding:                  padding,
 		Curve:                    curveInformation(sigAlg),
-		ClassicalSecurityLevel:   nil,
+		ClassicalSecurityLevel:   &classicalSecurityLevel,
 		NistQuantumSecurityLevel: &nistQuantumSecurityLevel,
 	}
-	props := []cdx.Property{
-		{
-			Name:  "sigalg:algorithm_family",
+
+	var props []cdx.Property
+	if c.czertainly {
+		p := cdx.Property{
+			Name:  czertainly.SignatureAlgorithmFamily,
 			Value: algorithmFamily,
-		},
-		{
-			Name:  "sigalg:hash",
-			Value: hash,
-		},
+		}
+		props = append(props, p)
 	}
-	return cryptoProps, props
+
+	return cryptoProps, props, hash
 }
 
 // curveInformation returns the curve name for ECDSA signature algorithms

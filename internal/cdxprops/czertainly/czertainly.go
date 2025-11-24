@@ -16,6 +16,7 @@ const (
 	ComponentSSHHostKeyContent            = "czertainly:component:ssh_hostkey:content"
 	PrivateKeyType                        = "czertainly:component:private_key:type"
 	PrivateKeyBase64Content               = "czertainly:component:private_key:base64_content"
+	SignatureAlgorithmFamily              = "czertainly:component:algorithm:family"
 )
 
 func CertificateProperties(props []cdx.Property, source string, cert *x509.Certificate) []cdx.Property {

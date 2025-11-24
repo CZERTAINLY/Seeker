@@ -92,7 +92,7 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 	}
 
 	mainCertCompo := c.certComponent(ctx, hit)
-	signatureCompo := c.certHitToSignatureAlgComponent(ctx, hit)
+	signatureAlgCompo, hashAlgCompo := c.certHitToSignatureAlgComponent(ctx, hit)
 	publicKeyAlgCompo, publicKeyCompo := c.publicKeyComponents(
 		ctx,
 		mainCertCompo.BOMRef,
@@ -103,7 +103,8 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 
 	compos := []cdx.Component{
 		mainCertCompo,
-		signatureCompo,
+		signatureAlgCompo,
+		hashAlgCompo,
 		publicKeyCompo,
 		publicKeyAlgCompo,
 	}
@@ -112,7 +113,8 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 		{
 			Ref: mainCertCompo.BOMRef,
 			Dependencies: &[]string{
-				signatureCompo.BOMRef,
+				signatureAlgCompo.BOMRef,
+				hashAlgCompo.BOMRef,
 				publicKeyCompo.BOMRef,
 				publicKeyAlgCompo.BOMRef,
 			},
@@ -174,19 +176,19 @@ func (c Converter) certComponent(ctx context.Context, hit model.CertHit) cdx.Com
 	return certComponent
 }
 
-func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model.CertHit) cdx.Component {
+func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model.CertHit) (cdx.Component, cdx.Component) {
 	sigAlg := hit.Cert.SignatureAlgorithm
 	algName := sigAlg.String()
 	bomRef := ReadSignatureAlgorithmRef(ctx, hit.Cert)
+	bomName, _, _ := strings.Cut(string(bomRef), "@")
 	oid, ok := sigAlgOID(hit.Cert)
 	if !ok {
 		oid = "unknown"
 	}
 
-	cryptoProps, props := c.getAlgorithmProperties(sigAlg)
+	cryptoProps, props, hashName := c.getAlgorithmProperties(sigAlg)
 
-	return cdx.Component{
-		BOMRef:  string(bomRef),
+	sigAlgCompo := cdx.Component{
 		Type:    cdx.ComponentTypeCryptographicAsset,
 		Name:    algName,
 		Version: oid,
@@ -197,6 +199,11 @@ func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model
 		},
 		Properties: &props,
 	}
+
+	hashAlgCompo := c.hashAlgorithm(hashName)
+
+	c.BOMRefHash(&sigAlgCompo, bomName)
+	return sigAlgCompo, hashAlgCompo
 }
 
 func certificateRelatedProperties(compo *cdx.Component, cert *x509.Certificate) {
