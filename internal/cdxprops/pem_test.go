@@ -76,7 +76,8 @@ func TestPEMBundleToCDX(t *testing.T) {
 	}
 
 	// Execute
-	components, err := cdxprops.PEMBundleToCDX(ctx, bundle, location)
+	c := cdxprops.NewConverter()
+	components, err := c.PEMBundleToCDX(ctx, bundle, location)
 	require.NoError(t, err)
 
 	// Verify we got all expected components
@@ -144,69 +145,6 @@ func TestPEMBundleToCDX(t *testing.T) {
 		require.NotNil(t, comp.Evidence.Occurrences)
 		require.NotEmpty(t, *comp.Evidence.Occurrences)
 		require.Equal(t, location, (*comp.Evidence.Occurrences)[0].Location)
-	}
-}
-
-func TestPrivateKeyInfo(t *testing.T) {
-	tests := []struct {
-		name        string
-		key         crypto.PrivateKey
-		wantKeyType string
-		wantAlgoRef string
-		wantSize    int
-	}{
-		{
-			name:        "RSA 2048",
-			key:         mustGenerateRSAKey(t, 2048),
-			wantKeyType: "RSA",
-			wantAlgoRef: "crypto/algorithm/rsa-2048@1.2.840.113549.1.1.1",
-			wantSize:    2048,
-		},
-		{
-			name:        "RSA 4096",
-			key:         mustGenerateRSAKey(t, 4096),
-			wantKeyType: "RSA",
-			wantAlgoRef: "crypto/algorithm/rsa-4096@1.2.840.113549.1.1.1",
-			wantSize:    4096,
-		},
-		{
-			name:        "ECDSA P-224",
-			key:         mustGenerateECDSAKey(t, elliptic.P224()),
-			wantKeyType: "ECDSA",
-			wantAlgoRef: "crypto/algorithm/ecdsa-p224@1.2.840.10045.3.1.1",
-			wantSize:    224,
-		},
-		{
-			name:        "ECDSA P-384",
-			key:         mustGenerateECDSAKey(t, elliptic.P384()),
-			wantKeyType: "ECDSA",
-			wantAlgoRef: "crypto/algorithm/ecdsa-p384@1.3.132.0.34",
-			wantSize:    384,
-		},
-		{
-			name:        "ECDSA P-521",
-			key:         mustGenerateECDSAKey(t, elliptic.P521()),
-			wantKeyType: "ECDSA",
-			wantAlgoRef: "crypto/algorithm/ecdsa-p521@1.3.132.0.35",
-			wantSize:    521,
-		},
-		{
-			name:        "Ed25519",
-			key:         mustGenerateEd25519Key(t),
-			wantKeyType: "Ed25519",
-			wantAlgoRef: "crypto/algorithm/ed25519@1.3.101.112",
-			wantSize:    256,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			keyType, algorithmRef, size := cdxprops.PrivateKeyInfo(tt.key)
-
-			require.Equal(t, tt.wantKeyType, keyType, "keyType mismatch")
-			require.Equal(t, tt.wantAlgoRef, algorithmRef, "algorithmRef mismatch")
-			require.Equal(t, tt.wantSize, size, "size mismatch")
-		})
 	}
 }
 

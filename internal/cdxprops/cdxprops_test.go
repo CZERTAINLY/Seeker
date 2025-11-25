@@ -17,7 +17,8 @@ func TestMLMKEMPrivateKey(t *testing.T) {
 	bundle, err := pem.Scanner{}.Scan(t.Context(), pk, cdxtest.MLKEM1024PrivateKey)
 	require.NoError(t, err)
 
-	compos, err := cdxprops.PEMBundleToCDX(t.Context(), bundle, cdxtest.MLKEM1024PrivateKey)
+	c := cdxprops.NewConverter()
+	compos, err := c.PEMBundleToCDX(t.Context(), bundle, cdxtest.MLKEM1024PrivateKey)
 	require.NoError(t, err)
 
 	require.Len(t, compos, 1)

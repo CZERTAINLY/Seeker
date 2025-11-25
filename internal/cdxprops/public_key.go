@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/dsa" //nolint: staticcheck
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
 	"fmt"
@@ -14,56 +15,36 @@ import (
 )
 
 // publicKeyAlgComponent creates a CycloneDX component for a public key algorithm
-func (c Converter) publicKeyComponents(_ context.Context, certBomRef string, pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) (algo, key cdx.Component) {
-	meta := publicKeyAlgorithmMetadata(pubKeyAlg, pubKey)
+func (c Converter) publicKeyComponents(_ context.Context, pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) (algo, key cdx.Component) {
+	info := publicKeyAlgorithmInfo(pubKeyAlg, pubKey)
 
-	// algorithm properties
-	cryptoProps := &cdx.CryptoProperties{
-		AssetType: cdx.CryptoAssetTypeAlgorithm,
-		AlgorithmProperties: &cdx.CryptoAlgorithmProperties{
-			CryptoFunctions: &meta.cryptoFunctions,
-		},
-	}
+	algo = info.componentWOBomRef()
+	c.BOMRefHash(&algo, info.algorithmName)
 
-	if meta.oid != "" {
-		cryptoProps.OID = meta.oid
-	}
-
-	if meta.paramSetID != "" {
-		cryptoProps.AlgorithmProperties.ParameterSetIdentifier = meta.paramSetID
-	}
-
-	algo = cdx.Component{
-		Type:             cdx.ComponentTypeCryptographicAsset,
-		Name:             meta.name,
-		CryptoProperties: cryptoProps,
-	}
-	c.BOMRefHash(&algo, meta.algorithmName)
-
+	pubKeyHash := c.hashPublicKey(pubKey)
 	// public key properties
-	var bomRef string
-	if certBomRef != "" {
-		bomRef = strings.Replace(certBomRef, "certificate", "key", 1)
-	} else {
-		bomRef = fmt.Sprintf("crypto/key/name@%s", c.hashPublicKey(pubKey))
-	}
+	var bomRef = fmt.Sprintf(
+		"crypto/key/%s@%s",
+		strings.ToLower(info.name),
+		pubKeyHash,
+	)
 
 	relatedProps := &cdx.RelatedCryptoMaterialProperties{
 		Type:         cdx.RelatedCryptoMaterialTypePublicKey,
-		AlgorithmRef: cdx.BOMReference(meta.algorithmName),
+		AlgorithmRef: cdx.BOMReference(algo.BOMRef),
 	}
 
-	if meta.keySize > 0 {
-		relatedProps.Size = &meta.keySize
+	if info.keySize > 0 {
+		relatedProps.Size = &info.keySize
 	}
 
 	key = cdx.Component{
 		Type:   cdx.ComponentTypeCryptographicAsset,
-		Name:   meta.name,
+		Name:   info.name,
 		BOMRef: bomRef,
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType:                       cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			OID:                             meta.oid,
+			OID:                             info.oid,
 			RelatedCryptoMaterialProperties: relatedProps,
 		},
 	}
@@ -80,7 +61,7 @@ func (c Converter) hashPublicKey(pubKey crypto.PublicKey) string {
 	return c.bomRefHasher(pubKeyBytes)
 }
 
-func publicKeyAlgorithmMetadata(pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) algorithmMetadata {
+func publicKeyAlgorithmInfo(pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) algorithmInfo {
 	var keyType string
 	var key any
 
@@ -106,5 +87,20 @@ func publicKeyAlgorithmMetadata(pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto
 		keyType = "Unknown"
 	}
 
-	return extractAlgorithmMetadata(keyType, key)
+	return extractAlgorithmInfo(keyType, key)
+}
+
+func getPublicKeyAlgorithm(pubKey crypto.PublicKey) x509.PublicKeyAlgorithm {
+	switch pubKey.(type) {
+	case *rsa.PublicKey:
+		return x509.RSA
+	case *ecdsa.PublicKey:
+		return x509.ECDSA
+	case ed25519.PublicKey:
+		return x509.Ed25519
+	case *dsa.PublicKey:
+		return x509.DSA
+	default:
+		return x509.UnknownPublicKeyAlgorithm
+	}
 }

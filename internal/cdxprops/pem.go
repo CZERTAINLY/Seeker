@@ -14,7 +14,6 @@ import (
 	"maps"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -23,17 +22,9 @@ import (
 )
 
 // PEMBundleToCDX converts a PEM bundle to CycloneDX components
-func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string) ([]cdx.Component, error) {
+func (c Converter) PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string) ([]cdx.Component, error) {
 	components := make([]cdx.Component, 0)
 	var errs []error
-
-	// Convert certificates
-	// moved to Converter.PEMBundle for now
-
-	// Convert private keys
-	for _, key := range bundle.PrivateKeys {
-		components = append(components, privateKeyToCDX(key.Key, "PEM"))
-	}
 
 	// Convert certificate requests
 	for _, csr := range bundle.CertificateRequests {
@@ -42,7 +33,9 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 
 	// Convert public keys
 	for _, pubKey := range bundle.PublicKeys {
-		components = append(components, publicKeyToCDX(pubKey, location))
+		algo, pubKeyCompo := c.publicKeyComponents(ctx, getPublicKeyAlgorithm(pubKey), pubKey)
+		components = append(components, algo)
+		components = append(components, pubKeyCompo)
 	}
 
 	// Convert CRLs
@@ -65,32 +58,6 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	return components, errors.Join(errs...)
 }
 
-func privateKeyToCDX(key crypto.PrivateKey, source string) cdx.Component {
-	keyType, algorithmRef, size := PrivateKeyInfo(key)
-	var oid string
-	if _, after, found := strings.Cut(algorithmRef, "@"); found {
-		oid = after
-	}
-
-	compo := cdx.Component{
-		BOMRef:      algorithmRef,
-		Type:        cdx.ComponentTypeCryptographicAsset,
-		Name:        fmt.Sprintf("%s-%d", keyType, size),
-		Description: "Private Key",
-		CryptoProperties: &cdx.CryptoProperties{
-			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:         cdx.RelatedCryptoMaterialTypePrivateKey,
-				AlgorithmRef: cdx.BOMReference(algorithmRef),
-				Size:         &size,
-				Format:       source,
-			},
-			OID: oid,
-		},
-	}
-	return compo
-}
-
 func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
 	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
@@ -104,25 +71,6 @@ func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
 		Properties: &[]cdx.Property{
 			{Name: "pem_type", Value: "CSR"},
 			{Name: "subject", Value: csr.Subject.String()},
-		},
-	}
-	return compo
-}
-
-func publicKeyToCDX(pubKey crypto.PublicKey, location string) cdx.Component {
-	keyType, algorithmRef, size := getPublicKeyInfo(pubKey)
-
-	compo := cdx.Component{
-		Type: cdx.ComponentTypeCryptographicAsset,
-		Name: fmt.Sprintf("%s Public Key", keyType),
-		CryptoProperties: &cdx.CryptoProperties{
-			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:         cdx.RelatedCryptoMaterialTypePublicKey,
-				AlgorithmRef: cdx.BOMReference(algorithmRef),
-				Size:         &size,
-				Format:       keyType,
-			},
 		},
 	}
 	return compo
@@ -150,45 +98,6 @@ func crlToCDX(crl *x509.RevocationList, location string) cdx.Component {
 }
 
 // Helper functions
-func PrivateKeyInfo(key crypto.PrivateKey) (keyType string, algorithmRef string, size int) {
-	switch k := key.(type) {
-	case *rsa.PrivateKey:
-		keyType = "RSA"
-		size = k.N.BitLen()
-		algorithmRef = fmt.Sprintf("crypto/algorithm/rsa-%d@1.2.840.113549.1.1.1", size)
-		return
-
-	case *ecdsa.PrivateKey:
-		keyType = "ECDSA"
-		size = k.Curve.Params().BitSize
-		switch size {
-		case 224:
-			algorithmRef = "crypto/algorithm/ecdsa-p224@1.2.840.10045.3.1.1"
-		case 256:
-			algorithmRef = "crypto/algorithm/ecdsa-p256@1.2.840.10045.3.1.7"
-		case 384:
-			algorithmRef = "crypto/algorithm/ecdsa-p384@1.3.132.0.34"
-		case 521:
-			algorithmRef = "crypto/algorithm/ecdsa-p521@1.3.132.0.35"
-		default:
-			algorithmRef = string(refUnknownAlgorithm)
-		}
-		return
-
-	case ed25519.PrivateKey:
-		keyType = "Ed25519"
-		size = 256
-		algorithmRef = "crypto/algorithm/ed25519@1.3.101.112"
-		return
-
-	default:
-		keyType = "Unknown"
-		algorithmRef = string(refUnknownAlgorithm)
-		size = 0
-		return
-	}
-}
-
 func getPublicKeyInfo(key crypto.PublicKey) (keyType string, algorithmRef string, size int) {
 	switch k := key.(type) {
 	case *rsa.PublicKey:

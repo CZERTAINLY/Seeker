@@ -76,7 +76,6 @@ func (b *Builder) appendDetection(ctx context.Context, detection model.Detection
 
 // BOM returns a cdx.BOM based on a data inside the Builder
 func (b *Builder) BOM() cdx.BOM {
-
 	components := make([]cdx.Component, 0, len(b.components))
 	for _, ref := range slices.Sorted(maps.Keys(b.components)) {
 		compop := b.components[ref]

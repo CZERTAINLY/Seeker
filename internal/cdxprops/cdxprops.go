@@ -117,7 +117,47 @@ func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model
 		deps = append(deps, d.Dependencies...)
 	}
 
-	bundleCompos, err := PEMBundleToCDX(ctx, bundle, bundle.Location)
+	for _, privKey := range bundle.PrivateKeys {
+		pubKey, err := getPublicKey(privKey)
+		if err != nil {
+			slog.WarnContext(ctx, "can't extract a publicKey from a privateKey: skipping", "error", err, "bundle.location", bundle.Location)
+			continue
+		}
+		pubKeyAlgo, pubKeyCompo := c.publicKeyComponents(
+			ctx,
+			getPublicKeyAlgorithm(pubKey),
+			pubKey,
+		)
+		_, pubKeyID, _ := strings.Cut(pubKeyCompo.BOMRef, "@")
+		privKeyAlgo, privKeyCompo := c.PrivateKey(ctx, pubKeyID, privKey)
+
+		d := []cdx.Dependency{
+			{
+				Ref: privKeyCompo.BOMRef,
+				Dependencies: &[]string{
+					pubKeyCompo.BOMRef,
+					pubKeyAlgo.BOMRef,
+					privKeyAlgo.BOMRef,
+				},
+			},
+			{
+				Ref: pubKeyCompo.BOMRef,
+				Dependencies: &[]string{
+					pubKeyAlgo.BOMRef,
+				},
+			},
+		}
+
+		compos = append(compos, []cdx.Component{
+			pubKeyAlgo, pubKeyCompo,
+			privKeyAlgo, privKeyCompo,
+		}...)
+
+		deps = append(deps, d...)
+
+	}
+
+	bundleCompos, err := c.PEMBundleToCDX(ctx, bundle, bundle.Location)
 	if err != nil {
 		slog.WarnContext(ctx, "analyzing bundle returned an error", "error", err)
 	}

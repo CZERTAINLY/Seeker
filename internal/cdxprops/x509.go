@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -95,11 +94,12 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 	signatureAlgCompo, hashAlgCompo := c.certHitToSignatureAlgComponent(ctx, hit)
 	publicKeyAlgCompo, publicKeyCompo := c.publicKeyComponents(
 		ctx,
-		mainCertCompo.BOMRef,
 		hit.Cert.PublicKeyAlgorithm,
 		hit.Cert.PublicKey,
 	)
-	certificateRelatedProperties(&publicKeyCompo, hit.Cert)
+	certificateRelatedProperties(&mainCertCompo, hit.Cert)
+	mainCertCompo.CryptoProperties.CertificateProperties.SignatureAlgorithmRef = cdx.BOMReference(signatureAlgCompo.BOMRef)
+	mainCertCompo.CryptoProperties.CertificateProperties.SubjectPublicKeyRef = cdx.BOMReference(publicKeyAlgCompo.BOMRef)
 
 	compos := []cdx.Component{
 		mainCertCompo,
@@ -141,42 +141,47 @@ func (c Converter) certComponent(ctx context.Context, hit model.CertHit) cdx.Com
 	// Extract key usage and extended key usage
 	keyUsage := extractKeyUsage(cert.KeyUsage)
 	extKeyUsage := extractExtendedKeyUsage(cert.ExtKeyUsage)
-	// Generate algorithm BOM references (for dependencies)
-	sigAlgBOMRef := ReadSignatureAlgorithmRef(ctx, cert)
-	pubKeyAlgBOMRef := ReadSubjectPublicKeyRef(ctx, cert)
+	name := formatCertificateName(cert)
 
 	// Build certificate properties
-	certProps := &cdx.CertificateProperties{
-		SubjectName:           cert.Subject.String(),
-		IssuerName:            cert.Issuer.String(),
-		NotValidBefore:        cert.NotBefore.Format(time.RFC3339),
-		NotValidAfter:         cert.NotAfter.Format(time.RFC3339),
-		SignatureAlgorithmRef: sigAlgBOMRef,
-		SubjectPublicKeyRef:   pubKeyAlgBOMRef,
-		CertificateFormat:     "X.509",
-		CertificateExtension:  filepath.Ext(hit.Location),
+	certProps := cdx.CertificateProperties{
+		SubjectName:          cert.Subject.String(),
+		IssuerName:           cert.Issuer.String(),
+		NotValidBefore:       cert.NotBefore.Format(time.RFC3339),
+		NotValidAfter:        cert.NotAfter.Format(time.RFC3339),
+		CertificateFormat:    "X.509",
+		CertificateExtension: filepath.Ext(hit.Location),
 	}
-
-	name := formatCertificateName(cert)
 
 	// Build the certificate component
 	certComponent := cdx.Component{
-		BOMRef:  "crypto/certificate/" + name + "@" + certHash,
-		Type:    cdx.ComponentTypeCryptographicAsset,
-		Name:    name,
-		Version: cert.SerialNumber.String(),
-		Hashes:  fingerprints,
+		BOMRef:      "crypto/certificate/" + name + "@" + certHash,
+		Type:        cdx.ComponentTypeCryptographicAsset,
+		Name:        name,
+		Description: "Public key (x509)",
+		Version:     cert.SerialNumber.String(),
+		Hashes:      fingerprints,
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType:             cdx.CryptoAssetTypeCertificate,
-			CertificateProperties: certProps,
+			CertificateProperties: &certProps,
 		},
-		Properties: c.buildCertificateProperties(cert, hit.Source, keyUsage, extKeyUsage, subjectAltNames),
+	}
+
+	if c.czertainly {
+		props := czertainly.CertificateProperties(
+			hit.Source,
+			cert,
+			keyUsage,
+			extKeyUsage,
+			subjectAltNames,
+		)
+		certComponent.Properties = &props
 	}
 
 	return certComponent
 }
 
-func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model.CertHit) (cdx.Component, cdx.Component) {
+func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model.CertHit) (sigAlgCompo cdx.Component, hashAlgCompo cdx.Component) {
 	sigAlg := hit.Cert.SignatureAlgorithm
 	algName := sigAlg.String()
 	bomRef := ReadSignatureAlgorithmRef(ctx, hit.Cert)
@@ -188,7 +193,7 @@ func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model
 
 	cryptoProps, props, hashName := c.getAlgorithmProperties(sigAlg)
 
-	sigAlgCompo := cdx.Component{
+	sigAlgCompo = cdx.Component{
 		Type:    cdx.ComponentTypeCryptographicAsset,
 		Name:    algName,
 		Version: oid,
@@ -200,10 +205,9 @@ func (c Converter) certHitToSignatureAlgComponent(ctx context.Context, hit model
 		Properties: &props,
 	}
 
-	hashAlgCompo := c.hashAlgorithm(hashName)
-
+	hashAlgCompo = c.hashAlgorithm(hashName)
 	c.BOMRefHash(&sigAlgCompo, bomName)
-	return sigAlgCompo, hashAlgCompo
+	return
 }
 
 func certificateRelatedProperties(compo *cdx.Component, cert *x509.Certificate) {
@@ -365,295 +369,6 @@ func extractExtendedKeyUsage(extKeyUsage []x509.ExtKeyUsage) []string {
 	}
 
 	return ret
-}
-
-// buildCertificateProperties creates additional properties for the certificate
-func (c Converter) buildCertificateProperties(cert *x509.Certificate, source string, keyUsage, extKeyUsage, sans []string) *[]cdx.Property {
-	var props []cdx.Property
-	if cert.MaxPathLen > 0 || cert.MaxPathLenZero {
-		props = append(props, cdx.Property{
-			Name:  "cert:maxPathLen",
-			Value: strconv.Itoa(cert.MaxPathLen),
-		})
-	}
-
-	if len(keyUsage) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:keyUsage",
-			Value: strings.Join(keyUsage, ","),
-		})
-	}
-
-	if len(extKeyUsage) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:extendedKeyUsage",
-			Value: strings.Join(extKeyUsage, ","),
-		})
-	}
-
-	if len(sans) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:subjectAlternativeNames",
-			Value: strings.Join(sans, ","),
-		})
-	}
-
-	if len(cert.OCSPServer) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:ocspServers",
-			Value: strings.Join(cert.OCSPServer, ","),
-		})
-	}
-
-	if len(cert.IssuingCertificateURL) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:issuingCertificateURLs",
-			Value: strings.Join(cert.IssuingCertificateURL, ","),
-		})
-	}
-
-	if len(cert.CRLDistributionPoints) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:crlDistributionPoints",
-			Value: strings.Join(cert.CRLDistributionPoints, ","),
-		})
-	}
-
-	// Version
-	props = append(props, cdx.Property{
-		Name:  "cert:version",
-		Value: fmt.Sprintf("%d", cert.Version),
-	})
-
-	// Issuer
-	if cert.Issuer.String() != "" {
-		props = append(props, cdx.Property{
-			Name:  "cert:issuer",
-			Value: cert.Issuer.String(),
-		})
-	}
-
-	// Subject
-	if cert.Subject.String() != "" {
-		props = append(props, cdx.Property{
-			Name:  "cert:subject",
-			Value: cert.Subject.String(),
-		})
-	}
-
-	// Basic Constraints
-	if cert.BasicConstraintsValid {
-		props = append(props, cdx.Property{
-			Name:  "cert:basicConstraintsValid",
-			Value: "true",
-		})
-		props = append(props, cdx.Property{
-			Name:  "cert:isCA",
-			Value: fmt.Sprintf("%t", cert.IsCA),
-		})
-	}
-
-	// Subject Key Identifier
-	if len(cert.SubjectKeyId) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:subjectKeyId",
-			Value: hex.EncodeToString(cert.SubjectKeyId),
-		})
-	}
-
-	// Authority Key Identifier
-	if len(cert.AuthorityKeyId) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:authorityKeyId",
-			Value: hex.EncodeToString(cert.AuthorityKeyId),
-		})
-	}
-
-	// Permitted DNS Domains
-	if len(cert.PermittedDNSDomains) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:permittedDNSDomains",
-			Value: strings.Join(cert.PermittedDNSDomains, ","),
-		})
-		props = append(props, cdx.Property{
-			Name:  "cert:permittedDNSDomainsCritical",
-			Value: fmt.Sprintf("%t", cert.PermittedDNSDomainsCritical),
-		})
-	}
-
-	// Excluded DNS Domains
-	if len(cert.ExcludedDNSDomains) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:excludedDNSDomains",
-			Value: strings.Join(cert.ExcludedDNSDomains, ","),
-		})
-	}
-
-	// Permitted IP Ranges
-	if len(cert.PermittedIPRanges) > 0 {
-		var ipRanges []string
-		for _, ipNet := range cert.PermittedIPRanges {
-			ipRanges = append(ipRanges, ipNet.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:permittedIPRanges",
-			Value: strings.Join(ipRanges, ","),
-		})
-	}
-
-	// Excluded IP Ranges
-	if len(cert.ExcludedIPRanges) > 0 {
-		var ipRanges []string
-		for _, ipNet := range cert.ExcludedIPRanges {
-			ipRanges = append(ipRanges, ipNet.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:excludedIPRanges",
-			Value: strings.Join(ipRanges, ","),
-		})
-	}
-
-	// Permitted Email Addresses
-	if len(cert.PermittedEmailAddresses) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:permittedEmailAddresses",
-			Value: strings.Join(cert.PermittedEmailAddresses, ","),
-		})
-	}
-
-	// Excluded Email Addresses
-	if len(cert.ExcludedEmailAddresses) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:excludedEmailAddresses",
-			Value: strings.Join(cert.ExcludedEmailAddresses, ","),
-		})
-	}
-
-	// Permitted URI Domains
-	if len(cert.PermittedURIDomains) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:permittedURIDomains",
-			Value: strings.Join(cert.PermittedURIDomains, ","),
-		})
-	}
-
-	// Excluded URI Domains
-	if len(cert.ExcludedURIDomains) > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:excludedURIDomains",
-			Value: strings.Join(cert.ExcludedURIDomains, ","),
-		})
-	}
-
-	// Policy Identifiers (legacy field)
-	if len(cert.PolicyIdentifiers) > 0 {
-		var oids []string
-		for _, oid := range cert.PolicyIdentifiers {
-			oids = append(oids, oid.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:policyIdentifiers",
-			Value: strings.Join(oids, ","),
-		})
-	}
-
-	// Policies (newer field)
-	if len(cert.Policies) > 0 {
-		var oids []string
-		for _, oid := range cert.Policies {
-			oids = append(oids, oid.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:policies",
-			Value: strings.Join(oids, ","),
-		})
-	}
-
-	// Policy Constraints - InhibitAnyPolicy
-	if cert.InhibitAnyPolicyZero || cert.InhibitAnyPolicy > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:inhibitAnyPolicy",
-			Value: fmt.Sprintf("%d", cert.InhibitAnyPolicy),
-		})
-	}
-
-	// Policy Constraints - InhibitPolicyMapping
-	if cert.InhibitPolicyMappingZero || cert.InhibitPolicyMapping > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:inhibitPolicyMapping",
-			Value: fmt.Sprintf("%d", cert.InhibitPolicyMapping),
-		})
-	}
-
-	// Policy Constraints - RequireExplicitPolicy
-	if cert.RequireExplicitPolicyZero || cert.RequireExplicitPolicy > 0 {
-		props = append(props, cdx.Property{
-			Name:  "cert:requireExplicitPolicy",
-			Value: fmt.Sprintf("%d", cert.RequireExplicitPolicy),
-		})
-	}
-
-	// Policy Mappings
-	if len(cert.PolicyMappings) > 0 {
-		var mappings []string
-		for _, pm := range cert.PolicyMappings {
-			mappings = append(mappings, fmt.Sprintf("%s->%s", pm.IssuerDomainPolicy.String(), pm.SubjectDomainPolicy.String()))
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:policyMappings",
-			Value: strings.Join(mappings, ","),
-		})
-	}
-
-	// Unhandled Critical Extensions
-	if len(cert.UnhandledCriticalExtensions) > 0 {
-		var oids []string
-		for _, oid := range cert.UnhandledCriticalExtensions {
-			oids = append(oids, oid.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:unhandledCriticalExtensions",
-			Value: strings.Join(oids, ","),
-		})
-	}
-
-	// Unknown Extended Key Usages
-	if len(cert.UnknownExtKeyUsage) > 0 {
-		var oids []string
-		for _, oid := range cert.UnknownExtKeyUsage {
-			oids = append(oids, oid.String())
-		}
-		props = append(props, cdx.Property{
-			Name:  "cert:unknownExtKeyUsage",
-			Value: strings.Join(oids, ","),
-		})
-	}
-
-	// Extensions (raw extensions)
-	if len(cert.Extensions) > 0 {
-		for _, ext := range cert.Extensions {
-			props = append(props, cdx.Property{
-				Name:  fmt.Sprintf("cert:extension:%s", ext.Id.String()),
-				Value: fmt.Sprintf("critical=%t,value=%s", ext.Critical, hex.EncodeToString(ext.Value)),
-			})
-		}
-	}
-
-	// Extra Extensions
-	if len(cert.ExtraExtensions) > 0 {
-		for _, ext := range cert.ExtraExtensions {
-			props = append(props, cdx.Property{
-				Name:  fmt.Sprintf("cert:extraExtension:%s", ext.Id.String()),
-				Value: fmt.Sprintf("critical=%t,value=%s", ext.Critical, hex.EncodeToString(ext.Value)),
-			})
-		}
-	}
-
-	if c.czertainly {
-		props = czertainly.CertificateProperties(props, source, cert)
-	}
-
-	return &props
 }
 
 func ReadSubjectPublicKeyRef(ctx context.Context, cert *x509.Certificate) cdx.BOMReference {
