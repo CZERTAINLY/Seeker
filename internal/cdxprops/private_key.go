@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"fmt"
+	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
@@ -19,7 +20,7 @@ func (c Converter) PrivateKey(ctx context.Context, id string, key crypto.Private
 	algoCompo = info.componentWOBomRef()
 	c.BOMRefHash(&algoCompo, info.algorithmName)
 
-	bomRef := "crypto/private_key/" + id
+	bomRef := "crypto/private_key/" + strings.ToLower(algoCompo.Name) + "@" + id
 
 	keyCompo = cdx.Component{
 		BOMRef:      bomRef,

@@ -197,6 +197,7 @@ func (c Converter) BOMRefHash(compo *cdx.Component, name string) {
 		return
 	}
 	compo.BOMRef = ""
+	compo.Evidence = nil
 	b, _ := json.Marshal(compo)
 	h := c.bomRefHasher(b)
 	compo.BOMRef = name + "@" + h
