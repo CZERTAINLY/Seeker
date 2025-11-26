@@ -130,7 +130,7 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 	return compos, deps, nil
 }
 
-func (c Converter) certComponent(ctx context.Context, hit model.CertHit) cdx.Component {
+func (c Converter) certComponent(_ context.Context, hit model.CertHit) cdx.Component {
 	cert := hit.Cert
 
 	certHash := c.bomRefHasher(cert.Raw)

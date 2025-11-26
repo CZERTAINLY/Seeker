@@ -425,3 +425,55 @@ A stable, content-based `bom-ref` enables seeker to reliably identify the same c
   }
 }
 ```
+
+# Post Quantum Cryptography
+
+Seeker, as any tool written in Go, supports only algorithms, which are present in a standard library, which PQC are, as of Go 1.25, not. There is however a support for detecting such algorithms in place and `ml-ds` family can be detected.
+
+However a better support is needed.
+
+```json
+    {
+      "bom-ref": "crypto/algorithm/ml-dsa-65@sha256:f8c9a2448272eebee3bf9c777bff35d1f84d59166534cc848eed418f3fbc08a3",
+      "type": "cryptographic-asset",
+      "name": "ML-DSA-65",
+      "properties": [
+        {
+          "name": "czertainly:component:algorithm:pqc:private_key_size",
+          "value": "4032"
+        },
+        {
+          "name": "czertainly:component:algorithm:pqc:public_key_size",
+          "value": "1952"
+        },
+        {
+          "name": "czertainly:component:algorithm:pqc:signature_size",
+          "value": "3309"
+        }
+      ],
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "testing/pqc.pem"
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "parameterSetIdentifier": "65",
+          "executionEnvironment": "software-plain-ram",
+          "certificationLevel": [
+            "none"
+          ],
+          "cryptoFunctions": [
+            "sign"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": "2.16.840.1.101.3.4.3.18"
+      }
+    },
+```

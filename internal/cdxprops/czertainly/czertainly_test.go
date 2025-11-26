@@ -35,6 +35,10 @@ func TestCertificateProperties(t *testing.T) {
 					Name:  czertainly.CertificateBase64Content,
 					Value: base64.StdEncoding.EncodeToString([]byte("hello, world")),
 				},
+				{
+					Name:  czertainly.CertificateVersion,
+					Value: "0",
+				},
 			},
 		},
 	}

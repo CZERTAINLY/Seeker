@@ -3,7 +3,7 @@ package cdxprops
 import (
 	"context"
 	"crypto"
-	"crypto/dsa"
+	"crypto/dsa" //nolint:staticcheck
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
@@ -17,7 +17,7 @@ import (
 func (c Converter) PrivateKey(ctx context.Context, id string, key crypto.PrivateKey) (algoCompo, keyCompo cdx.Component) {
 	info := privateKeyInfo(key)
 
-	algoCompo = info.componentWOBomRef()
+	algoCompo = info.componentWOBomRef(c.czertainly)
 	c.BOMRefHash(&algoCompo, info.algorithmName)
 
 	bomRef := "crypto/private_key/" + strings.ToLower(algoCompo.Name) + "@" + id

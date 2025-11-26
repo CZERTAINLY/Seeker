@@ -35,7 +35,7 @@ func TestConverter_CertHit(t *testing.T) {
 				Location: "/test/cert.pem",
 			},
 			wantNil:            false,
-			wantComponentCount: 4, // main cert, signature alg, public key, public key alg
+			wantComponentCount: 5,
 			wantDepCount:       2, // main cert deps, public key deps
 			wantType:           model.DetectionTypeCertificate,
 			wantSource:         "PEM",

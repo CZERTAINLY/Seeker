@@ -3,7 +3,7 @@ package cdxprops
 import (
 	"context"
 	"crypto"
-	"crypto/dsa" //nolint: staticcheck
+	"crypto/dsa" //nolint:staticcheck
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/rsa"
@@ -18,7 +18,7 @@ import (
 func (c Converter) publicKeyComponents(_ context.Context, pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) (algo, key cdx.Component) {
 	info := publicKeyAlgorithmInfo(pubKeyAlg, pubKey)
 
-	algo = info.componentWOBomRef()
+	algo = info.componentWOBomRef(c.czertainly)
 	c.BOMRefHash(&algo, info.algorithmName)
 
 	pubKeyHash := c.hashPublicKey(pubKey)

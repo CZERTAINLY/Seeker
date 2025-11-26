@@ -157,7 +157,7 @@ func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model
 
 	}
 
-	bundleCompos, err := c.PEMBundleToCDX(ctx, bundle, bundle.Location)
+	bundleCompos, err := c.restOfPEMBundleToCDX(ctx, bundle, bundle.Location)
 	if err != nil {
 		slog.WarnContext(ctx, "analyzing bundle returned an error", "error", err)
 	}

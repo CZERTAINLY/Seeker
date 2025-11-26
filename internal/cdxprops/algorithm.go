@@ -1,26 +1,90 @@
 package cdxprops
 
 import (
-	"crypto/dsa"
+	"crypto/dsa" //nolint:staticcheck
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/czertainly"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
 // Internal shared structure for algorithm metadata
 type algorithmInfo struct {
-	name                     string
-	oid                      string
-	paramSetID               string
-	keySize                  int
-	algorithmName            string
-	cryptoFunctions          []cdx.CryptoFunction
-	classicalSecurityLevel   int
+	name                   string
+	oid                    string
+	paramSetID             string
+	keySize                int
+	algorithmName          string
+	cryptoFunctions        []cdx.CryptoFunction
+	classicalSecurityLevel int
+	pqc                    pqcInfo
+}
+
+type pqcInfo struct {
 	nistQuantumSecurityLevel int
+	privKeySize              int
+	pubKeySize               int
+	signatureSize            int
+}
+
+var unsupportedAlgorithms = map[string]algorithmInfo{
+	// https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.204.pdf
+	"2.16.840.1.101.3.4.3.17": {
+		name:          "ML-DSA-44",
+		oid:           "2.16.840.1.101.3.4.3.17",
+		paramSetID:    "44",
+		keySize:       0,
+		algorithmName: "crypto/algorithm/ml-dsa-44",
+		cryptoFunctions: []cdx.CryptoFunction{
+			cdx.CryptoFunctionSign,
+		},
+		classicalSecurityLevel: 128,
+		pqc: pqcInfo{
+			nistQuantumSecurityLevel: 2,
+			privKeySize:              2560,
+			pubKeySize:               1312,
+			signatureSize:            2420,
+		},
+	},
+	"2.16.840.1.101.3.4.3.18": {
+		name:          "ML-DSA-65",
+		oid:           "2.16.840.1.101.3.4.3.18",
+		paramSetID:    "65",
+		keySize:       0,
+		algorithmName: "crypto/algorithm/ml-dsa-65",
+		cryptoFunctions: []cdx.CryptoFunction{
+			cdx.CryptoFunctionSign,
+		},
+		classicalSecurityLevel: 192,
+		pqc: pqcInfo{
+			nistQuantumSecurityLevel: 3,
+			privKeySize:              4032,
+			pubKeySize:               1952,
+			signatureSize:            3309,
+		},
+	},
+	"2.16.840.1.101.3.4.3.19": {
+		name:          "ML-DSA-87",
+		oid:           "2.16.840.1.101.3.4.3.19",
+		paramSetID:    "87",
+		keySize:       0,
+		algorithmName: "crypto/algorithm/ml-dsa-87",
+		cryptoFunctions: []cdx.CryptoFunction{
+			cdx.CryptoFunctionSign,
+		},
+		classicalSecurityLevel: 192,
+		pqc: pqcInfo{
+			nistQuantumSecurityLevel: 5,
+			privKeySize:              4896,
+			pubKeySize:               2592,
+			signatureSize:            4627,
+		},
+	},
 }
 
 // extractAlgorithmInfo is the unified internal function
@@ -168,8 +232,13 @@ func (a dsaKeyAdapter) BitLen() int {
 	return a.key.P.BitLen()
 }
 
-func (i algorithmInfo) componentWOBomRef() cdx.Component {
+func (i algorithmInfo) componentWOBomRef(withCzertainly bool) cdx.Component {
 	certLevel := []cdx.CryptoCertificationLevel{cdx.CryptoCertificationLevelNone}
+
+	var nqsl *int
+	if i.pqc.nistQuantumSecurityLevel != 0 {
+		nqsl = &i.pqc.nistQuantumSecurityLevel
+	}
 
 	cryptoProps := &cdx.CryptoProperties{
 		AssetType: cdx.CryptoAssetTypeAlgorithm,
@@ -179,7 +248,7 @@ func (i algorithmInfo) componentWOBomRef() cdx.Component {
 			CertificationLevel:       &certLevel,
 			CryptoFunctions:          &i.cryptoFunctions,
 			ClassicalSecurityLevel:   &i.classicalSecurityLevel,
-			NistQuantumSecurityLevel: &i.nistQuantumSecurityLevel,
+			NistQuantumSecurityLevel: nqsl,
 		},
 	}
 
@@ -191,9 +260,28 @@ func (i algorithmInfo) componentWOBomRef() cdx.Component {
 		cryptoProps.AlgorithmProperties.ParameterSetIdentifier = i.paramSetID
 	}
 
-	return cdx.Component{
+	compo := cdx.Component{
 		Type:             cdx.ComponentTypeCryptographicAsset,
 		Name:             i.name,
+		Description:      "Algorithm " + i.name,
 		CryptoProperties: cryptoProps,
 	}
+
+	if withCzertainly && nqsl != nil {
+		compo.Properties = &[]cdx.Property{
+			{
+				Name:  czertainly.AlgorithmPrivateKeySize,
+				Value: strconv.Itoa(i.pqc.privKeySize),
+			},
+			{
+				Name:  czertainly.AlgorithmPublicKeySize,
+				Value: strconv.Itoa(i.pqc.pubKeySize),
+			},
+			{
+				Name:  czertainly.AlgorithmSignatureSize,
+				Value: strconv.Itoa(i.pqc.signatureSize),
+			},
+		}
+	}
+	return compo
 }

@@ -54,6 +54,11 @@ const (
 	PrivateKeyType                         = "czertainly:component:private_key:type"
 	PrivateKeyBase64Content                = "czertainly:component:private_key:base64_content"
 	SignatureAlgorithmFamily               = "czertainly:component:algorithm:family"
+
+	// additional PQC data
+	AlgorithmPrivateKeySize = "czertainly:component:algorithm:pqc:private_key_size"
+	AlgorithmPublicKeySize  = "czertainly:component:algorithm:pqc:public_key_size"
+	AlgorithmSignatureSize  = "czertainly:component:algorithm:pqc:signature_size"
 )
 
 func CertificateProperties(

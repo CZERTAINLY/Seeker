@@ -11,16 +11,16 @@ import (
 )
 
 func TestMLMKEMPrivateKey(t *testing.T) {
-	pk, err := cdxtest.TestData(cdxtest.MLKEM1024PrivateKey)
+	pk, err := cdxtest.TestData(cdxtest.MLDSA65PrivateKey)
 	require.NoError(t, err)
 
-	bundle, err := pem.Scanner{}.Scan(t.Context(), pk, cdxtest.MLKEM1024PrivateKey)
+	bundle, err := pem.Scanner{}.Scan(t.Context(), pk, cdxtest.MLDSA65PrivateKey)
 	require.NoError(t, err)
 
 	c := cdxprops.NewConverter()
-	compos, err := c.PEMBundleToCDX(t.Context(), bundle, cdxtest.MLKEM1024PrivateKey)
-	require.NoError(t, err)
-
+	detection := c.PEMBundle(t.Context(), bundle)
+	require.NotNil(t, detection)
+	compos := detection.Components
 	require.Len(t, compos, 1)
-	require.Equal(t, "ML-KEM-1024", compos[0].Name)
+	require.Equal(t, "ML-DSA-65", compos[0].Name)
 }

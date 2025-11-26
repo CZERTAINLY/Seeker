@@ -12,7 +12,7 @@ import (
 //go:embed testdata/*
 var data embed.FS
 
-const MLKEM1024PrivateKey = "testdata/ml-kem-1024-private-key.pem"
+const MLDSA65PrivateKey = "testdata/ml-dsa-65-private-key.pem"
 
 func TestData(path string) ([]byte, error) {
 	return data.ReadFile(path)
