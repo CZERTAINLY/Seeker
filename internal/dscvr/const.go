@@ -5,14 +5,17 @@ import (
 )
 
 const (
+	// constants related to czertainly core attribute for passing seeker configuration
 	seekerConfigurationAttrUUID        = "eb87e85b-297c-44f9-8f69-eebc86bf7c65"
 	seekerConfigurationAttrName        = "seeker_scan_configuration"
 	seekerConfigurationAttrType        = "data"
 	seekerConfigurationAttrContentType = "codeblock"
 
+	// constants related to czertainly core meta attribute for passing upload key
 	seekerResultMetadataUploadKeyAttrUUID = "33081f5a-afcb-4c23-9ba5-5436d41bc847"
 	seekerResultMetadataUploadKeyAttrName = "seeker_result_upload_key"
 
+	// constants related to czertainly core meta attribute for passing result
 	seekerResultMetadataFailureReasonAttrUUID = "429d078c-73d1-445a-bf48-606509a3619e"
 	seekerResultMetadataFailureReasonAttrName = "seeker_result_string"
 

@@ -20,22 +20,19 @@ func TestNewBOMRepoUploaderFunc(t *testing.T) {
 		serverURL string
 		wantErr   bool
 	}{
-		"success http no trailing slash":          {serverURL: "http://some-server.com", wantErr: false},
-		"success http trailing slash":             {serverURL: "http://some-server.com/", wantErr: false},
-		"success http port no trailing slash":     {serverURL: "http://some-server.com:8080", wantErr: false},
-		"success http port trailing slash":        {serverURL: "https://some-server-com:8090/", wantErr: false},
-		"success https no trailing slash":         {serverURL: "https://some-server.com", wantErr: false},
-		"success https trailing slash":            {serverURL: "https://some-server.com/", wantErr: false},
-		"success https port no trailing slash":    {serverURL: "https://some-server.com:8080", wantErr: false},
-		"success https port trailing slash":       {serverURL: "https://some-server-com:8090/", wantErr: false},
-		"fail missing schema":                     {serverURL: "some-server.com", wantErr: true},
-		"fail missing schema trailing slash":      {serverURL: "some-server.com/", wantErr: true},
-		"fail missing schema port":                {serverURL: "some-server.com:8080", wantErr: true},
-		"fail missing schema port trailing slash": {serverURL: "some-server.com:8090/", wantErr: true},
-		"fail http path set":                      {serverURL: "http://some-server.com/some/path", wantErr: true},
-		"fail http port path set":                 {serverURL: "http://some-server.com:8080/some/path", wantErr: true},
-		"fail https path set":                     {serverURL: "https://some-server.com/some/path", wantErr: true},
-		"fail https port path set":                {serverURL: "https://some-server.com:8080/some/path", wantErr: true},
+		"success http no trailing slash":        {serverURL: "http://some-server.com", wantErr: false},
+		"success http trailing slash":           {serverURL: "http://some-server.com/", wantErr: false},
+		"success http port no trailing slash":   {serverURL: "http://some-server.com:8080", wantErr: false},
+		"success http port trailing slash":      {serverURL: "http://some-server.com:8080/", wantErr: false},
+		"success http port path":                {serverURL: "http://some-server.com:8080/cbom", wantErr: false},
+		"success http port path trailing slash": {serverURL: "http://some-server.com:8080/cbom/else/", wantErr: false},
+
+		"success https no trailing slash":        {serverURL: "https://some-server.com", wantErr: false},
+		"success https trailing slash":           {serverURL: "https://some-server.com/", wantErr: false},
+		"success https port no trailing slash":   {serverURL: "https://some-server.com:8080", wantErr: false},
+		"success https port trailing slash":      {serverURL: "https://some-server-com:8090/", wantErr: false},
+		"success https port path":                {serverURL: "https://some-server.com:8080/cbom", wantErr: false},
+		"success https port path trailing slash": {serverURL: "https://some-server.com:8080/cbom/else/", wantErr: false},
 	}
 
 	for name, tc := range testCases {

@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -24,7 +23,7 @@ const (
 type UploadCallbackFunc func(error, string, string)
 
 type BOMRepoUploader struct {
-	requestURL *url.URL
+	requestURL string
 	client     *http.Client
 
 	uploadCallback UploadCallbackFunc
@@ -34,16 +33,10 @@ func NewBOMRepoUploader(serverURL model.URL) (*BOMRepoUploader, error) {
 	parsedURL := serverURL.Clone().AsURL()
 	parsedURL.Path = strings.TrimRight(parsedURL.Path, "/")
 
-	if parsedURL.Scheme == "" || parsedURL.Host == "" || parsedURL.Path != "" {
-		return nil, errors.New("please define the server url with a scheme and without path, e.g. `http://some-url.com`")
-	}
-
-	parsedURL.Path = uploadPath
-	q := parsedURL.Query()
-	parsedURL.RawQuery = q.Encode()
+	parsedURL.Path = fmt.Sprintf("%s/%s", parsedURL.Path, uploadPath)
 
 	c := &BOMRepoUploader{
-		requestURL: parsedURL,
+		requestURL: parsedURL.String(),
 		client:     &http.Client{},
 	}
 
@@ -56,7 +49,7 @@ func (c *BOMRepoUploader) WithUploadCallback(fn UploadCallbackFunc) *BOMRepoUplo
 }
 
 func (c *BOMRepoUploader) Upload(ctx context.Context, jobName string, raw []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.requestURL.String(), bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.requestURL, bytes.NewReader(raw))
 	if err != nil {
 		return err
 	}

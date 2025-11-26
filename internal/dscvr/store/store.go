@@ -72,211 +72,185 @@ func InitDB(ctx context.Context, dbPath string) (*sql.DB, error) {
 	return db, nil
 }
 
-// Start persists, on success, information that a discovery identified by 'uuid' is in progress.
-// If discovery identified by `uuid` is still in progress, no error is returned,
-// if it has already finished ErrAlreadyFinished is returned.
-func Start(ctx context.Context, db *sql.DB, uuid string) error {
+type TxCallback = func(ctx context.Context, tx *sql.Tx) error
+
+func Tx(ctx context.Context, db *sql.DB, fn TxCallback) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	defer func(ctx context.Context, uuid string) {
+	defer func() {
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.ErrorContext(ctx, "Calling `tx.Rollback()` failed.", slog.String("uuid", uuid))
+			slog.Error("Calling `tx.Rollback()` failed.", slog.String("err", err.Error()))
 		}
-	}(ctx, uuid)
+	}()
 
-	var discoveryRow DiscoveryRow
-	row := db.QueryRowContext(ctx,
-		`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
-	)
-	err = row.Scan(&discoveryRow.InProgress)
-	switch {
-	case err == nil && discoveryRow.InProgress:
-		return nil
-	case err == nil && !discoveryRow.InProgress:
-		return ErrAlreadyFinished
-	case err != nil && !errors.Is(err, sql.ErrNoRows):
-		return fmt.Errorf("executing sql query failed: %w", err)
+	if err := fn(ctx, tx); err != nil {
+		return err
 	}
 
-	_, err = db.ExecContext(ctx,
-		`INSERT INTO discoveries (uuid, in_progress) VALUES (?,?);`, uuid, true,
-	)
-	if err != nil {
-		return fmt.Errorf("executing sql insert failed: %w", err)
-	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing transaction failed: %w", err)
 	}
+
 	return nil
+}
+
+// Start persists, on success, information that a discovery identified by 'uuid' is in progress.
+// If discovery identified by `uuid` is still in progress, no error is returned,
+// if it has already finished ErrAlreadyFinished is returned.
+func Start(ctx context.Context, db *sql.DB, uuid string) error {
+	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
+		var discoveryRow DiscoveryRow
+		row := tx.QueryRowContext(ctx,
+			`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
+		)
+		err := row.Scan(&discoveryRow.InProgress)
+		switch {
+		case err == nil && discoveryRow.InProgress:
+			return nil
+		case err == nil && !discoveryRow.InProgress:
+			return ErrAlreadyFinished
+		case err != nil && !errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("executing sql query failed: %w", err)
+		}
+
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO discoveries (uuid, in_progress) VALUES (?,?);`, uuid, true,
+		)
+		if err != nil {
+			return fmt.Errorf("executing sql insert failed: %w", err)
+		}
+
+		return nil
+	})
 }
 
 // Get returns info about a discovery identified by 'uuid' on success,
 // ErrNotFound when discovery identified by 'uuid' does not exist,
 // error otherwise.
 func Get(ctx context.Context, db *sql.DB, uuid string) (DiscoveryRow, error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return DiscoveryRow{}, err
-	}
-	defer func(ctx context.Context, uuid string) {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.ErrorContext(ctx, "Calling `tx.Rollback()` failed.", slog.String("uuid", uuid))
-		}
-	}(ctx, uuid)
-
 	var discoveryRow DiscoveryRow
-	row := db.QueryRowContext(ctx,
-		`SELECT * FROM discoveries WHERE uuid=?`, uuid,
-	)
+	txErr := Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
+		row := tx.QueryRowContext(ctx,
+			`SELECT * FROM discoveries WHERE uuid=?`, uuid,
+		)
+		err := row.Scan(
+			&discoveryRow.ID,
+			&discoveryRow.UUID,
+			&discoveryRow.InProgress,
+			&discoveryRow.Success,
+			&discoveryRow.UploadKey,
+			&discoveryRow.FailureReason,
+		)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrNotFound
+		case err != nil:
+			return fmt.Errorf("executing sql query failed: %w", err)
+		}
 
-	err = row.Scan(
-		&discoveryRow.ID,
-		&discoveryRow.UUID,
-		&discoveryRow.InProgress,
-		&discoveryRow.Success,
-		&discoveryRow.UploadKey,
-		&discoveryRow.FailureReason,
-	)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return DiscoveryRow{}, ErrNotFound
-	case err != nil:
-		return DiscoveryRow{}, fmt.Errorf("executing sql query failed: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return DiscoveryRow{}, fmt.Errorf("committing transaction failed: %w", err)
-	}
-
-	return discoveryRow, nil
+		return nil
+	})
+	return discoveryRow, txErr
 }
 
 // FinishOK on success stores information that discovery, identified by 'uuid', has finished
 // successfully and stores the uploadKey with it,
 // if the discovery has already finished, ErrAlreadyFinished is returned,
+// if the discovery doesn't exist, ErrNotFound is returned,
 // error otherwise.
 func FinishOK(ctx context.Context, db *sql.DB, uuid, uploadKey string) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func(ctx context.Context, uuid string) {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.ErrorContext(ctx, "Calling `tx.Rollback()` failed.", slog.String("uuid", uuid))
+	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
+		var discoveryRow DiscoveryRow
+		row := tx.QueryRowContext(ctx,
+			`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
+		)
+		err := row.Scan(&discoveryRow.InProgress)
+		switch {
+		case err == nil && !discoveryRow.InProgress:
+			return ErrAlreadyFinished
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrNotFound
+		case err != nil:
+			return fmt.Errorf("executing sql query failed: %w", err)
 		}
-	}(ctx, uuid)
 
-	var discoveryRow DiscoveryRow
-	row := db.QueryRowContext(ctx,
-		`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
-	)
-	err = row.Scan(&discoveryRow.InProgress)
-	switch {
-	case err == nil && !discoveryRow.InProgress:
-		return ErrAlreadyFinished
-	case errors.Is(err, sql.ErrNoRows):
-		return ErrNotFound
-	case err != nil:
-		return fmt.Errorf("executing sql query failed: %w", err)
-	}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE discoveries
+			 SET
+				in_progress = false,
+				success = true,
+				upload_key = ?
+			WHERE uuid = ?;
+			`, uploadKey, uuid,
+		)
+		if err != nil {
+			return fmt.Errorf("executing sql update failed: %w", err)
+		}
 
-	_, err = db.ExecContext(ctx,
-		`UPDATE discoveries
-		 SET
-			in_progress = false,
-			success = true,
-			upload_key = ?
-		WHERE uuid = ?;
-		`, uploadKey, uuid,
-	)
-	if err != nil {
-		return fmt.Errorf("executing sql update failed: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction failed: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
 
 // FinishErr stores information that discovery, identified by 'uuid', has failed
 // and stores the failure reason with it,
+// if the discovery has already finished, ErrAlreadyFinished is returned,
+// if the discovery doesn't exist, ErrNotFound is returned,
 // error otherwise.
 func FinishErr(ctx context.Context, db *sql.DB, uuid, reason string) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func(ctx context.Context, uuid string) {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.ErrorContext(ctx, "Calling `tx.Rollback()` failed.", slog.String("uuid", uuid))
+	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
+		var discoveryRow DiscoveryRow
+		row := tx.QueryRowContext(ctx,
+			`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
+		)
+		err := row.Scan(&discoveryRow.InProgress)
+		switch {
+		case err == nil && !discoveryRow.InProgress:
+			return ErrAlreadyFinished
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrNotFound
+		case err != nil:
+			return fmt.Errorf("executing sql query failed: %w", err)
 		}
-	}(ctx, uuid)
 
-	var discoveryRow DiscoveryRow
-	row := db.QueryRowContext(ctx,
-		`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
-	)
-	err = row.Scan(&discoveryRow.InProgress)
-	switch {
-	case err == nil && !discoveryRow.InProgress:
-		return ErrAlreadyFinished
-	case errors.Is(err, sql.ErrNoRows):
-		return ErrNotFound
-	case err != nil:
-		return fmt.Errorf("executing sql query failed: %w", err)
-	}
+		_, err = tx.ExecContext(ctx,
+			`UPDATE discoveries
+			 SET
+				in_progress = false,
+				success = false,
+				failure_reason = ?
+			WHERE uuid = ?;
+			`, reason, uuid,
+		)
+		if err != nil {
+			return fmt.Errorf("executing sql update failed: %w", err)
+		}
 
-	_, err = db.ExecContext(ctx,
-		`UPDATE discoveries
-		 SET
-			in_progress = false,
-			success = false,
-			failure_reason = ?
-		WHERE uuid = ?;
-		`, reason, uuid,
-	)
-	if err != nil {
-		return fmt.Errorf("executing sql update failed: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction failed: %w", err)
-	}
-	return nil
+		return nil
+	})
 }
 
+// Delete deletes discovery identified by 'uuid' on success,
+// ErrNotFound when discovery identified by 'uuid' does not exist,
+// error otherwise.
 func Delete(ctx context.Context, db *sql.DB, uuid string) error {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func(ctx context.Context, uuid string) {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			slog.ErrorContext(ctx, "Calling `tx.Rollback()` failed.", slog.String("uuid", uuid))
+	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx,
+			`DELETE FROM discoveries WHERE uuid=?`, uuid,
+		)
+		if err != nil {
+			return fmt.Errorf("executing sql delete failed: %w", err)
 		}
-	}(ctx, uuid)
 
-	result, err := db.ExecContext(ctx,
-		`DELETE FROM discoveries WHERE uuid=?`, uuid,
-	)
-	if err != nil {
-		return fmt.Errorf("executing sql delete failed: %w", err)
-	}
+		ra, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("fetching affected rows failed: %w", err)
+		}
+		if ra != 1 {
+			return ErrNotFound
+		}
 
-	ra, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("fetching affected rows failed: %w", err)
-	}
-	if ra != 1 {
-		return ErrNotFound
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("committing transaction failed: %w", err)
-	}
-
-	return nil
+		return nil
+	})
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/CZERTAINLY/Seeker/internal/dscvr/store"
+	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/service"
 )
@@ -25,7 +27,7 @@ type Server struct {
 	jobName       string
 	db            *sql.DB
 
-	mx          sync.RWMutex
+	mx          sync.Mutex
 	runningFlag bool
 	uuid        string
 }
@@ -78,8 +80,8 @@ func New(ctx context.Context, cfg model.Service, sv *service.Supervisor, jobName
 // sets the running flag and returns true,
 // false otherwise
 func (s *Server) startIf(ctx context.Context, dscvrUUID string) (bool, error) {
-	s.mx.RLock()
-	defer s.mx.RUnlock()
+	s.mx.Lock()
+	defer s.mx.Unlock()
 
 	if s.runningFlag {
 		return false, nil
@@ -178,9 +180,16 @@ func (s *Server) RegisterConnector(ctx context.Context) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	ctx = log.ContextAttrs(ctx, slog.Group("http-request",
+		slog.String("method", endpoint.Method),
+		slog.String("url", reqUrl),
+		slog.String("body", string(b)),
+	))
+
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		slog.ErrorContext(ctx, "Http request failed while registering czertainly core connector.", slog.String("error", err.Error()))
+		return errors.New("registering czertainly core connector failed")
 	}
 	defer func() {
 		_ = resp.Body.Close()
@@ -189,7 +198,6 @@ func (s *Server) RegisterConnector(ctx context.Context) error {
 	if err := decodeRegisterResponse(ctx, resp); err != nil {
 		return fmt.Errorf("registering czertainly core connector failed: %w", err)
 	}
-	slog.DebugContext(ctx, "Czertainly core connector successfully registered.")
 
 	return nil
 }
@@ -201,6 +209,7 @@ func decodeRegisterResponse(ctx context.Context, resp *http.Response) error {
 
 	switch resp.StatusCode {
 	case http.StatusOK:
+		slog.Debug("Czertainly core connector successfully registered.")
 		return nil
 	case http.StatusBadRequest:
 		fallthrough
@@ -211,10 +220,11 @@ func decodeRegisterResponse(ctx context.Context, resp *http.Response) error {
 			}
 			var rr registerResp
 			if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
-				slog.ErrorContext(ctx, "Decoding response json failed", slog.String("error", err.Error()))
+				slog.ErrorContext(ctx, "Decoding response json failed.", slog.String("error", err.Error()))
 				return fmt.Errorf("status code %d", resp.StatusCode)
 			}
 			if strings.Contains(rr.Message, "already exists") {
+				slog.Debug("Czertainly core connector already registered.")
 				return nil
 			}
 
@@ -227,12 +237,13 @@ func decodeRegisterResponse(ctx context.Context, resp *http.Response) error {
 			type registerResp []string
 			var rr registerResp
 			if err := json.NewDecoder(resp.Body).Decode(&rr); err != nil {
-				slog.ErrorContext(ctx, "Decoding response json failed", slog.String("error", err.Error()))
+				slog.ErrorContext(ctx, "Decoding response json failed.", slog.String("error", err.Error()))
 				return fmt.Errorf("status code %d", resp.StatusCode)
 			}
 			var sb strings.Builder
 			for _, cpy := range rr {
 				if strings.Contains(cpy, "already exists") {
+					slog.Debug("Czertainly core connector already registered.")
 					return nil
 				}
 				sb.WriteString(fmt.Sprintf("%s ", cpy))
