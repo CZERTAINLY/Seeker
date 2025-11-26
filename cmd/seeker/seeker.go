@@ -96,7 +96,9 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 
 	b := bom.NewBuilder()
 	detections := make(chan model.Detection)
+	processed := make(chan struct{})
 	go func() {
+		defer close(processed)
 		for d := range detections { // will be closed after g.Wait()
 			b.AppendDetections(ctx, d)
 		}
@@ -134,6 +136,7 @@ func (s Seeker) Do(ctx context.Context, out io.Writer) error {
 	_ = g.Wait()
 	close(detections)
 
+	<-processed
 	err := b.AsJSON(out)
 	if err != nil {
 		return fmt.Errorf("formatting BOM as JSON: %w", err)
