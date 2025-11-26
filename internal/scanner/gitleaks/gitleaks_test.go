@@ -25,7 +25,7 @@ func TestDetector(t *testing.T) {
 
 	results, err := detector.Scan(t.Context(), []byte(src), "aws.py")
 	require.NoError(t, err)
-	require.Len(t, results, 1)
+	require.Len(t, results.Findings, 1)
 }
 
 func TestDetect_NoFindings_ReturnsNil(t *testing.T) {
@@ -34,7 +34,7 @@ func TestDetect_NoFindings_ReturnsNil(t *testing.T) {
 	require.NoError(t, err)
 	res, err := d.Scan(t.Context(), []byte("just some text without secrets"), "plain.txt")
 	require.NoError(t, err)
-	require.Nil(t, res)
+	require.Nil(t, res.Findings)
 }
 
 func TestDetect_ConcurrentCalls(t *testing.T) {
@@ -58,7 +58,7 @@ func TestDetect_ConcurrentCalls(t *testing.T) {
 	// Probe once to see if this environment detects the token input at all.
 	probe, err := d.Scan(t.Context(), []byte("token = 'AKIAZZZZZZZZZZZZZZZZ'"), "file.txt")
 	require.NoError(t, err)
-	expectSomeFindings := len(probe) > 0
+	expectSomeFindings := len(probe.Findings) > 0
 
 	for _, in := range inputs {
 		wg.Add(1)
@@ -69,10 +69,10 @@ func TestDetect_ConcurrentCalls(t *testing.T) {
 			require.NoError(t, err)
 			mx.Lock()
 			defer mx.Unlock()
-			if len(res) == 0 {
+			if len(res.Findings) == 0 {
 				totalNoFindings++
 			}
-			totalWithFindings += len(res)
+			totalWithFindings += len(res.Findings)
 		}()
 	}
 	wg.Wait()
@@ -93,5 +93,5 @@ func TestDetect_ContextCanceled(t *testing.T) {
 	cancel()
 	res, err := d.Scan(ctx, []byte("anything"), "x.txt")
 	require.Error(t, err)
-	require.Nil(t, res)
+	require.Nil(t, res.Findings)
 }

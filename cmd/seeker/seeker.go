@@ -61,21 +61,20 @@ func NewSeeker(ctx context.Context, config model.Scan) (Seeker, error) {
 	converter := cdxprops.NewConverter()
 
 	detectors := []service.Detector{
-		detector[model.CertHit]{
-			name:    "x509",
-			scanner: x509Scanner,
+		x509Detector{
+			s:       x509Scanner,
 			convert: converter.CertHit,
 		},
 		detector[model.PEMBundle]{
 			name:    "pem",
-			scanner: pemWrapper{pemScanner},
+			scanner: pemScanner,
 			convert: converter.PEMBundle,
 		},
 	}
 
 	if leaksScanner != nil {
 		detectors = append(detectors,
-			detector[model.Leak]{
+			detector[model.Leaks]{
 				name:    "leaks",
 				scanner: leaksScanner,
 				convert: converter.Leak,
@@ -242,7 +241,7 @@ func nmaps(_ context.Context, cfg model.Ports) ([]nmap.Scanner, []netip.Addr) {
 }
 
 type scanner[T any] interface {
-	Scan(context.Context, []byte, string) ([]T, error)
+	Scan(context.Context, []byte, string) (T, error)
 }
 
 // detector joins the scanner with converter which produces
@@ -253,16 +252,32 @@ type detector[T any] struct {
 	convert func(context.Context, T) *model.Detection
 }
 
-type pemWrapper struct {
-	s pem.Scanner
+type x509Detector struct {
+	s       x509.Scanner
+	convert func(context.Context, model.CertHit) *model.Detection
 }
 
-func (w pemWrapper) Scan(ctx context.Context, b []byte, s string) ([]model.PEMBundle, error) {
-	bundle, err := w.s.Scan(ctx, b, s)
+func (x x509Detector) LogAttrs() []slog.Attr {
+	return []slog.Attr{
+		slog.String("detector", "x509"),
+	}
+}
+
+func (w x509Detector) Detect(ctx context.Context, b []byte, s string) ([]model.Detection, error) {
+	hits, err := w.s.Scan(ctx, b, s)
 	if err != nil {
 		return nil, err
 	}
-	return []model.PEMBundle{bundle}, nil
+
+	var ret = make([]model.Detection, 0, len(hits))
+	for _, hit := range hits {
+		dp := w.convert(ctx, hit)
+		if dp == nil {
+			continue
+		}
+		ret = append(ret, *dp)
+	}
+	return ret, nil
 }
 
 func (d detector[T]) LogAttrs() []slog.Attr {
@@ -277,12 +292,10 @@ func (d detector[T]) Detect(ctx context.Context, b []byte, path string) ([]model
 		return nil, err
 	}
 
-	ret := make([]model.Detection, 0, len(results))
-	for _, result := range results {
-		d := d.convert(ctx, result)
-		if d != nil {
-			ret = append(ret, *d)
-		}
+	dp := d.convert(ctx, results)
+	if dp == nil {
+		return nil, nil
 	}
-	return ret, nil
+
+	return []model.Detection{*dp}, nil
 }

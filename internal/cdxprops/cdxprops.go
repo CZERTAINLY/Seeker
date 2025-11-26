@@ -43,17 +43,26 @@ func (c Converter) WithCzertainlyExtenstions(czertainly bool) Converter {
 // Supports jwt, token, key and password.
 // Returns nil if given Leak should be ignored
 // safe to be used by different go routines
-func (c Converter) Leak(ctx context.Context, leak model.Leak) *model.Detection {
-	compo, skip := c.leakToComponent(ctx, leak)
-	if skip {
+func (c Converter) Leak(ctx context.Context, leaks model.Leaks) *model.Detection {
+	var compos = make([]cdx.Component, 0, len(leaks.Findings))
+	for _, finding := range leaks.Findings {
+		compo, skip := c.leakToComponent(ctx, leaks.Location, finding)
+		if skip {
+			continue
+		}
+		compos = append(compos, compo)
+	}
+
+	if len(compos) == 0 {
 		return nil
 	}
-	typ := strings.ToUpper(string(compo.CryptoProperties.RelatedCryptoMaterialProperties.Type))
+
+	typ := strings.ToUpper(string(compos[0].CryptoProperties.RelatedCryptoMaterialProperties.Type))
 	return &model.Detection{
 		Source:     "LEAKS",
 		Type:       model.DetectionType(typ),
-		Location:   leak.File,
-		Components: []cdx.Component{compo},
+		Location:   leaks.Location,
+		Components: compos,
 	}
 }
 

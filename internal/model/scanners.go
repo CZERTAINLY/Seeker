@@ -3,15 +3,14 @@ package model
 import (
 	"crypto"
 	"crypto/x509"
+
+	"github.com/zricethezav/gitleaks/v8/report"
 )
 
 // Leak are data returned by gitleaks module
-type Leak struct {
-	RuleID      string
-	Description string
-	File        string
-	StartLine   int
-	Content     string
+type Leaks struct {
+	Location string
+	Findings []report.Finding
 }
 
 // CertHit is a detected x509 certificate

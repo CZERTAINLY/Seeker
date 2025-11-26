@@ -13,6 +13,7 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
+	"github.com/zricethezav/gitleaks/v8/report"
 )
 
 func TestLeakToComponent(t *testing.T) {
@@ -37,27 +38,35 @@ func TestLeakToComponent(t *testing.T) {
 	var startLine = 42
 	tests := []struct {
 		scenario string
-		given    model.Leak
+		given    model.Leaks
 		then     *model.Detection
 	}{
 		{
 			scenario: "private key should be ignored",
-			given: model.Leak{
-				RuleID:    "private-key",
-				File:      "privKey.pem",
-				StartLine: startLine,
-				Content:   string(content),
+			given: model.Leaks{
+				Location: "privKey.pem",
+				Findings: []report.Finding{
+					{
+						RuleID:    "private-key",
+						StartLine: startLine,
+						Secret:    string(content),
+					},
+				},
 			},
 			then: nil,
 		},
 		{
 			scenario: "jwt token detection",
-			given: model.Leak{
-				RuleID:      "jwt-token",
-				Description: "Found JWT token",
-				File:        "/path/to/file",
-				StartLine:   42,
-				Content:     jwtToken,
+			given: model.Leaks{
+				Location: "/path/to/file",
+				Findings: []report.Finding{
+					{
+						RuleID:      "jwt-token",
+						Description: "Found JWT token",
+						StartLine:   42,
+						Secret:      jwtToken,
+					},
+				},
 			},
 			then: &model.Detection{
 				Source:   "LEAKS",
@@ -89,12 +98,16 @@ func TestLeakToComponent(t *testing.T) {
 		},
 		{
 			scenario: "api key detection",
-			given: model.Leak{
-				RuleID:      "api-key",
-				Description: "Found API key",
-				File:        "/path/to/file",
-				StartLine:   10,
-				Content:     apiKey,
+			given: model.Leaks{
+				Location: "/path/to/file",
+				Findings: []report.Finding{
+					{
+						RuleID:      "api-key",
+						Description: "Found API key",
+						StartLine:   10,
+						Secret:      apiKey,
+					},
+				},
 			},
 			then: &model.Detection{
 				Source:   "LEAKS",
@@ -126,12 +139,16 @@ func TestLeakToComponent(t *testing.T) {
 		},
 		{
 			scenario: "password detection",
-			given: model.Leak{
-				RuleID:      "password-leak",
-				Description: "Found password",
-				File:        "/path/to/file",
-				StartLine:   15,
-				Content:     passwd,
+			given: model.Leaks{
+				Location: "/path/to/file",
+				Findings: []report.Finding{
+					{
+						RuleID:      "password-leak",
+						Description: "Found password",
+						StartLine:   15,
+						Secret:      passwd,
+					},
+				},
 			},
 			then: &model.Detection{
 				Source:   "LEAKS",
@@ -163,11 +180,15 @@ func TestLeakToComponent(t *testing.T) {
 		},
 		{
 			scenario: "unknown type detection",
-			given: model.Leak{
-				RuleID:      "something-else",
-				Description: "Unknown type",
-				File:        "/path/to/file",
-				StartLine:   20,
+			given: model.Leaks{
+				Location: "/path/to/file",
+				Findings: []report.Finding{
+					{
+						RuleID:      "something-else",
+						Description: "Unknown type",
+						StartLine:   20,
+					},
+				},
 			},
 			then: &model.Detection{
 				Source:   "LEAKS",
