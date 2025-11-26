@@ -11,6 +11,7 @@ require (
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/go-co-op/gocron/v2 v2.17.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/kaptinlin/jsonschema v0.5.2
 	github.com/kodeart/go-problem/v2 v2.0.3
 	github.com/pavlo-v-chernykh/keystore-go/v4 v4.5.0

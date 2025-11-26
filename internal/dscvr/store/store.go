@@ -162,21 +162,11 @@ func Get(ctx context.Context, db *sql.DB, uuid string) (DiscoveryRow, error) {
 // error otherwise.
 func FinishOK(ctx context.Context, db *sql.DB, uuid, uploadKey string) error {
 	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
-		var discoveryRow DiscoveryRow
-		row := tx.QueryRowContext(ctx,
-			`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
-		)
-		err := row.Scan(&discoveryRow.InProgress)
-		switch {
-		case err == nil && !discoveryRow.InProgress:
-			return ErrAlreadyFinished
-		case errors.Is(err, sql.ErrNoRows):
-			return ErrNotFound
-		case err != nil:
-			return fmt.Errorf("executing sql query failed: %w", err)
+		if err := checkIsInProgress(ctx, tx, uuid); err != nil {
+			return err
 		}
 
-		_, err = tx.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`UPDATE discoveries
 			 SET
 				in_progress = false,
@@ -200,21 +190,11 @@ func FinishOK(ctx context.Context, db *sql.DB, uuid, uploadKey string) error {
 // error otherwise.
 func FinishErr(ctx context.Context, db *sql.DB, uuid, reason string) error {
 	return Tx(ctx, db, func(ctx context.Context, tx *sql.Tx) error {
-		var discoveryRow DiscoveryRow
-		row := tx.QueryRowContext(ctx,
-			`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
-		)
-		err := row.Scan(&discoveryRow.InProgress)
-		switch {
-		case err == nil && !discoveryRow.InProgress:
-			return ErrAlreadyFinished
-		case errors.Is(err, sql.ErrNoRows):
-			return ErrNotFound
-		case err != nil:
-			return fmt.Errorf("executing sql query failed: %w", err)
+		if err := checkIsInProgress(ctx, tx, uuid); err != nil {
+			return err
 		}
 
-		_, err = tx.ExecContext(ctx,
+		_, err := tx.ExecContext(ctx,
 			`UPDATE discoveries
 			 SET
 				in_progress = false,
@@ -229,6 +209,23 @@ func FinishErr(ctx context.Context, db *sql.DB, uuid, reason string) error {
 
 		return nil
 	})
+}
+
+func checkIsInProgress(ctx context.Context, tx *sql.Tx, uuid string) error {
+	var discoveryRow DiscoveryRow
+	row := tx.QueryRowContext(ctx,
+		`SELECT in_progress FROM discoveries WHERE uuid=?`, uuid,
+	)
+	err := row.Scan(&discoveryRow.InProgress)
+	switch {
+	case err == nil && !discoveryRow.InProgress:
+		return ErrAlreadyFinished
+	case errors.Is(err, sql.ErrNoRows):
+		return ErrNotFound
+	case err != nil:
+		return fmt.Errorf("executing sql query failed: %w", err)
+	}
+	return nil
 }
 
 // Delete deletes discovery identified by 'uuid' on success,

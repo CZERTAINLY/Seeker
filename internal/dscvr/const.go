@@ -19,6 +19,10 @@ const (
 	seekerResultMetadataFailureReasonAttrUUID = "429d078c-73d1-445a-bf48-606509a3619e"
 	seekerResultMetadataFailureReasonAttrName = "seeker_result_string"
 
+	// constants related to czertainly core meta attribute for cbom repository get url
+	seekerResultMetadataKeyURLAttrUUID = "c000c778-fe69-4622-9269-33f98d8e6dac"
+	seekerResultMetadataKeyURLAttrName = "seeker_result_key_url"
+
 	functionalGroupCode = "discoveryProvider"
 )
 

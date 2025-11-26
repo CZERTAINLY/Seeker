@@ -12,57 +12,25 @@ import (
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/dscvr/store"
-	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
 	uuidpkg "github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"go.yaml.in/yaml/v4"
 )
 
+const cbomRepoGetPath = "/api/v1/bom/"
+
 func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
-	// Assert http POST
-	if r.Method != http.MethodPost {
-		http.Error(w, "Allowed methods: [ POST ].", http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
-		slog.String("method", r.Method),
-		slog.String("url-path", r.URL.Path),
-	))
-
-	firstPrefix := fmt.Sprintf("%s/v1/", s.cfg.Seeker.BaseURL.Path)
-	if !strings.HasPrefix(r.URL.Path, firstPrefix) {
-		slog.DebugContext(ctx, "Expected prefix not in url path.", slog.String("expected-prefix", firstPrefix))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	rest := strings.TrimPrefix(r.URL.Path, firstPrefix)
-	before, after, found := strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.funcGroupCode {
-		slog.DebugContext(ctx, "Request has wrong functional group code.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group code, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
-		return
-	}
-
-	rest = after
-	secondPrefix := "discover/"
-	if !strings.HasPrefix(rest, secondPrefix) {
-		slog.DebugContext(ctx, "Expected prefix not in rest of url path.", slog.String("expected-prefix", secondPrefix), slog.String("rest", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	uuid := strings.TrimPrefix(rest, secondPrefix)
-	slog.DebugContext(ctx, "Parsed uuid.", slog.String("uuid", uuid))
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	uuid := vars["uuid"]
 
 	if uuid == "" {
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Missing uuid variable."}, http.StatusBadRequest)
+		toJsonErr(ctx, w, generalErrMsgResp{Message: "Missing uuid variable."}, http.StatusBadRequest)
 		return
 	}
+	slog.DebugContext(ctx, "Parsed uuid.", slog.String("uuid", uuid))
 
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -75,13 +43,13 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 	var request getDiscoveryRequest
 	if err := json.Unmarshal(b, &request); err != nil {
 		slog.DebugContext(ctx, "Calling `json.Unmarshal()` failed", slog.String("error", err.Error()))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Failed to unmarshal request: %s", err)}, http.StatusBadRequest)
+		toJsonErr(ctx, w, generalErrMsgResp{Message: fmt.Sprintf("Failed to unmarshal request: %s", err)}, http.StatusBadRequest)
 		return
 	}
 
 	if request.Kind != s.kind {
 		slog.DebugContext(ctx, "Request has wrong kind.", slog.String("expected", s.kind), slog.String("got", request.Kind))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong kind, expected: %q, got: %q", s.kind, request.Kind)}, http.StatusBadRequest)
+		toJsonErr(ctx, w, generalErrMsgResp{Message: fmt.Sprintf("Wrong kind, expected: %q, got: %q", s.kind, request.Kind)}, http.StatusBadRequest)
 		return
 	}
 
@@ -89,7 +57,7 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		slog.DebugContext(ctx, "UUID not found", slog.String("uuid", uuid))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("UUID %q not found.", uuid)}, http.StatusNotFound)
+		toJsonErr(ctx, w, generalErrMsgResp{Message: fmt.Sprintf("UUID %q not found.", uuid)}, http.StatusNotFound)
 		return
 	case err != nil:
 		slog.ErrorContext(ctx, "Calling `store.Get()` failed", slog.String("error", err.Error()))
@@ -101,7 +69,7 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 	switch dr.InProgress {
 	case true:
 		status = "inProgress"
-		toJson(r.Context(), w, getDiscoveryResponse{
+		toJson(ctx, w, getDiscoveryResponse{
 			UUID:            uuid,
 			Name:            request.Name,
 			Status:          status,
@@ -120,15 +88,24 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 
 		var mp metaProperties
 		var micData string
-		var mi getDiscoveryMetaItem
+		var mil []getDiscoveryMetaItem
 		if *dr.Success {
 			status = "completed"
 			mp = metaProperties{
 				Label:   "Uploaded CBOM-Repository Key",
 				Visible: true,
 			}
-			micData = *dr.UploadKey
-			mi = getDiscoveryMetaItem{
+			idx := strings.LastIndex(*dr.UploadKey, "-")
+			// sanity check
+			if idx < 0 {
+				slog.ErrorContext(ctx, "String returned from cbom repo callback has unexpected format.", slog.String("key", *dr.UploadKey))
+				http.Error(w, "Internal server error.", http.StatusInternalServerError)
+			}
+			keyID := (*dr.UploadKey)[:idx]
+			keyVersion := (*dr.UploadKey)[idx+len("-"):]
+
+			micData = fmt.Sprintf("%s, version: %s", keyID, keyVersion)
+			mil = append(mil, getDiscoveryMetaItem{
 				Version:     2,
 				UUID:        seekerResultMetadataUploadKeyAttrUUID,
 				Name:        seekerResultMetadataUploadKeyAttrName,
@@ -140,7 +117,20 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 						Data: micData,
 					},
 				},
-			}
+			}, getDiscoveryMetaItem{
+				Version:     2,
+				UUID:        seekerResultMetadataKeyURLAttrUUID,
+				Name:        seekerResultMetadataKeyURLAttrName,
+				Type:        "meta",
+				ContentType: "string",
+				Properties:  mp,
+				Content: []metaItemContent{
+					{
+						Data: fmt.Sprintf("%s%s%s?version=%s", s.cfg.Repository.URL.String(), cbomRepoGetPath, keyID, keyVersion),
+					},
+				},
+			})
+
 		} else {
 			status = "failed"
 			mp = metaProperties{
@@ -148,7 +138,7 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 				Visible: true,
 			}
 			micData = *dr.FailureReason
-			mi = getDiscoveryMetaItem{
+			mil = append(mil, getDiscoveryMetaItem{
 				Version:     2,
 				UUID:        seekerResultMetadataFailureReasonAttrUUID,
 				Name:        seekerResultMetadataFailureReasonAttrName,
@@ -160,50 +150,22 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 						Data: micData,
 					},
 				},
-			}
+			})
 		}
 
-		toJson(r.Context(), w, getDiscoveryResponse{
+		toJson(ctx, w, getDiscoveryResponse{
 			UUID:            uuid,
 			Name:            request.Name,
 			Status:          status,
 			CertificateData: []any{},
-			Meta:            []getDiscoveryMetaItem{mi},
+			Meta:            mil,
 		})
 		return
 	}
 }
 
 func (s *Server) discoverCertificate(w http.ResponseWriter, r *http.Request) {
-	// Assert http POST
-	if r.Method != http.MethodPost {
-		http.Error(w, "Allowed methods: [ POST ].", http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
-		slog.String("method", r.Method),
-		slog.String("url-path", r.URL.Path),
-	))
-
-	prefix := fmt.Sprintf("%s/v1/", s.cfg.Seeker.BaseURL.Path)
-	if !strings.HasPrefix(r.URL.Path, prefix) {
-		slog.DebugContext(ctx, "Expected prefix not in url path.", slog.String("expected-prefix", prefix))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	rest := strings.TrimPrefix(r.URL.Path, prefix)
-	before, _, found := strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.funcGroupCode {
-		slog.DebugContext(ctx, "Request has wrong functional group code.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group code, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
-		return
-	}
-
+	ctx := r.Context()
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		slog.ErrorContext(ctx, "Calling `io.ReadAll()` failed", slog.String("error", err.Error()))
@@ -271,49 +233,15 @@ func (s *Server) discoverCertificate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteDiscovery(w http.ResponseWriter, r *http.Request) {
-	// Assert http DELETE
-	if r.Method != http.MethodDelete {
-		http.Error(w, "Allowed methods: [ DELETE ].", http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
-		slog.String("method", r.Method),
-		slog.String("url-path", r.URL.Path),
-	))
-
-	firstPrefix := fmt.Sprintf("%s/v1/", s.cfg.Seeker.BaseURL.Path)
-	if !strings.HasPrefix(r.URL.Path, firstPrefix) {
-		slog.DebugContext(ctx, "Expected prefix not in url path.", slog.String("expected-prefix", firstPrefix))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	rest := strings.TrimPrefix(r.URL.Path, firstPrefix)
-	before, after, found := strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.funcGroupCode {
-		slog.DebugContext(ctx, "Request has wrong functional group code.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group code, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
-		return
-	}
-
-	rest = after
-	secondPrefix := "discover/"
-	if !strings.HasPrefix(rest, secondPrefix) {
-		slog.DebugContext(ctx, "Expected prefix not in rest of url path.", slog.String("expected-prefix", secondPrefix), slog.String("rest", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	uuid := strings.TrimPrefix(rest, secondPrefix)
-	slog.DebugContext(ctx, "Parsed uuid.", slog.String("uuid", uuid))
+	ctx := r.Context()
+	vars := mux.Vars(r)
+	uuid := vars["uuid"]
 
 	if uuid == "" {
 		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Missing uuid variable."}, http.StatusBadRequest)
 		return
 	}
+	slog.DebugContext(ctx, "Parsed uuid.", slog.String("uuid", uuid))
 
 	err := store.Delete(ctx, s.db, uuid)
 	switch {
@@ -329,47 +257,7 @@ func (s *Server) deleteDiscovery(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) validateAttributes(w http.ResponseWriter, r *http.Request) {
-	// Assert http POST
-	if r.Method != http.MethodPost {
-		http.Error(w, "Allowed methods: [ POST ].", http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
-		slog.String("method", r.Method),
-		slog.String("url-path", r.URL.Path),
-	))
-
-	prefix := fmt.Sprintf("%s/v1/", s.cfg.Seeker.BaseURL.Path)
-	if !strings.HasPrefix(r.URL.Path, prefix) {
-		slog.DebugContext(ctx, "Expected prefix not in url path.", slog.String("expected-prefix", prefix))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-
-	rest := strings.TrimPrefix(r.URL.Path, prefix)
-	before, after, found := strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.funcGroupCode {
-		slog.DebugContext(ctx, "Request has wrong functional group.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
-		return
-	}
-	rest = after
-	before, _, found = strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.kind {
-		slog.DebugContext(ctx, "Request has wrong kind.", slog.String("expected", s.kind), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong kind, expected: %q, got: %q", s.kind, before)}, http.StatusBadRequest)
-		return
-	}
+	ctx := r.Context()
 
 	b, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -396,47 +284,7 @@ func (s *Server) validateAttributes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listAttributeDefinitions(w http.ResponseWriter, r *http.Request) {
-	// Assert http GET
-	if r.Method != http.MethodGet {
-		http.Error(w, "Allowed methods: [ GET ].", http.StatusMethodNotAllowed)
-		return
-	}
-	ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
-		slog.String("method", r.Method),
-		slog.String("url-path", r.URL.Path),
-	))
-
-	prefix := fmt.Sprintf("%s/v1/", s.cfg.Seeker.BaseURL.Path)
-	if !strings.HasPrefix(r.URL.Path, prefix) {
-		slog.DebugContext(ctx, "Expected prefix not in url path.", slog.String("expected-prefix", prefix))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-
-	rest := strings.TrimPrefix(r.URL.Path, prefix)
-	before, after, found := strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.funcGroupCode {
-		slog.DebugContext(ctx, "Request has wrong functional group.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
-		return
-	}
-	rest = after
-	before, _, found = strings.Cut(rest, "/")
-	if !found {
-		slog.DebugContext(ctx, "Unexpected postfix.", slog.String("postfix", rest))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: "Not found."}, http.StatusNotFound)
-		return
-	}
-	if before != s.kind {
-		slog.DebugContext(ctx, "Request has wrong kind.", slog.String("expected", s.kind), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong kind, expected: %q, got: %q", s.kind, before)}, http.StatusBadRequest)
-		return
-	}
+	ctx := r.Context()
 
 	currentConfig, err := s.sv.JobConfiguration(r.Context(), s.jobName)
 	if err != nil {

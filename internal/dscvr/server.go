@@ -16,6 +16,8 @@ import (
 	"github.com/CZERTAINLY/Seeker/internal/log"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/CZERTAINLY/Seeker/internal/service"
+
+	"github.com/gorilla/mux"
 )
 
 type Server struct {
@@ -52,6 +54,7 @@ func New(ctx context.Context, cfg model.Service, sv *service.Supervisor, jobName
 
 	cfg.Seeker.BaseURL.Path = strings.TrimSuffix(cfg.Seeker.BaseURL.Path, "/")
 	cfg.Core.BaseURL.Path = strings.TrimSuffix(cfg.Core.BaseURL.Path, "/")
+	cfg.Repository.URL.Path = strings.TrimRight(cfg.Repository.URL.Path, "/")
 
 	var kind string
 	if cfg.Seeker.BaseURL.Port() == "" {
@@ -121,9 +124,18 @@ func (s *Server) UploadedCallback(err error, jobName, id string) {
 	s.uuid = ""
 }
 
-func (s *Server) Handler() *http.ServeMux {
+func (s *Server) Close(ctx context.Context) {
+	if err := s.db.Close(); err != nil {
+		slog.ErrorContext(ctx, "Got error while closing *sql.DB.", slog.String("error", err.Error()))
+	}
+}
 
-	mux := http.NewServeMux()
+// func (s *Server) Handler() *http.ServeMux {
+func (s *Server) Handler() *mux.Router {
+
+	r := mux.NewRouter()
+
+	r.Use(httpInfoContext)
 
 	for k, v := range DiscoveryProviderEndpoints() {
 		var handler func(http.ResponseWriter, *http.Request)
@@ -148,10 +160,29 @@ func (s *Server) Handler() *http.ServeMux {
 			// since this is a programmer's mistake, panic is deliberate
 			panic("function 'DiscoveryProviderEndpoints' was extended, but route was not added to Handler() in `internal/dscvr/server.go`")
 		}
-		mux.HandleFunc(fmt.Sprintf("%s %s%s", v.Method, s.cfg.Seeker.BaseURL.Path, v.Path), handler)
+
+		path := strings.Replace(v.Path, "{functionalGroup}", s.funcGroupCode, 1)
+		path = strings.Replace(path, "{kind}", s.kind, 1)
+
+		r.HandleFunc(fmt.Sprintf("%s%s", s.cfg.Seeker.BaseURL.Path, path), handler).Methods(v.Method)
 	}
 
-	return mux
+	return r
+}
+
+func httpInfoContext(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+
+		// Add structured HTTP attributes to context
+		ctx := log.ContextAttrs(r.Context(), slog.Group("http-info",
+			slog.String("method", r.Method),
+			slog.String("url-path", r.URL.Path),
+		))
+
+		// Pass updated request into chain
+		r = r.WithContext(ctx)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) RegisterConnector(ctx context.Context) error {

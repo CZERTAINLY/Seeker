@@ -232,14 +232,14 @@ func doRun(cmd *cobra.Command, args []string) error {
 	})
 
 	var discoveryHttp *http.Server
+	var dscvrSrv *dscvr.Server
 
 	switch config.Service.Mode {
 	case model.ServiceModeManual:
 		supervisor.Start("**")
 
 	case model.ServiceModeDiscovery:
-		dscvrSrv, err := dscvr.New(ctx, config.Service, supervisor, configPath)
-		if err != nil {
+		if dscvrSrv, err = dscvr.New(ctx, config.Service, supervisor, configPath); err != nil {
 			return err
 		}
 
@@ -286,6 +286,9 @@ func doRun(cmd *cobra.Command, args []string) error {
 		} else {
 			slog.InfoContext(ctx, "Discovery server shutdown gracefully.")
 		}
+	}
+	if dscvrSrv != nil {
+		dscvrSrv.Close(ctx)
 	}
 
 	return retErr

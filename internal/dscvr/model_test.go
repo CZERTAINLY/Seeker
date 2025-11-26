@@ -6,7 +6,7 @@ import (
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v4"
 )
 
 func TestValidateAttr(t *testing.T) {
