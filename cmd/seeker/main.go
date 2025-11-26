@@ -260,12 +260,12 @@ func doRun(cmd *cobra.Command, args []string) error {
 
 		supervisor = supervisor.WithUploaders(ctx, uploaders...)
 		discoveryHttp = &http.Server{
-			Addr:    fmt.Sprintf("0.0.0.0:%d", config.Service.Seeker.Addr.Port),
+			Addr:    config.Service.Seeker.Addr.String(),
 			Handler: dscvrSrv.Handler(),
 		}
 
 		go func() {
-			slog.Info("Starting http server.", slog.Int("port", config.Service.Seeker.Addr.Port))
+			slog.InfoContext(ctx, "Starting http server.", slog.String("addr", config.Service.Seeker.Addr.String()))
 			if err := discoveryHttp.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("`ListenAndServer()` failed.", slog.String("error", err.Error()))
 			}

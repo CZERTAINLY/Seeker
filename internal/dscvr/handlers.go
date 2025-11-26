@@ -355,7 +355,7 @@ func (s *Server) validateAttributes(w http.ResponseWriter, r *http.Request) {
 	}
 	if before != s.funcGroupCode {
 		slog.DebugContext(ctx, "Request has wrong functional group.", slog.String("expected", s.funcGroupCode), slog.String("got", before))
-		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group, expected: %q, got: %q", s.kind, before)}, http.StatusBadRequest)
+		toJsonErr(r.Context(), w, generalErrMsgResp{Message: fmt.Sprintf("Wrong functional group, expected: %q, got: %q", s.funcGroupCode, before)}, http.StatusBadRequest)
 		return
 	}
 	rest = after

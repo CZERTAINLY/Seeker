@@ -530,7 +530,7 @@ func (h *helper) C(e error, j, i string) {
 	h.count = h.count + 1
 }
 
-func TestBOMRepoUploadFuncWithCallbackSucces(t *testing.T) {
+func TestBOMRepoUploadFuncWithCallbackSuccess(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
