@@ -67,7 +67,7 @@ func (c Converter) parseNmap(ctx context.Context, nmap model.Nmap) (compos []cdx
 func (c Converter) sshToCompos(_ context.Context, port model.NmapPort) []cdx.Component {
 	ret := make([]cdx.Component, 0, len(port.SSHHostKeys))
 	for _, hkey := range port.SSHHostKeys {
-		compo := c.parseSSHHostKey(hkey)
+		compo := c.ParseSSHHostKey(hkey)
 		ret = append(ret, compo)
 	}
 	return ret
@@ -177,7 +177,7 @@ func parseSSHAlgorithm(algo string) cdx.CryptoAlgorithmProperties {
 	return p
 }
 
-func (c Converter) parseSSHHostKey(key model.SSHHostKey) cdx.Component {
+func (c Converter) ParseSSHHostKey(key model.SSHHostKey) cdx.Component {
 	algoProp := parseSSHAlgorithm(key.Type)
 	compo := cdx.Component{
 		BOMRef: "crypto/algorithm/" + key.Type + "@" + key.Bits,

@@ -163,7 +163,7 @@ func extractAlgorithmInfo(keyType string, key any) algorithmInfo {
 
 	case "Ed25519":
 		meta.name = "Ed25519"
-		meta.oid = "1.3.101.112"
+		meta.oid = "1.3.101.112" //NOSONAR - this is OID and not IP address
 		meta.paramSetID = "256"
 		meta.keySize = 256
 		meta.classicalSecurityLevel = 128

@@ -279,7 +279,7 @@ func sha256Hash(data []byte) []byte {
 
 // sha1Hash computes SHA-1 hash
 func sha1Hash(data []byte) []byte {
-	hash := sha1.Sum(data)
+	hash := sha1.Sum(data) // NOSONAR - we provide sha1 and sha256 hashes
 	return hash[:]
 }
 
