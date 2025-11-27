@@ -267,7 +267,7 @@ func doRun(cmd *cobra.Command, args []string) error {
 		go func() {
 			slog.InfoContext(ctx, "Starting http server.", slog.String("addr", config.Service.Seeker.Addr.String()))
 			if err := discoveryHttp.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error("`ListenAndServer()` failed.", slog.String("error", err.Error()))
+				slog.Error("`ListenAndServe()` failed.", slog.String("error", err.Error()))
 			}
 		}()
 		if err := dscvrSrv.RegisterConnector(ctx); err != nil {

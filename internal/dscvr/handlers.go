@@ -100,6 +100,7 @@ func (s *Server) getDiscovery(w http.ResponseWriter, r *http.Request) {
 			if idx < 0 {
 				slog.ErrorContext(ctx, "String returned from cbom repo callback has unexpected format.", slog.String("key", *dr.UploadKey))
 				http.Error(w, "Internal server error.", http.StatusInternalServerError)
+				return
 			}
 			keyID := (*dr.UploadKey)[:idx]
 			keyVersion := (*dr.UploadKey)[idx+len("-"):]

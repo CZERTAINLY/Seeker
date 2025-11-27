@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/dscvr/store"
 	"github.com/CZERTAINLY/Seeker/internal/log"
@@ -19,6 +20,8 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+const defaultCallbackStoreTimeout = 10 * time.Second
 
 type Server struct {
 	cfg model.Service
@@ -110,12 +113,15 @@ func (s *Server) UploadedCallback(err error, jobName, id string) {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCallbackStoreTimeout)
+	defer cancel()
+
 	if err == nil {
-		if err := store.FinishOK(context.Background(), s.db, s.uuid, id); err != nil {
+		if err := store.FinishOK(ctx, s.db, s.uuid, id); err != nil {
 			slog.Error("`store.FinishOK()` failed", slog.String("error", err.Error()))
 		}
 	} else {
-		if err := store.FinishErr(context.Background(), s.db, s.uuid, err.Error()); err != nil {
+		if err := store.FinishErr(ctx, s.db, s.uuid, err.Error()); err != nil {
 			slog.Error("`store.FinishErr()` failed", slog.String("error", err.Error()))
 		}
 	}
