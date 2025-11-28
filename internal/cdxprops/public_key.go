@@ -8,6 +8,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -21,7 +22,7 @@ func (c Converter) publicKeyComponents(_ context.Context, pubKeyAlg x509.PublicK
 	algo = info.componentWOBomRef(c.czertainly)
 	c.BOMRefHash(&algo, info.algorithmName)
 
-	pubKeyHash := c.hashPublicKey(pubKey)
+	pubKeyValue, pubKeyHash := c.hashPublicKey(pubKey)
 	// public key properties
 	var bomRef = fmt.Sprintf(
 		"crypto/key/%s@%s",
@@ -32,6 +33,7 @@ func (c Converter) publicKeyComponents(_ context.Context, pubKeyAlg x509.PublicK
 	relatedProps := &cdx.RelatedCryptoMaterialProperties{
 		Type:         cdx.RelatedCryptoMaterialTypePublicKey,
 		AlgorithmRef: cdx.BOMReference(algo.BOMRef),
+		Value:        pubKeyValue,
 	}
 
 	if info.keySize > 0 {
@@ -51,14 +53,16 @@ func (c Converter) publicKeyComponents(_ context.Context, pubKeyAlg x509.PublicK
 	return
 }
 
-func (c Converter) hashPublicKey(pubKey crypto.PublicKey) string {
+func (c Converter) hashPublicKey(pubKey crypto.PublicKey) (value, hash string) {
 	// Marshal to PKIX/SPKI format (standard DER encoding)
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
-		return ""
+		return
 	}
-	// Hash the bytes
-	return c.bomRefHasher(pubKeyBytes)
+
+	value = base64.StdEncoding.EncodeToString(pubKeyBytes)
+	hash = c.bomRefHasher(pubKeyBytes)
+	return
 }
 
 func publicKeyAlgorithmInfo(pubKeyAlg x509.PublicKeyAlgorithm, pubKey crypto.PublicKey) algorithmInfo {

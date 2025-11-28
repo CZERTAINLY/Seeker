@@ -200,7 +200,7 @@ func (c Converter) hashAlgorithm(name string) cdx.Component {
 			AssetType: cdx.CryptoAssetTypeAlgorithm,
 			AlgorithmProperties: &cdx.CryptoAlgorithmProperties{
 				Primitive:              cdx.CryptoPrimitiveHash,
-				ParameterSetIdentifier: strconv.Itoa(info.ClassicalSecurityLevel),
+				ParameterSetIdentifier: strconv.Itoa(info.ParameterSetIdentifier),
 				ExecutionEnvironment:   cdx.CryptoExecutionEnvironmentSoftwarePlainRAM,
 				ImplementationPlatform: c.ImplementationPlatform(),
 				Mode:                   cdx.CryptoAlgorithmModeUnknown, // Hash functions don't have modes

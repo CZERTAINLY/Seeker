@@ -140,30 +140,10 @@ func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model
 		_, pubKeyID, _ := strings.Cut(pubKeyCompo.BOMRef, "@")
 		privKeyAlgo, privKeyCompo := c.PrivateKey(ctx, pubKeyID, privKey)
 
-		d := []cdx.Dependency{
-			{
-				Ref: privKeyCompo.BOMRef,
-				Dependencies: &[]string{
-					pubKeyCompo.BOMRef,
-					pubKeyAlgo.BOMRef,
-					privKeyAlgo.BOMRef,
-				},
-			},
-			{
-				Ref: pubKeyCompo.BOMRef,
-				Dependencies: &[]string{
-					pubKeyAlgo.BOMRef,
-				},
-			},
-		}
-
 		compos = append(compos, []cdx.Component{
 			pubKeyAlgo, pubKeyCompo,
 			privKeyAlgo, privKeyCompo,
 		}...)
-
-		deps = append(deps, d...)
-
 	}
 
 	bundleCompos, err := c.restOfPEMBundleToCDX(ctx, bundle, bundle.Location)

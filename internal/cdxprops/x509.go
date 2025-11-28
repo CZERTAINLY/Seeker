@@ -111,18 +111,10 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 
 	deps := []cdx.Dependency{
 		{
-			Ref: mainCertCompo.BOMRef,
+			Ref: signatureAlgCompo.BOMRef,
 			Dependencies: &[]string{
-				signatureAlgCompo.BOMRef,
+				publicKeyAlgCompo.BOMRef,
 				hashAlgCompo.BOMRef,
-				publicKeyCompo.BOMRef,
-				publicKeyAlgCompo.BOMRef,
-			},
-		},
-		{
-			Ref: publicKeyCompo.BOMRef,
-			Dependencies: &[]string{
-				publicKeyAlgCompo.BOMRef,
 			},
 		},
 	}

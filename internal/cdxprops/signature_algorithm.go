@@ -99,15 +99,9 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 	var algorithmFamily string
 	var hash string
 	var paramSetID string
-	var cryptoFunctions []cdx.CryptoFunction
 	var padding cdx.CryptoPadding
 	var classicalSecurityLevel int
 	var nistQuantumSecurityLevel int
-
-	cryptoFunctions = []cdx.CryptoFunction{
-		cdx.CryptoFunctionSign,
-		cdx.CryptoFunctionVerify,
-	}
 
 	switch sigAlg {
 	case x509.MD2WithRSA:
@@ -208,7 +202,6 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 	default:
 		algorithmFamily = "Unknown"
 		paramSetID = "0"
-		cryptoFunctions = nil
 		classicalSecurityLevel = 0
 	}
 
@@ -221,7 +214,7 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 		ParameterSetIdentifier:   paramSetID,
 		ExecutionEnvironment:     execEnv,
 		CertificationLevel:       &certLevel,
-		CryptoFunctions:          &cryptoFunctions,
+		CryptoFunctions:          &[]cdx.CryptoFunction{cdx.CryptoFunctionSign},
 		ImplementationPlatform:   c.ImplementationPlatform(),
 		Padding:                  padding,
 		Curve:                    curveInformation(sigAlg),
