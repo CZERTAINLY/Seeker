@@ -28,6 +28,7 @@ func (d zipScanner) scan(ctx context.Context, b []byte) []certHit {
 		}
 	}
 
+	slog.DebugContext(ctx, "Result of ZIP/JAR/APK META-INF detection", "hits", len(out))
 	return out
 }
 

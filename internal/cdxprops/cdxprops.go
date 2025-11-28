@@ -152,6 +152,16 @@ func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model
 	}
 	compos = append(compos, bundleCompos...)
 
+	for i := range compos {
+		if compos[i].CryptoProperties == nil {
+			compos[i].CryptoProperties = &cdx.CryptoProperties{}
+		}
+		if compos[i].CryptoProperties.RelatedCryptoMaterialProperties == nil {
+			compos[i].CryptoProperties.RelatedCryptoMaterialProperties = &cdx.RelatedCryptoMaterialProperties{}
+		}
+		compos[i].CryptoProperties.RelatedCryptoMaterialProperties.Format = "PEM"
+	}
+
 	return &model.Detection{
 		Source:       "PEM",
 		Type:         model.DetectionTypePort,
