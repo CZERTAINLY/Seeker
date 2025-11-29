@@ -28,7 +28,6 @@ func (d pkcs12Scanner) scan(ctx context.Context, b []byte) []certHit {
 		}
 	}
 	slog.DebugContext(ctx, "Result of PKCS#12 (PFX) detection", "hits", len(out))
-
 	return out
 }
 

@@ -14,7 +14,7 @@ func (c Converter) leakToComponent(_ context.Context, location string, finding r
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
 	case finding.RuleID == "private-key":
-		return cdx.Component{}, true
+		cryptoType = cdx.RelatedCryptoMaterialTypePrivateKey
 	case strings.Contains(finding.RuleID, "jwt"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeToken
 	case strings.Contains(finding.RuleID, "token"):
