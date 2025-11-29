@@ -206,20 +206,21 @@ func (c Converter) getAlgorithmProperties(sigAlg x509.SignatureAlgorithm) (cdx.C
 	}
 
 	execEnv := cdx.CryptoExecutionEnvironmentSoftwarePlainRAM
-	// TODO: support for FIPS mode https://go.dev/doc/security/fips140
-	certLevel := []cdx.CryptoCertificationLevel{cdx.CryptoCertificationLevelNone}
+	var nqsl *int
+	if nistQuantumSecurityLevel != 0 {
+		nqsl = &nistQuantumSecurityLevel
+	}
 
 	cryptoProps := cdx.CryptoAlgorithmProperties{
 		Primitive:                cdx.CryptoPrimitiveSignature,
 		ParameterSetIdentifier:   paramSetID,
 		ExecutionEnvironment:     execEnv,
-		CertificationLevel:       &certLevel,
 		CryptoFunctions:          &[]cdx.CryptoFunction{cdx.CryptoFunctionSign},
 		ImplementationPlatform:   c.ImplementationPlatform(),
 		Padding:                  padding,
 		Curve:                    curveInformation(sigAlg),
 		ClassicalSecurityLevel:   &classicalSecurityLevel,
-		NistQuantumSecurityLevel: &nistQuantumSecurityLevel,
+		NistQuantumSecurityLevel: nqsl,
 	}
 
 	var props []cdx.Property

@@ -233,8 +233,6 @@ func (a dsaKeyAdapter) BitLen() int {
 }
 
 func (i algorithmInfo) componentWOBomRef(withCzertainly bool) cdx.Component {
-	certLevel := []cdx.CryptoCertificationLevel{cdx.CryptoCertificationLevelNone}
-
 	var nqsl *int
 	if i.pqc.nistQuantumSecurityLevel != 0 {
 		nqsl = &i.pqc.nistQuantumSecurityLevel
@@ -243,9 +241,7 @@ func (i algorithmInfo) componentWOBomRef(withCzertainly bool) cdx.Component {
 	cryptoProps := &cdx.CryptoProperties{
 		AssetType: cdx.CryptoAssetTypeAlgorithm,
 		AlgorithmProperties: &cdx.CryptoAlgorithmProperties{
-			Primitive:                cdx.CryptoPrimitiveAE,
 			ExecutionEnvironment:     cdx.CryptoExecutionEnvironmentSoftwarePlainRAM,
-			CertificationLevel:       &certLevel,
 			CryptoFunctions:          &i.cryptoFunctions,
 			ClassicalSecurityLevel:   &i.classicalSecurityLevel,
 			NistQuantumSecurityLevel: nqsl,
@@ -263,7 +259,6 @@ func (i algorithmInfo) componentWOBomRef(withCzertainly bool) cdx.Component {
 	compo := cdx.Component{
 		Type:             cdx.ComponentTypeCryptographicAsset,
 		Name:             i.name,
-		Description:      "Algorithm " + i.name,
 		CryptoProperties: cryptoProps,
 	}
 

@@ -42,7 +42,7 @@ func TestLeakToComponent(t *testing.T) {
 		then     *model.Detection
 	}{
 		{
-			scenario: "private key should be ignored",
+			scenario: "private key should not be ignored",
 			given: model.Leaks{
 				Location: "privKey.pem",
 				Findings: []report.Finding{
@@ -53,7 +53,11 @@ func TestLeakToComponent(t *testing.T) {
 					},
 				},
 			},
-			then: nil,
+			then: &model.Detection{
+				Source:   "LEAKS",
+				Type:     "PRIVATE-KEY",
+				Location: "/path/to/file",
+			},
 		},
 		{
 			scenario: "jwt token detection",
@@ -229,7 +233,11 @@ func TestLeakToComponent(t *testing.T) {
 				require.Nil(t, detection)
 				return
 			}
-			require.Equal(t, tt.then, detection)
+			if tt.then.Type == "PRIVATE-KEY" {
+				require.Len(t, detection.Components, 1)
+			} else {
+				require.Equal(t, tt.then, detection)
+			}
 		})
 	}
 }

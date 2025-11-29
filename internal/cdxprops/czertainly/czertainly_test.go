@@ -5,7 +5,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
-	"encoding/hex"
 	"net"
 	"testing"
 
@@ -72,11 +71,7 @@ func TestCertificateProperties(t *testing.T) {
 		},
 	}
 
-	keyUsage := []string{"digitalSignature", "keyEncipherment"}
-	extKeyUsage := []string{"clientAuth", "serverAuth"}
-	subjectAltNames := []string{"alt1.example", "alt2.example"}
-
-	props := czertainly.CertificateProperties("PEM", cert, keyUsage, extKeyUsage, subjectAltNames)
+	props := czertainly.CertificateProperties("PEM", cert, "sha256:fingerprint")
 
 	// build map of properties for assertions
 	values := make(map[string]string, len(props))
@@ -86,40 +81,7 @@ func TestCertificateProperties(t *testing.T) {
 
 	require.Equal(t, "PEM", values[czertainly.CertificateSourceFormat])
 	require.Equal(t, base64.StdEncoding.EncodeToString(cert.Raw), values[czertainly.CertificateBase64Content])
-	require.Equal(t, "0", values[czertainly.CertificateMaxPathLen]) // MaxPathLenZero true -> should include "0"
-	require.Equal(t, "digitalSignature,keyEncipherment", values[czertainly.CertificateKeyUsage])
-	require.Equal(t, "clientAuth,serverAuth", values[czertainly.CertificateExtendedKeyUsage])
-	require.Equal(t, "alt1.example,alt2.example", values[czertainly.CertificateSubjectAlternativeNames])
-	require.Equal(t, "http://ocsp.example", values[czertainly.CertificateOcspServers])
-	require.Equal(t, "http://issuing.example", values[czertainly.CertificateIssuingCertificateURLs])
-	require.Equal(t, "http://crl.example", values[czertainly.CertificateCrlDistributionPoints])
-	require.Equal(t, "3", values[czertainly.CertificateVersion])
-	require.Contains(t, values[czertainly.CertificateIssuer], "Issuer CN")
-	require.Contains(t, values[czertainly.CertificateSubject], "Subject CN")
-	require.Equal(t, "true", values[czertainly.CertificateBasicConstraintsValid])
-	require.Equal(t, "true", values[czertainly.CertificateIsCA])
-	require.Equal(t, hex.EncodeToString(cert.SubjectKeyId), values[czertainly.CertificateSubjectKeyId])
-	require.Equal(t, hex.EncodeToString(cert.AuthorityKeyId), values[czertainly.CertificateAuthorityKeyId])
-	require.Equal(t, "allowed.example", values[czertainly.CertificatePermittedDNSDomains])
-	require.Equal(t, "true", values[czertainly.CertificatePermittedDNSDomainsCritical])
-	require.Equal(t, "excluded.example", values[czertainly.CertificateExcludedDNSDomains])
-	require.Equal(t, ipNet1.String(), values[czertainly.CertificatePermittedIPRanges])
-	require.Equal(t, ipNet2.String(), values[czertainly.CertificateExcludedIPRanges])
-	require.Equal(t, "allowed@example.com", values[czertainly.CertificatePermittedEmailAddresses])
-	require.Equal(t, "excluded@example.com", values[czertainly.CertificateExcludedEmailAddresses])
-	require.Equal(t, "allowed.uri", values[czertainly.CertificatePermittedURIDomains])
-	require.Equal(t, "excluded.uri", values[czertainly.CertificateExcludedURIDomains])
-	require.Equal(t, "1.2.3", values[czertainly.CertificatePolicyIdentifiers])
-	require.Equal(t, "", values[czertainly.CertificatePolicies])
-	require.Equal(t, "0", values[czertainly.CertificateInhibitAnyPolicy])
-	require.Equal(t, "0", values[czertainly.CertificateInhibitPolicyMapping])
-	require.Equal(t, "0", values[czertainly.CertificateRequireExplicitPolicy])
-	require.Equal(t, "", values[czertainly.CertificatePolicyMappings])
-	require.Equal(t, "2.5.29.15", values[czertainly.CertificateUnhandledCriticalExtensions])
-	require.Equal(t, "1.2.840", values[czertainly.CertificateUnknownExtKeyUsage])
-	// extensions
-	require.Equal(t, "critical=true,value=0a", values[czertainly.CertificateExtensionPrefix+"1.2.3"])
-	require.Equal(t, "critical=false,value=0b", values[czertainly.CertificateExtraExtensionPrefix+"1.2.4"])
+	require.Equal(t, "sha256:fingerprint", values[czertainly.CertificateFingerprint])
 }
 
 func TestSSHHostKeyProperties(t *testing.T) {

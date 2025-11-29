@@ -28,7 +28,7 @@ func (c Converter) restOfPEMBundleToCDX(ctx context.Context, bundle model.PEMBun
 
 	// Convert public keys
 	for _, pubKey := range bundle.PublicKeys {
-		algo, pubKeyCompo := c.publicKeyComponents(ctx, getPublicKeyAlgorithm(pubKey), pubKey)
+		algo, pubKeyCompo := c.publicKeyComponents(ctx, getPublicKeyAlgorithm(pubKey), pubKey, 0)
 		pubKeyCompo.CryptoProperties.RelatedCryptoMaterialProperties.Format = "PEM"
 		components = append(components, algo)
 		components = append(components, pubKeyCompo)
@@ -126,14 +126,14 @@ type pkcs8 struct {
 }
 
 // ML-KEM private key structure
-type mlkemPrivateKey struct {
+type unsupportedPrivateKey struct {
 	Seed       []byte
 	PrivateKey []byte
 }
 
 func (c Converter) unsupportedPKCS8PrivateKey(pkcs8Key pkcs8, info algorithmInfo, _ []byte) (algo, key cdx.Component, err error) {
-	var mlkemKey mlkemPrivateKey
-	_, err = asn1.Unmarshal(pkcs8Key.PrivateKey, &mlkemKey)
+	var privKey unsupportedPrivateKey
+	_, err = asn1.Unmarshal(pkcs8Key.PrivateKey, &privKey)
 	if err != nil {
 		err = fmt.Errorf("parsing PKCS#8 private key via ASN.1: %w", err)
 		return

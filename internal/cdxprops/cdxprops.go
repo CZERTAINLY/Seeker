@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
+	"maps"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -136,6 +138,7 @@ func (c Converter) PEMBundle(ctx context.Context, bundle model.PEMBundle) *model
 			ctx,
 			getPublicKeyAlgorithm(pubKey),
 			pubKey,
+			0,
 		)
 		_, pubKeyID, _ := strings.Cut(pubKeyCompo.BOMRef, "@")
 		privKeyAlgo, privKeyCompo := c.PrivateKey(ctx, pubKeyID, privKey)
@@ -200,4 +203,43 @@ func (c Converter) BOMRefHash(compo *cdx.Component, name string) {
 	b, _ := json.Marshal(compo)
 	h := c.bomRefHasher(b)
 	compo.BOMRef = name + "@" + h
+}
+
+func setAlgorithmPrimitive(compo *cdx.Component, primitive cdx.CryptoPrimitive) {
+	if compo == nil {
+		return
+	}
+	if compo.CryptoProperties == nil {
+		compo.CryptoProperties = &cdx.CryptoProperties{}
+	}
+	if compo.CryptoProperties.AlgorithmProperties == nil {
+		compo.CryptoProperties.AlgorithmProperties = &cdx.CryptoAlgorithmProperties{}
+	}
+	compo.CryptoProperties.AlgorithmProperties.Primitive = primitive
+}
+
+func addAlgorithmCrpyoFunctions(compo *cdx.Component, functions ...cdx.CryptoFunction) {
+	if compo == nil {
+		return
+	}
+	if compo.CryptoProperties == nil {
+		compo.CryptoProperties = &cdx.CryptoProperties{}
+	}
+	if compo.CryptoProperties.AlgorithmProperties == nil {
+		compo.CryptoProperties.AlgorithmProperties = &cdx.CryptoAlgorithmProperties{}
+	}
+
+	set := make(map[cdx.CryptoFunction]struct{})
+	for _, f := range *compo.CryptoProperties.AlgorithmProperties.CryptoFunctions {
+		set[f] = struct{}{}
+	}
+	for _, f := range functions {
+		set[f] = struct{}{}
+	}
+	funcs := slices.Collect(maps.Keys(set))
+	var p *[]cdx.CryptoFunction
+	if len(funcs) != 0 {
+		p = &funcs
+	}
+	compo.CryptoProperties.AlgorithmProperties.CryptoFunctions = p
 }

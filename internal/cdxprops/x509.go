@@ -96,10 +96,15 @@ func (c Converter) certHitToComponents(ctx context.Context, hit model.CertHit) (
 		ctx,
 		hit.Cert.PublicKeyAlgorithm,
 		hit.Cert.PublicKey,
+		hit.Cert.KeyUsage,
 	)
 	certificateRelatedProperties(&mainCertCompo, hit.Cert)
 	mainCertCompo.CryptoProperties.CertificateProperties.SignatureAlgorithmRef = cdx.BOMReference(signatureAlgCompo.BOMRef)
 	mainCertCompo.CryptoProperties.CertificateProperties.SubjectPublicKeyRef = cdx.BOMReference(publicKeyAlgCompo.BOMRef)
+
+	setAlgorithmPrimitive(&signatureAlgCompo, cdx.CryptoPrimitiveSignature)
+	setAlgorithmPrimitive(&hashAlgCompo, cdx.CryptoPrimitiveHash)
+	setAlgorithmPrimitive(&publicKeyAlgCompo, cdx.CryptoPrimitiveSignature)
 
 	compos := []cdx.Component{
 		mainCertCompo,
@@ -129,10 +134,6 @@ func (c Converter) certComponent(_ context.Context, hit model.CertHit) cdx.Compo
 	// Extract fingerprints
 	fingerprints := extractFingerprints(cert)
 	// Extract subject alternative names
-	subjectAltNames := extractSubjectAlternativeNames(cert)
-	// Extract key usage and extended key usage
-	keyUsage := extractKeyUsage(cert.KeyUsage)
-	extKeyUsage := extractExtendedKeyUsage(cert.ExtKeyUsage)
 	name := formatCertificateName(cert)
 
 	// Build certificate properties
@@ -147,12 +148,10 @@ func (c Converter) certComponent(_ context.Context, hit model.CertHit) cdx.Compo
 
 	// Build the certificate component
 	certComponent := cdx.Component{
-		BOMRef:      "crypto/certificate/" + name + "@" + certHash,
-		Type:        cdx.ComponentTypeCryptographicAsset,
-		Name:        name,
-		Description: "Public key (x509)",
-		Version:     cert.SerialNumber.String(),
-		Hashes:      fingerprints,
+		BOMRef: "crypto/certificate/" + name + "@" + certHash,
+		Type:   cdx.ComponentTypeCryptographicAsset,
+		Name:   name,
+		Hashes: &fingerprints,
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType:             cdx.CryptoAssetTypeCertificate,
 			CertificateProperties: &certProps,
@@ -163,9 +162,7 @@ func (c Converter) certComponent(_ context.Context, hit model.CertHit) cdx.Compo
 		props := czertainly.CertificateProperties(
 			hit.Source,
 			cert,
-			keyUsage,
-			extKeyUsage,
-			subjectAltNames,
+			"sha256:"+fingerprints[0].Value,
 		)
 		certComponent.Properties = &props
 	}
@@ -213,22 +210,6 @@ func certificateRelatedProperties(compo *cdx.Component, cert *x509.Certificate) 
 	if compo.CryptoProperties.RelatedCryptoMaterialProperties == nil {
 		compo.CryptoProperties.RelatedCryptoMaterialProperties = &cdx.RelatedCryptoMaterialProperties{}
 	}
-	relatedProps := compo.CryptoProperties.RelatedCryptoMaterialProperties
-	relatedProps.ID = cert.SerialNumber.String()
-
-	// Set state based on validity
-	now := time.Now()
-	if now.Before(cert.NotBefore) {
-		relatedProps.State = cdx.CryptoKeyStatePreActivation
-	} else if now.After(cert.NotAfter) {
-		relatedProps.State = cdx.CryptoKeyStateDeactivated
-	} else {
-		relatedProps.State = cdx.CryptoKeyStateActive
-	}
-
-	relatedProps.CreationDate = cert.NotBefore.Format(time.RFC3339)
-	relatedProps.ActivationDate = cert.NotBefore.Format(time.RFC3339)
-	relatedProps.ExpirationDate = cert.NotAfter.Format(time.RFC3339)
 }
 
 // formatCertificateName creates a human-readable name for the certificate
@@ -249,7 +230,7 @@ func formatCertificateName(cert *x509.Certificate) string {
 }
 
 // extractFingerprints calculates certificate fingerprints
-func extractFingerprints(cert *x509.Certificate) *[]cdx.Hash {
+func extractFingerprints(cert *x509.Certificate) []cdx.Hash {
 	hashes := []cdx.Hash{
 		{
 			Algorithm: cdx.HashAlgoSHA256,
@@ -260,7 +241,7 @@ func extractFingerprints(cert *x509.Certificate) *[]cdx.Hash {
 			Value:     hex.EncodeToString(sha1Hash(cert.Raw)),
 		},
 	}
-	return &hashes
+	return hashes
 }
 
 // sha256Hash computes SHA-256 hash
