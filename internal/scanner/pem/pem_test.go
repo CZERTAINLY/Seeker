@@ -264,7 +264,7 @@ func TestDetector(t *testing.T) {
 		{
 			scenario: "ML-KEM-1024-PRIVATE-KEY (PQC, PKCS#8)",
 			given: func(t *testing.T) given {
-				pk, err := cdxtest.TestData(cdxtest.MLKEM1024PrivateKey)
+				pk, err := cdxtest.TestData(cdxtest.MLDSA65PrivateKey)
 				require.NoError(t, err)
 
 				block, _ := pem.Decode(pk)

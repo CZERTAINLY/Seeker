@@ -383,3 +383,97 @@ Data for the seeker under the test are stored in a temporary directory, which is
 ```sh
 go test -v -test.keepdir
 ```
+
+# Cryptographic Bill Of Materials (CBOM)
+
+The produced CBOM file conforms [CycloneDX BOM 1.6](https://cyclonedx.org/schema/bom-1.6.schema.json). Seeker can identify and correlate identical cryptographic materials across multiple sources and by generating a stable `bom-ref` for each component. This identifier is derived by hashing the component’s content (SHA-256 by default).
+
+There are two exceptions
+
+The generated CBOM file conforms to the CycloneDX BOM 1.6
+
+1. **Private keys** - where hash would leak the private key itself. In this case the hash of a corresponding public key is used.
+
+```json
+[
+  {"bom-ref": "crypto/key/rsa-4096@sha256:f1ac7a3953323b932aade7e47c045d7981e4602fe465883d21f77051cf3c2dbc"},
+  {"bom-ref": "crypto/private_key/rsa-4096@sha256:f1ac7a3953323b932aade7e47c045d7981e4602fe465883d21f77051cf3c2dbc",
+    }
+]
+```
+
+2. **Algorithms** - the algorithm (SHA-256, RSA-4096, ...) component itself does not have "inherent" content to hash. So hash of a its CycloneDX JSON representation is used, ensuring the different algorithms or same algorithm with different BOM properties will receive unique reference.
+
+When computing this hash, Seeker excludes the bom-ref and evidence fields to avoid circular dependencies.
+
+A stable, content-based `bom-ref` enables seeker to reliably identify the same cryptographic materials across diverse sources, providing a complete and unified view of an organization’s cryptographic assets.
+
+```json
+{
+  "bom-ref": "crypto/algorithm/rsa-4096@sha256:2cc0b015108f202753b120182f3c437db4d5bf6e668b019a1f9099f5709e167f",
+  "type": "cryptographic-asset",
+  "name": "RSA-4096",
+  "evidence": {
+    "occurrences": [
+      {
+	"location": "testing/cert.pem"
+      },
+      {
+	"location": "testing/key.pem"
+      }
+    ]
+  }
+}
+```
+
+# Post Quantum Cryptography
+
+Seeker, as any tool written in Go, supports only algorithms, which are present in a standard library, which PQC are, as of Go 1.25, not. There is however a support for detecting such algorithms in place and `ml-ds` family can be detected.
+
+However a better support is needed.
+
+```json
+    {
+      "bom-ref": "crypto/algorithm/ml-dsa-65@sha256:f8c9a2448272eebee3bf9c777bff35d1f84d59166534cc848eed418f3fbc08a3",
+      "type": "cryptographic-asset",
+      "name": "ML-DSA-65",
+      "properties": [
+        {
+          "name": "czertainly:component:algorithm:pqc:private_key_size",
+          "value": "4032"
+        },
+        {
+          "name": "czertainly:component:algorithm:pqc:public_key_size",
+          "value": "1952"
+        },
+        {
+          "name": "czertainly:component:algorithm:pqc:signature_size",
+          "value": "3309"
+        }
+      ],
+      "evidence": {
+        "occurrences": [
+          {
+            "location": "testing/pqc.pem"
+          }
+        ]
+      },
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "parameterSetIdentifier": "65",
+          "executionEnvironment": "software-plain-ram",
+          "certificationLevel": [
+            "none"
+          ],
+          "cryptoFunctions": [
+            "sign"
+          ],
+          "classicalSecurityLevel": 192,
+          "nistQuantumSecurityLevel": 3
+        },
+        "oid": "2.16.840.1.101.3.4.3.18"
+      }
+    },
+```

@@ -22,6 +22,7 @@ func (d derScanner) scan(ctx context.Context, b []byte) []certHit {
 				out = append(out, certHit{Cert: c, Source: "DER"})
 			}
 		}
+		slog.DebugContext(ctx, "Result of Raw DER detection", "hits", len(out))
 		return out
 	}
 
@@ -35,5 +36,6 @@ func (d derScanner) scan(ctx context.Context, b []byte) []certHit {
 			}
 		}
 	}
+	slog.DebugContext(ctx, "Result of DER PKCS#7 detection", "hits", len(out))
 	return out
 }

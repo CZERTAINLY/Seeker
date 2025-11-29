@@ -27,6 +27,7 @@ func (d jksScanner) scan(ctx context.Context, b []byte) []certHit {
 		}
 	}
 
+	slog.DebugContext(ctx, "Result of JKS / JCEKS (Java keystores) detection", "hits", len(out))
 	return out
 }
 

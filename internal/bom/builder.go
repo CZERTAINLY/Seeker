@@ -1,10 +1,15 @@
 package bom
 
 import (
+	"context"
 	"io"
+	"log/slog"
+	"maps"
 	"runtime/debug"
+	"slices"
 	"time"
 
+	"github.com/CZERTAINLY/Seeker/internal/model"
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/google/uuid"
 )
@@ -22,37 +27,72 @@ func init() {
 
 // Builder is a builder pattern for a CycloneDX BOM structure
 type Builder struct {
-	components   []cdx.Component
-	dependencies []cdx.Dependency
+	components   map[string]*cdx.Component
+	dependencies map[string]*[]string
 	properties   []cdx.Property
 }
 
 func NewBuilder() *Builder {
 	return &Builder{
-		// those MUST be initialized as cyclone-dx JSON schema do not allow items to be null
-		components:   []cdx.Component{},
-		dependencies: []cdx.Dependency{},
+		components:   make(map[string]*cdx.Component),
+		dependencies: make(map[string]*[]string),
 		properties:   []cdx.Property{},
 	}
 }
 
-func (b *Builder) AppendComponents(components ...cdx.Component) *Builder {
-	b.components = append(b.components, components...)
+func (b *Builder) AppendDetections(ctx context.Context, detections ...model.Detection) *Builder {
+	for _, d := range detections {
+		b.appendDetection(ctx, d)
+	}
 	return b
 }
 
-func (b *Builder) AppendProperties(properties ...cdx.Property) *Builder {
-	b.properties = append(b.properties, properties...)
-	return b
-}
+func (b *Builder) appendDetection(ctx context.Context, detection model.Detection) {
+	for _, dep := range detection.Dependencies {
+		if dep.Ref == "" {
+			continue
+		}
+		_, ok := b.dependencies[dep.Ref]
+		if ok {
+			slog.DebugContext(ctx, "ignoring dependency: already stored", "ref", dep.Ref)
+			continue
+		}
+		b.dependencies[dep.Ref] = dep.Dependencies
+	}
 
-func (b *Builder) AppendDependencies(dependencies ...cdx.Dependency) *Builder {
-	b.dependencies = append(b.dependencies, dependencies...)
-	return b
+	for _, compo := range detection.Components {
+		if compo.BOMRef == "" || compo.Name == "" {
+			continue
+		}
+		stored, ok := b.components[compo.BOMRef]
+		if ok {
+			addEvidenceLocation(stored, detection.Location)
+			continue
+		}
+		addEvidenceLocation(&compo, detection.Location)
+		b.components[compo.BOMRef] = &compo
+	}
 }
 
 // BOM returns a cdx.BOM based on a data inside the Builder
 func (b *Builder) BOM() cdx.BOM {
+	components := make([]cdx.Component, 0, len(b.components))
+	for _, compop := range b.components {
+		if compop == nil {
+			continue
+		}
+		components = append(components, *compop)
+	}
+
+	dependencies := make([]cdx.Dependency, 0, len(b.dependencies))
+	for bomRef, depsp := range b.dependencies {
+		dep := cdx.Dependency{
+			Ref:          bomRef,
+			Dependencies: depsp,
+		}
+		dependencies = append(dependencies, dep)
+	}
+
 	bom := cdx.BOM{
 		JSONSchema:   "https://cyclonedx.org/schema/bom-1.6.schema.json",
 		BOMFormat:    "CycloneDX",
@@ -83,8 +123,8 @@ func (b *Builder) BOM() cdx.BOM {
 				},
 			},
 		},
-		Components:   &b.components,
-		Dependencies: &b.dependencies,
+		Components:   &components,
+		Dependencies: &dependencies,
 		Properties:   &b.properties,
 	}
 	return bom
@@ -94,4 +134,39 @@ func (b *Builder) BOM() cdx.BOM {
 func (b *Builder) AsJSON(w io.Writer) error {
 	bom := b.BOM()
 	return cdx.NewBOMEncoder(w, cdx.BOMFileFormatJSON).SetPretty(true).Encode(&bom)
+}
+
+// Add (append) an evidence.occurrence location if non-empty.
+// ensures location is present only once
+func addEvidenceLocation(c *cdx.Component, locations ...string) {
+	if c == nil || locations == nil {
+		return
+	}
+	if c.Evidence == nil {
+		c.Evidence = &cdx.Evidence{}
+	}
+	if c.Evidence.Occurrences == nil {
+		c.Evidence.Occurrences = &[]cdx.EvidenceOccurrence{}
+	}
+
+	stored := make(map[string]struct{})
+	for _, occ := range *c.Evidence.Occurrences {
+		stored[occ.Location] = struct{}{}
+	}
+	for _, loc := range locations {
+		stored[loc] = struct{}{}
+	}
+
+	if len(stored) == 0 {
+		return
+	}
+
+	occurences := make([]cdx.EvidenceOccurrence, 0, len(stored))
+	for _, loc := range slices.Sorted(maps.Keys(stored)) {
+		occurences = append(occurences, cdx.EvidenceOccurrence{
+			Location: loc,
+		})
+	}
+
+	c.Evidence.Occurrences = &occurences
 }

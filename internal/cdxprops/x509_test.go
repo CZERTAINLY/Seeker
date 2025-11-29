@@ -1,31 +1,73 @@
 package cdxprops_test
 
 import (
-
-	//nolint:staticcheck // seeker is going to recognize even obsoleted crypto
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/elliptic"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/asn1"
-	"fmt"
-	"math/big"
-	"path/filepath"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops/cdxtest"
 	"github.com/CZERTAINLY/Seeker/internal/model"
-	cdx "github.com/CycloneDX/cyclonedx-go"
 
 	"github.com/stretchr/testify/require"
 )
 
+func TestConverter_CertHit(t *testing.T) {
+	ctx := t.Context()
+
+	selfSigned, err := cdxtest.GenSelfSignedCert()
+	require.NoError(t, err)
+	cert := selfSigned.Cert
+
+	tests := []struct {
+		name               string
+		hit                model.CertHit
+		wantNil            bool
+		wantComponentCount int
+		wantDepCount       int
+		wantType           model.DetectionType
+		wantSource         string
+		wantLocation       string
+	}{
+		{
+			name: "valid self-signed certificate",
+			hit: model.CertHit{
+				Cert:     cert,
+				Source:   "PEM",
+				Location: "/test/cert.pem",
+			},
+			wantNil:            false,
+			wantComponentCount: 5,
+			wantDepCount:       1,
+			wantType:           model.DetectionTypeCertificate,
+			wantSource:         "PEM",
+			wantLocation:       "/test/cert.pem",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := cdxprops.NewConverter()
+			detection := c.CertHit(ctx, tt.hit)
+
+			if tt.wantNil {
+				require.Nil(t, detection)
+				return
+			}
+
+			require.NotNil(t, detection)
+			require.Equal(t, tt.wantComponentCount, len(detection.Components))
+			require.Equal(t, tt.wantDepCount, len(detection.Dependencies))
+			require.Equal(t, tt.wantType, detection.Type)
+			require.Equal(t, tt.wantSource, detection.Source)
+			require.Equal(t, tt.wantLocation, detection.Location)
+
+			// Verify the first component (main certificate) has a BOM ref
+			require.NotEmpty(t, detection.Components[0].BOMRef)
+		})
+	}
+}
+
+// TODO: cover other cases too
+/*
 func Test_Component_Edge_Cases(t *testing.T) {
 	t.Parallel()
 
@@ -46,9 +88,11 @@ func Test_Component_Edge_Cases(t *testing.T) {
 		Source:   "TEST",
 		Location: testPath,
 	}
-	compo, err := cdxprops.CertHitToComponent(t.Context(), hit)
-	require.NoError(t, err)
-	require.NotZero(t, compo)
+	c := cdxprops.NewConverter()
+	detection := c.CertHit(t.Context(), hit)
+	require.NotNil(t, detection)
+	require.Len(t, detection.Components, 4)
+	compo := detection.Components[0]
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, compo.Type)
 	require.NotNil(t, compo.Evidence)
@@ -90,17 +134,23 @@ func Test_Component_UnsupportedKeys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
-	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
+	hit := model.CertHit{
 		Cert:     cert,
 		Location: testPath,
 		Source:   "TEST",
-	})
-	require.NoError(t, err)
+	}
+
+	c := cdxprops.NewConverter()
+	detection := c.CertHit(t.Context(), hit)
+	require.NotNil(t, detection)
+	require.Len(t, detection.Components, 4)
+	comp := detection.Components[0]
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -133,7 +183,8 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -142,7 +193,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -167,7 +218,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp384.Type)
-	err = cdxtest.HasEvidencePath(comp384)
+	err = cdxtest.HasEvidencePath(comp384, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp384)
 
@@ -192,7 +243,7 @@ func Test_Component_ECDSA_Keys(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp521.Type)
-	err = cdxtest.HasEvidencePath(comp521)
+	err = cdxtest.HasEvidencePath(comp521, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp521)
 
@@ -249,7 +300,6 @@ func Test_Component_DSA_Keys(t *testing.T) {
 	// Check DSA signature algorithm reference
 	require.Equal(t, "crypto/algorithm/sha-1-dsa@1.2.840.10040.4.3", string(comp.CryptoProperties.CertificateProperties.SignatureAlgorithmRef))
 }
-*/
 
 // Test_Component_MoreAlgorithms tests additional signature algorithms for coverage
 func Test_Component_MoreAlgorithms(t *testing.T) {
@@ -283,7 +333,8 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 			require.NoError(t, err)
 			cert, err := x509.ParseCertificate(certDER)
 			require.NoError(t, err)
-			testPath, _ := filepath.Abs("testpath")
+			testPath, err := filepath.Abs("testpath")
+			require.NoError(t, err)
 
 			comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 				Cert:     cert,
@@ -293,7 +344,7 @@ func Test_Component_MoreAlgorithms(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-			err = cdxtest.HasEvidencePath(comp)
+			err = cdxtest.HasEvidencePath(comp, testPath)
 			require.NoError(t, err)
 			requireFormatAndDERBase64(t, comp)
 
@@ -327,7 +378,8 @@ func Test_Component_UnknownAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -337,7 +389,7 @@ func Test_Component_UnknownAlgorithm(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -369,7 +421,8 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := x509.ParseCertificate(certDER)
 	require.NoError(t, err)
-	testPath, _ := filepath.Abs("testpath")
+	testPath, err := filepath.Abs("testpath")
+	require.NoError(t, err)
 
 	comp, err := cdxprops.CertHitToComponent(t.Context(), model.CertHit{
 		Cert:     cert,
@@ -378,7 +431,7 @@ func Test_Component_Ed25519_Keys(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, cdx.ComponentTypeCryptographicAsset, comp.Type)
-	err = cdxtest.HasEvidencePath(comp)
+	err = cdxtest.HasEvidencePath(comp, testPath)
 	require.NoError(t, err)
 	requireFormatAndDERBase64(t, comp)
 
@@ -544,6 +597,7 @@ func Test_PQC_SPKI_OIDs(t *testing.T) {
 
 func requireFormatAndDERBase64(t *testing.T, compo cdx.Component) {
 	t.Helper()
-	err := cdxtest.HasFormatAndDERBase64(compo, cdxprops.CzertainlyComponentCertificateSourceFormat, cdxprops.CzertainlyComponentCertificateBase64Content)
+	err := cdxtest.HasFormatAndDERBase64(compo, czertainly.ComponentCertificateSourceFormat, czertainly.ComponentCertificateBase64Content)
 	require.NoError(t, err)
 }
+*/

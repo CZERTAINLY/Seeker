@@ -8,70 +8,12 @@ import (
 	"testing"
 
 	"github.com/CZERTAINLY/Seeker/internal/cdxprops"
+	"github.com/CZERTAINLY/Seeker/internal/cdxprops/czertainly"
 	"github.com/CZERTAINLY/Seeker/internal/model"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 	"github.com/stretchr/testify/require"
 )
-
-func TestParseSSHAlgorithm(t *testing.T) {
-	t.Parallel()
-
-	_, ok := cdxprops.ParseSSHAlgorithm("unknown-algorithm")
-	require.False(t, ok)
-
-	algo, ok := cdxprops.ParseSSHAlgorithm("ecdsa-sha2-nistp256")
-	require.True(t, ok)
-	exp := cdx.CryptoAlgorithmProperties{
-		Primitive:              cdx.CryptoPrimitiveSignature,
-		ParameterSetIdentifier: "nistp256@1.2.840.10045.3.1.7",
-		Curve:                  "nistp256",
-		CryptoFunctions:        &[]cdx.CryptoFunction{cdx.CryptoFunctionVerify},
-	}
-	require.Equal(t, exp, algo)
-}
-
-func TestParseSSHHostKey(t *testing.T) {
-	_, err := cdxprops.ParseSSHHostKey(model.SSHHostKey{
-		Type: "unsupported-algo",
-		Bits: "0",
-	})
-	require.Error(t, err)
-
-	key := model.SSHHostKey{
-		Type:        "ecdsa-sha2-nistp256",
-		Bits:        "256",
-		Key:         "AAAA-test-public-key",
-		Fingerprint: "SHA256:dummyfingerprint",
-	}
-
-	compo, err := cdxprops.ParseSSHHostKey(key)
-	require.NoError(t, err)
-
-	require.Equal(t, "crypto/ssh-hostkey/"+key.Type+"@"+key.Bits, compo.BOMRef)
-	require.Equal(t, key.Type, compo.Name)
-	require.Equal(t, cdx.ComponentTypeCryptographicAsset, compo.Type)
-	require.NotNil(t, compo.CryptoProperties)
-
-	cp := compo.CryptoProperties
-	require.Equal(t, cdx.CryptoAssetTypeAlgorithm, cp.AssetType)
-	require.NotNil(t, cp.AlgorithmProperties)
-
-	algo := cp.AlgorithmProperties
-	require.Equal(t, cdx.CryptoPrimitiveSignature, algo.Primitive)
-	require.Equal(t, "nistp256@1.2.840.10045.3.1.7", algo.ParameterSetIdentifier)
-	require.Equal(t, "nistp256", algo.Curve)
-	require.Equal(t, algo.ParameterSetIdentifier, cp.OID)
-
-	props := map[string]string{}
-	if compo.Properties != nil {
-		for _, p := range *compo.Properties {
-			props[p.Name] = p.Value
-		}
-	}
-	require.Equal(t, key.Key, props[cdxprops.CzertainlyComponentSSHHostKeyContent])
-	require.Equal(t, key.Fingerprint, props[cdxprops.CzertainlyComponentSSHHostKeyFingerprintContent])
-}
 
 func TestParseTLSVersion(t *testing.T) {
 	tests := []struct {
@@ -261,8 +203,11 @@ YhdzwN34rxXHelPfnN3lpV674QQnbYoVDDpfcZf+ZgkbvOk=
 		},
 	}
 
-	compos := cdxprops.ParseNmap(t.Context(), nmap)
-	require.Len(t, compos, 3)
+	c := cdxprops.NewConverter()
+	d := c.Nmap(t.Context(), nmap)
+	require.NotNil(t, d)
+	compos := d.Components
+	require.Len(t, compos, 7)
 
 	const expectedTLS12 = `
 {
@@ -414,7 +359,7 @@ YhdzwN34rxXHelPfnN3lpV674QQnbYoVDDpfcZf+ZgkbvOk=
 		{
 			scenario: "cert",
 			given:    compos[2],
-			then:     `{"type":"cryptographic-asset","name":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","version":"50188223309792639209962727766352873045328443312","properties":[{"name":"czertainly:component:certificate:source_format","value":"NMAP"},{"name":"czertainly:component:certificate:base64_content","value":"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"}],"evidence":{"occurrences":[{"location":"127.0.0.1:40645"}]},"cryptoProperties":{"assetType":"certificate","certificateProperties":{"subjectName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","issuerName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","notValidBefore":"2025-10-20T10:16:07Z","notValidAfter":"2035-10-18T10:16:07Z","signatureAlgorithmRef":"crypto/algorithm/sha-256-rsa@1.2.840.113549.1.1.11","subjectPublicKeyRef":"crypto/key/rsa-4096@1.2.840.113549.1.1.1","certificateFormat":"X.509","certificateExtension":".1:40645"}}}`,
+			then:     `{"bom-ref":"crypto/certificate/CommonNameOrHostname@sha256:0c06b74cdea91e45929b8b94e107ed9201732158be6381fa87ee0af9a830423f","type":"cryptographic-asset","name":"CommonNameOrHostname","hashes":[{"alg":"SHA-256","content":"0c06b74cdea91e45929b8b94e107ed9201732158be6381fa87ee0af9a830423f"},{"alg":"SHA-1","content":"3e0450b54b0d72093a0fcb9bd0280653b6ea90b9"}],"properties":[{"name":"czertainly:component:certificate:source_format","value":"NMAP"},{"name":"czertainly:component:certificate:base64_content","value":"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"},{"name":"czertainly:component:certificate:fingerprint","value":"sha256:0c06b74cdea91e45929b8b94e107ed9201732158be6381fa87ee0af9a830423f"}],"cryptoProperties":{"assetType":"certificate","certificateProperties":{"subjectName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","issuerName":"CN=CommonNameOrHostname,OU=CompanySectionName,O=CompanyName,L=CityName,ST=StateName,C=XX","notValidBefore":"2025-10-20T10:16:07Z","notValidAfter":"2035-10-18T10:16:07Z","signatureAlgorithmRef":"crypto/algorithm/sha-256-rsa@sha256:376b2e6068a2896eb799adefda290f9c093315aa06730e3780d18045ade0f37e","subjectPublicKeyRef":"crypto/algorithm/rsa-4096@sha256:c4e87b34b0226bf6707a67e812f38aeb1a3935231edc4e94a5e9af6cd92590e4","certificateFormat":"X.509","certificateExtension":".1:40645"},"relatedCryptoMaterialProperties":{}}}`,
 		},
 	}
 
@@ -447,4 +392,51 @@ func (h pemHit) CertHit(t *testing.T) model.CertHit {
 		Source:   h.Source,
 		Location: h.Location,
 	}
+}
+
+func TestParseSSHHostKey(t *testing.T) {
+	key := model.SSHHostKey{
+		Type:        "ssh-ed25519",
+		Bits:        "256",
+		Key:         "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE",
+		Fingerprint: "aa:bb:cc:dd",
+	}
+
+	t.Run("without czertainly properties", func(t *testing.T) {
+		c := cdxprops.NewConverter().WithCzertainlyExtenstions(false)
+
+		compo := c.ParseSSHHostKey(key)
+		require.Equal(t, "crypto/algorithm/ssh-ed25519@256", compo.BOMRef)
+		require.Equal(t, "ssh-ed25519", compo.Name)
+		require.Equal(t, cdx.ComponentTypeCryptographicAsset, compo.Type)
+		require.NotNil(t, compo.CryptoProperties)
+		require.Equal(t, cdx.CryptoAssetTypeAlgorithm, compo.CryptoProperties.AssetType)
+		require.NotNil(t, compo.CryptoProperties.AlgorithmProperties)
+		require.Equal(t, "ed25519@1.3.101.112", compo.CryptoProperties.AlgorithmProperties.ParameterSetIdentifier)
+		require.Equal(t, "ed25519@1.3.101.112", compo.CryptoProperties.OID)
+		require.Nil(t, compo.Properties)
+	})
+
+	t.Run("with czertainly properties", func(t *testing.T) {
+		c := cdxprops.NewConverter().WithCzertainlyExtenstions(true)
+
+		compo := c.ParseSSHHostKey(key)
+		require.NotNil(t, compo.Properties)
+		props := *compo.Properties
+		// Expect czertainly added content and fingerprint properties
+		foundContent := false
+		foundFingerprint := false
+		for _, p := range props {
+			if p.Name == czertainly.SSHHostKeyContent {
+				require.Equal(t, key.Key, p.Value)
+				foundContent = true
+			}
+			if p.Name == czertainly.SSHHostKeyFingerprintContent {
+				require.Equal(t, key.Fingerprint, p.Value)
+				foundFingerprint = true
+			}
+		}
+		require.True(t, foundContent)
+		require.True(t, foundFingerprint)
+	})
 }

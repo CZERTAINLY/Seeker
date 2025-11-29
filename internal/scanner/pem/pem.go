@@ -189,6 +189,18 @@ func (d Scanner) Scan(ctx context.Context, b []byte, path string) (model.PEMBund
 	if len(bundle.ParseErrors) == 0 {
 		bundle.ParseErrors = nil
 	}
+	slog.DebugContext(
+		ctx,
+		"Result of PEM detection",
+		"certificates", len(bundle.Certificates),
+		"privateKeys", len(bundle.PrivateKeys),
+		"certificateRequests", len(bundle.CertificateRequests),
+		"publicKeys", len(bundle.PublicKeys),
+		"crls", len(bundle.CRLs),
+		"rawBlocks", len(bundle.RawBlocks),
+		"parseErrors", len(bundle.ParseErrors),
+		"location", bundle.Location,
+	)
 	return bundle, nil
 }
 

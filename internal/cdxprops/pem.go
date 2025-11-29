@@ -2,10 +2,6 @@ package cdxprops
 
 import (
 	"context"
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/ed25519"
-	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -13,7 +9,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/CZERTAINLY/Seeker/internal/model"
@@ -22,24 +17,9 @@ import (
 )
 
 // PEMBundleToCDX converts a PEM bundle to CycloneDX components
-func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string) ([]cdx.Component, error) {
+func (c Converter) restOfPEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string) ([]cdx.Component, error) {
 	components := make([]cdx.Component, 0)
 	var errs []error
-
-	// Convert certificates
-	for _, cert := range bundle.Certificates {
-		compo, err := CertHitToComponent(ctx, cert)
-		if err != nil {
-			errs = append(errs, err)
-			continue
-		}
-		components = append(components, compo)
-	}
-
-	// Convert private keys
-	for _, key := range bundle.PrivateKeys {
-		components = append(components, privateKeyToCDX(key.Key, location))
-	}
 
 	// Convert certificate requests
 	for _, csr := range bundle.CertificateRequests {
@@ -48,7 +28,10 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 
 	// Convert public keys
 	for _, pubKey := range bundle.PublicKeys {
-		components = append(components, publicKeyToCDX(pubKey, location))
+		algo, pubKeyCompo := c.publicKeyComponents(ctx, getPublicKeyAlgorithm(pubKey), pubKey, 0)
+		pubKeyCompo.CryptoProperties.RelatedCryptoMaterialProperties.Format = "PEM"
+		components = append(components, algo)
+		components = append(components, pubKeyCompo)
 	}
 
 	// Convert CRLs
@@ -60,7 +43,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	for _, i := range slices.Sorted(maps.Keys(bundle.ParseErrors)) {
 		parseErr := bundle.ParseErrors[i]
 		block := bundle.RawBlocks[i]
-		compo, err := analyzeParseError(block, parseErr)
+		compo, err := c.analyzeParseError(block, parseErr)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -71,33 +54,7 @@ func PEMBundleToCDX(ctx context.Context, bundle model.PEMBundle, location string
 	return components, errors.Join(errs...)
 }
 
-func privateKeyToCDX(key crypto.PrivateKey, location string) cdx.Component {
-	keyType, algorithmRef, size := getPrivateKeyInfo(key)
-
-	compo := cdx.Component{
-		Type: cdx.ComponentTypeCryptographicAsset,
-		Name: fmt.Sprintf("%s Private Key", keyType),
-		CryptoProperties: &cdx.CryptoProperties{
-			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:         cdx.RelatedCryptoMaterialTypePrivateKey,
-				AlgorithmRef: cdx.BOMReference(algorithmRef),
-				Size:         &size,
-				Format:       keyType,
-			},
-			OID: algorithmRef,
-		},
-		Properties: &[]cdx.Property{
-			{Name: "location", Value: location},
-			{Name: "key_type", Value: keyType},
-			{Name: "key_size", Value: fmt.Sprintf("%d", size)},
-		},
-	}
-	AddEvidenceLocation(&compo, location)
-	return compo
-}
-
-func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
+func csrToCDX(csr *x509.CertificateRequest, _ string) cdx.Component {
 	compo := cdx.Component{
 		Type: cdx.ComponentTypeCryptographicAsset,
 		Name: fmt.Sprintf("CSR: %s", csr.Subject.CommonName),
@@ -112,32 +69,6 @@ func csrToCDX(csr *x509.CertificateRequest, location string) cdx.Component {
 			{Name: "subject", Value: csr.Subject.String()},
 		},
 	}
-	AddEvidenceLocation(&compo, location)
-	return compo
-}
-
-func publicKeyToCDX(pubKey crypto.PublicKey, location string) cdx.Component {
-	keyType, algorithmRef, size := getPublicKeyInfo(pubKey)
-
-	compo := cdx.Component{
-		Type: cdx.ComponentTypeCryptographicAsset,
-		Name: fmt.Sprintf("%s Public Key", keyType),
-		CryptoProperties: &cdx.CryptoProperties{
-			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:         cdx.RelatedCryptoMaterialTypePublicKey,
-				AlgorithmRef: cdx.BOMReference(algorithmRef),
-				Size:         &size,
-				Format:       keyType,
-			},
-		},
-		Properties: &[]cdx.Property{
-			{Name: "location", Value: location},
-			{Name: "key_type", Value: keyType},
-			{Name: "key_size", Value: fmt.Sprintf("%d", size)},
-		},
-	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 
@@ -159,50 +90,28 @@ func crlToCDX(crl *x509.RevocationList, location string) cdx.Component {
 			{Name: "revoked_count", Value: fmt.Sprintf("%d", len(crl.RevokedCertificateEntries))},
 		},
 	}
-	AddEvidenceLocation(&compo, location)
 	return compo
 }
 
 // Helper functions
-
-func getPrivateKeyInfo(key crypto.PrivateKey) (keyType string, algorithmRef string, size int) {
-	switch k := key.(type) {
-	case *rsa.PrivateKey:
-		return "RSA", "RSA", k.N.BitLen()
-	case *ecdsa.PrivateKey:
-		return "ECDSA", fmt.Sprintf("ECDSA-%s", k.Curve.Params().Name), k.Curve.Params().BitSize
-	case ed25519.PrivateKey:
-		return "Ed25519", "Ed25519", 256
-	default:
-		return "Unknown", "Unknown", 0
-	}
-}
-
-func getPublicKeyInfo(key crypto.PublicKey) (keyType string, algorithmRef string, size int) {
-	switch k := key.(type) {
-	case *rsa.PublicKey:
-		return "RSA", "RSA", k.N.BitLen()
-	case *ecdsa.PublicKey:
-		return "ECDSA", fmt.Sprintf("ECDSA-%s", k.Curve.Params().Name), k.Curve.Params().BitSize
-	case ed25519.PublicKey:
-		return "Ed25519", "Ed25519", 256
-	default:
-		return "Unknown", "Unknown", 0
-	}
-}
-
-func analyzeParseError(block model.PEMBlock, parseErr error) (cdx.Component, error) {
-	const mlkemOID = "2.16.840.1.101.3.4.3.18"
+func (c Converter) analyzeParseError(block model.PEMBlock, parseErr error) (cdx.Component, error) {
 	if block.Type == "PRIVATE KEY" {
 		var pkcs8Key pkcs8
 		_, err := asn1.Unmarshal(block.Bytes, &pkcs8Key)
-		if err == nil && pkcs8Key.Algo.Algorithm.String() == mlkemOID {
-			compo, err := mlkemToComponent(block.Bytes)
-			if err != nil {
-				return cdx.Component{}, errors.Join(parseErr, err)
-			}
-			return compo, nil
+		if err != nil {
+			return cdx.Component{}, fmt.Errorf("parsing PKCS#8 via ASN.1: %w", err)
 		}
+
+		info, ok := unsupportedAlgorithms[pkcs8Key.Algo.Algorithm.String()]
+		if !ok {
+			return cdx.Component{}, parseErr
+		}
+		// FIXME: correct components
+		algo, _, err := c.unsupportedPKCS8PrivateKey(pkcs8Key, info, block.Bytes)
+		if err != nil {
+			return cdx.Component{}, errors.Join(parseErr, err)
+		}
+		return algo, nil
 	}
 	return cdx.Component{}, parseErr
 }
@@ -217,53 +126,21 @@ type pkcs8 struct {
 }
 
 // ML-KEM private key structure
-type mlkemPrivateKey struct {
+type unsupportedPrivateKey struct {
 	Seed       []byte
 	PrivateKey []byte
 }
 
-func mlkemToComponent(b []byte) (cdx.Component, error) {
-	const MLKEM1024PKeySize = 3168
-	const MLKEM768PKeySize = 2400
-	var pkcs8Key pkcs8
-	_, err := asn1.Unmarshal(b, &pkcs8Key)
+func (c Converter) unsupportedPKCS8PrivateKey(pkcs8Key pkcs8, info algorithmInfo, _ []byte) (algo, key cdx.Component, err error) {
+	var privKey unsupportedPrivateKey
+	_, err = asn1.Unmarshal(pkcs8Key.PrivateKey, &privKey)
 	if err != nil {
-		return cdx.Component{}, fmt.Errorf("parsing PKCS#8 via ASN.1: %w", err)
+		err = fmt.Errorf("parsing PKCS#8 private key via ASN.1: %w", err)
+		return
 	}
 
-	var mlkemKey mlkemPrivateKey
-	_, err = asn1.Unmarshal(pkcs8Key.PrivateKey, &mlkemKey)
-	if err != nil {
-		return cdx.Component{}, fmt.Errorf("parsing ML-KEM via ASN.1: %w", err)
-	}
+	algo = info.componentWOBomRef(c.czertainly)
+	c.BOMRefHash(&algo, info.algorithmName)
 
-	var size int
-	if len(mlkemKey.PrivateKey) >= MLKEM1024PKeySize {
-		size = 1024
-	} else if len(mlkemKey.PrivateKey) >= MLKEM768PKeySize {
-		size = 768
-	} else {
-		size = 512
-	}
-
-	bomRef, ok := spkiOIDRef[pkcs8Key.Algo.Algorithm.String()]
-	if !ok {
-		bomRef = ""
-	}
-
-	compo := cdx.Component{
-		BOMRef: string(bomRef),
-		Type:   cdx.ComponentTypeCryptographicAsset,
-		Name:   "ML-KEM-" + strconv.Itoa(size),
-		CryptoProperties: &cdx.CryptoProperties{
-			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
-			RelatedCryptoMaterialProperties: &cdx.RelatedCryptoMaterialProperties{
-				Type:   cdx.RelatedCryptoMaterialTypePrivateKey,
-				Size:   &size,
-				Format: "PEM",
-			},
-			OID: pkcs8Key.Algo.Algorithm.String(),
-		},
-	}
-	return compo, nil
+	return
 }

@@ -2,39 +2,37 @@ package cdxprops
 
 import (
 	"context"
-	"encoding/pem"
 	"fmt"
-	"log/slog"
 	"strings"
 
-	"github.com/CZERTAINLY/Seeker/internal/model"
+	"github.com/zricethezav/gitleaks/v8/report"
 
 	cdx "github.com/CycloneDX/cyclonedx-go"
 )
 
-// LeakToComponent converts the finding to a component.
-// Private keys are now processed and converted to components,
-// with their content base64-encoded.
-func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool) {
+func (c Converter) leakToComponent(_ context.Context, location string, finding report.Finding) (cdx.Component, bool) {
 	var cryptoType cdx.RelatedCryptoMaterialType
 	switch {
-	case leak.RuleID == "private-key":
-		return cdx.Component{}, true
-	case strings.Contains(leak.RuleID, "jwt"):
+	case finding.RuleID == "private-key":
+		cryptoType = cdx.RelatedCryptoMaterialTypePrivateKey
+	case strings.Contains(finding.RuleID, "jwt"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeToken
-	case strings.Contains(leak.RuleID, "token"):
+	case strings.Contains(finding.RuleID, "token"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeToken
-	case strings.Contains(leak.RuleID, "key"):
+	case strings.Contains(finding.RuleID, "key"):
 		cryptoType = cdx.RelatedCryptoMaterialTypeKey
-	case strings.Contains(leak.RuleID, "password"):
+	case strings.Contains(finding.RuleID, "password"):
 		cryptoType = cdx.RelatedCryptoMaterialTypePassword
 	default:
 		cryptoType = cdx.RelatedCryptoMaterialTypeUnknown
 	}
 
+	bomRef := fmt.Sprintf("crypto/%s/%s", string(cryptoType), c.bomRefHasher([]byte(finding.Secret)))
+
 	compo := cdx.Component{
-		Name:        leak.RuleID,
-		Description: leak.Description,
+		BOMRef:      bomRef,
+		Name:        finding.RuleID,
+		Description: finding.Description,
 		Type:        cdx.ComponentTypeCryptographicAsset,
 		CryptoProperties: &cdx.CryptoProperties{
 			AssetType: cdx.CryptoAssetTypeRelatedCryptoMaterial,
@@ -45,31 +43,12 @@ func LeakToComponent(ctx context.Context, leak model.Leak) (cdx.Component, bool)
 		Evidence: &cdx.Evidence{
 			Occurrences: &[]cdx.EvidenceOccurrence{
 				{
-					Location: leak.File,
-					Line:     &leak.StartLine,
+					Location: location,
+					Line:     &finding.StartLine,
 				},
 			},
 		},
 	}
 
-	if leak.RuleID == "private-key" && leak.Content != "" {
-		err := setCzertainlyProps(leak, &compo)
-		if err != nil {
-			slog.WarnContext(ctx, "can't process private-key leak: ignoring", "error", err)
-			return cdx.Component{}, true
-		}
-	}
 	return compo, false
-}
-
-func setCzertainlyProps(leak model.Leak, compop *cdx.Component) error {
-	raw := []byte(leak.Content)
-	block, _ := pem.Decode(raw)
-	if block == nil {
-		return fmt.Errorf("failed to decode PEM block")
-	}
-
-	SetComponentProp(compop, CzertainlyPrivateKeyType, block.Type)
-	SetComponentBase64Prop(compop, CzertainlyPrivateKeyBase64Content, raw)
-	return nil
 }

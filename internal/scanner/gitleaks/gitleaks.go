@@ -38,33 +38,20 @@ func NewScanner() (*Scanner, error) {
 
 // Detect uses github.com/zricethezav/gitleaks/v8 to detect possible leaked files
 // This method is SAFE to be called from multiple goroutines
-func (d *Scanner) Scan(ctx context.Context, b []byte, path string) ([]model.Leak, error) {
+func (d *Scanner) Scan(ctx context.Context, b []byte, path string) (model.Leaks, error) {
 	// Check for context cancellation early to respect caller deadlines and
 	// to avoid unnecessary work; this also makes ctx a used parameter.
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return model.Leaks{}, ctx.Err()
 	default:
 	}
 
 	detector := d.pool.Get().(*detect.Detector)
 	defer d.pool.Put(detector)
 
-	var ret []model.Leak
-	for _, finding := range detector.DetectString(string(b)) {
-		var content string
-		if finding.Fragment != nil {
-			content = finding.Fragment.Raw
-		}
-		leak := model.Leak{
-			RuleID:      finding.RuleID,
-			Description: finding.Description,
-			File:        path,
-			StartLine:   finding.StartLine,
-			Content:     content,
-		}
-		ret = append(ret, leak)
-	}
-
-	return ret, nil
+	return model.Leaks{
+		Location: path,
+		Findings: detector.DetectString(string(b)),
+	}, nil
 }
